@@ -512,3 +512,41 @@ tr:last-child td {
   max-height: 90vh;
   overflow-y: auto;
 }
+
+/* Document Editor Responsive Layout */
+.editor-layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  align-items: start;
+  gap: 1.5rem;
+}
+
+@media (max-width: 960px) {
+  .editor-layout {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+}
+
+.rename-cols-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-color);
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .rename-cols-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .rename-cols-grid {
+    grid-template-columns: 1fr;
+  }
+}

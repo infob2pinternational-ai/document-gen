@@ -419,7 +419,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {/* Editor Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button onClick={onClose} className="btn-secondary" style={{ padding: '0.5rem', borderRadius: '50%' }}>
             <ArrowLeft size={18} />
@@ -446,7 +446,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       </div>
 
       {/* Editor Body */}
-      <div className="grid-3" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
+      <div className="editor-layout">
         
         {/* Left Columns: Form Fields & Table */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -523,16 +523,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             </div>
 
             {/* Editable Columns Section */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(5, 1fr)',
-              gap: '0.5rem',
-              padding: '0.75rem',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--bg-canvas)',
-              border: '1px solid var(--border-color)',
-              marginBottom: '0.5rem'
-            }}>
+            <div className="rename-cols-grid">
               <div>
                 <label style={{ fontSize: '0.7rem', display: 'block', color: 'var(--text-muted)' }}>Rename Desc Col</label>
                 <input style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }} value={colDesc} onChange={(e) => setColDesc(e.target.value)} />
