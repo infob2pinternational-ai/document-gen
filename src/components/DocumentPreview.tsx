@@ -21,7 +21,18 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   useEffect(() => {
     const fetchDocDetails = async () => {
       try {
+        console.log('DocumentPreview: Fetching details for document ID:', document.id);
+        console.log('DocumentPreview: Active profile branding details:', {
+          name: activeProfile?.name,
+          has_header: !!activeProfile?.letterhead_header_url,
+          header_length: activeProfile?.letterhead_header_url ? activeProfile.letterhead_header_url.length : 0,
+          has_footer: !!activeProfile?.letterhead_footer_url,
+          footer_length: activeProfile?.letterhead_footer_url ? activeProfile.letterhead_footer_url.length : 0
+        });
+
         const res = await dbService.getDocumentById(document.id);
+        console.log('DocumentPreview: dbService returned:', res);
+        
         if (res) {
           setItems(res.items);
         } else {
@@ -35,7 +46,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       }
     };
     fetchDocDetails();
-  }, [document]);
+  }, [document, activeProfile]);
 
   const handlePrint = () => {
     window.print();

@@ -353,9 +353,11 @@ export const dbService = {
   },
 
   async getDocumentById(id: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
+    console.log('dbService: getDocumentById called with ID:', id, 'useCloud:', useCloud());
     if (useCloud() && supabase) {
       const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
       if (docError) {
+        console.error('dbService: Error fetching document:', docError);
         if (docError.code === 'PGRST116') return null; // not found
         throw docError;
       }
@@ -364,14 +366,24 @@ export const dbService = {
         .select('*')
         .eq('document_id', id)
         .order('sort_order', { ascending: true });
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        console.error('dbService: Error fetching document items:', itemsError);
+        throw itemsError;
+      }
+      console.log('dbService: Supabase returned document:', document);
+      console.log('dbService: Supabase returned items count:', items?.length, 'items:', items);
       return { document, items: items || [] };
     } else {
       const docs = getLocal<Document[]>('documents', []);
       const doc = docs.find(d => d.id === id);
-      if (!doc) return null;
+      if (!doc) {
+        console.log('dbService: Local Document not found for ID:', id);
+        return null;
+      }
       const items = getLocal<DocumentItem[]>('document_items', []);
       const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
+      console.log('dbService: LocalStorage returned document:', doc);
+      console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
       return { document: doc, items: docItems };
     }
   },
