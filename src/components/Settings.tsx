@@ -142,13 +142,40 @@ export const Settings: React.FC<SettingsProps> = ({
     }
   }, [isCloudConnected, activeTab]);
 
-  // Convert files to Base64 helper
+  // Convert files to Base64 and compress them to prevent payload size issues in Supabase
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setter(reader.result as string);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1200; // max dimension 1200px
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Export as compressed JPEG to keep payload size tiny (approx 100kb-150kb)
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            setter(compressedDataUrl);
+          } else {
+            setter(reader.result as string);
+          }
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
