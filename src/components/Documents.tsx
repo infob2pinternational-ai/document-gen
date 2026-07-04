@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../types';
-import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Search, Plus, Eye, Edit, Trash2, ShieldAlert } from 'lucide-react';
 
 interface DocumentsProps {
   role: string;
@@ -10,7 +10,6 @@ interface DocumentsProps {
   onEditDocument: (doc: Document) => void;
   onViewDocument: (doc: Document) => void;
   onDeleteDocument: (id: string) => void;
-  onUpdateDocStatus: (doc: Document, newStatus: string) => void;
 }
 
 export const Documents: React.FC<DocumentsProps> = ({
@@ -20,8 +19,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   onAddDocument,
   onEditDocument,
   onViewDocument,
-  onDeleteDocument,
-  onUpdateDocStatus
+  onDeleteDocument
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -34,36 +32,6 @@ export const Documents: React.FC<DocumentsProps> = ({
       const matchType = filterType === 'all' || d.document_type === filterType;
       return matchSearch && matchType;
     });
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'paid':
-      case 'accepted':
-      case 'completed':
-        return { bg: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' };
-      case 'sent':
-      case 'active':
-        return { bg: 'rgba(37, 99, 235, 0.1)', color: 'var(--accent-primary)' };
-      case 'cancelled':
-        return { bg: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-danger)' };
-      case 'draft':
-      default:
-        return { bg: 'var(--bg-input)', color: 'var(--text-secondary)' };
-    }
-  };
-
-  const getNextStatusAction = (doc: Document) => {
-    if (doc.document_type === 'invoice' && doc.status !== 'paid') {
-      return { label: 'Mark Paid', status: 'paid' };
-    } else if (doc.document_type === 'quotation' && doc.status !== 'accepted') {
-      return { label: 'Accept Quote', status: 'accepted' };
-    } else if (doc.document_type === 'work_order' && doc.status !== 'completed') {
-      return { label: 'Mark Completed', status: 'completed' };
-    } else if (doc.document_type === 'proforma_invoice' && doc.status !== 'paid') {
-      return { label: 'Mark Paid', status: 'paid' };
-    }
-    return null;
-  };
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -143,17 +111,12 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <th>Doc Number</th>
                     <th>Customer Name</th>
                     <th>Document Type</th>
-                    <th>Issue Date</th>
-                    <th>Due Date</th>
                     <th>Total Amount</th>
-                    <th>Status</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDocs.map(doc => {
-                    const statusStyle = getStatusColor(doc.status);
-                    const action = getNextStatusAction(doc);
                     return (
                       <tr key={doc.id}>
                         <td className="mono" style={{ fontWeight: 600 }}>{doc.document_number}</td>
@@ -161,43 +124,12 @@ export const Documents: React.FC<DocumentsProps> = ({
                         <td style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
                           {doc.document_type.replace('_', ' ')}
                         </td>
-                        <td>{doc.issue_date}</td>
-                        <td>{doc.due_date}</td>
                         <td className="mono" style={{ fontWeight: 600 }}>
                           {activeProfile.currency === 'INR' ? '₹' : '$'}
                           {doc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td>
-                          <span style={{
-                            padding: '0.25rem 0.5rem',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            textTransform: 'uppercase',
-                            backgroundColor: statusStyle.bg,
-                            color: statusStyle.color
-                          }}>
-                            {doc.status}
-                          </span>
-                        </td>
-                        <td>
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                            {action && (
-                              <button
-                                onClick={() => onUpdateDocStatus(doc, action.status)}
-                                className="btn-secondary"
-                                style={{
-                                  padding: '0.35rem 0.6rem',
-                                  fontSize: '0.75rem',
-                                  color: 'var(--accent-success)',
-                                  borderColor: 'rgba(16, 185, 129, 0.2)'
-                                }}
-                                title={action.label}
-                              >
-                                <CheckCircle size={12} />
-                                <span>{action.label}</span>
-                              </button>
-                            )}
                             <button
                               onClick={() => onViewDocument(doc)}
                               className="btn-secondary"

@@ -455,7 +455,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <h3 style={{ fontSize: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Document Configuration</h3>
             
-            <div className="grid-3">
+            <div className="grid-2">
               <div className="form-group">
                 <label className="form-label">Document Type</label>
                 <select 
@@ -476,37 +476,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   type="text" 
                   value={docNumber} 
                   onChange={(e) => setDocNumber(e.target.value)} 
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                  <option value="draft">Draft</option>
-                  <option value="sent">Sent / Dispatched</option>
-                  <option value="paid">Paid</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label">Issue Date</label>
-                <input 
-                  type="date" 
-                  value={issueDate} 
-                  onChange={(e) => setIssueDate(e.target.value)} 
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Due Date / Deadline</label>
-                <input 
-                  type="date" 
-                  value={dueDate} 
-                  onChange={(e) => setDueDate(e.target.value)} 
                 />
               </div>
             </div>

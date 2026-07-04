@@ -166,23 +166,6 @@ function App() {
     }
   };
 
-  const handleUpdateDocStatus = async (doc: Document, newStatus: string) => {
-    try {
-      const updatedDoc = { ...doc, status: newStatus };
-      // Load current items
-      const res = await dbService.getDocumentById(doc.id);
-      if (res) {
-        await dbService.saveDocument(updatedDoc, res.items);
-        if (activeProfile) {
-          const docs = await dbService.getDocuments(activeProfile.id);
-          setDocuments(docs);
-        }
-      }
-    } catch (err) {
-      console.error('Error updating status:', err);
-    }
-  };
-
   // Add Company profile action
   const handleAddProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -442,7 +425,6 @@ function App() {
                 onEditDocument={handleEditDocument}
                 onViewDocument={handleViewDocument}
                 onDeleteDocument={handleDeleteDocument}
-                onUpdateDocStatus={handleUpdateDocStatus}
               />
             )}
 

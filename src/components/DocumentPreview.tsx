@@ -167,8 +167,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               </h1>
               <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                 <span><strong>Doc No:</strong> <span className="mono" style={{ fontWeight: 700 }}>{document.document_number}</span></span>
-                <span><strong>Date:</strong> {document.issue_date}</span>
-                <span><strong>Due Date:</strong> {document.due_date}</span>
                 {activeProfile.gstin && <span><strong>GSTIN:</strong> <span className="mono">{activeProfile.gstin}</span></span>}
                 {activeProfile.pan && <span><strong>PAN:</strong> <span className="mono">{activeProfile.pan}</span></span>}
               </div>
@@ -196,8 +194,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             </div>
             <div style={{ textAlign: 'right', fontSize: '0.8rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
               <span><strong>Doc ID:</strong> <span className="mono" style={{ fontWeight: 700 }}>{document.document_number}</span></span>
-              <span><strong>Issue Date:</strong> {document.issue_date}</span>
-              <span><strong>Due Date / Deadline:</strong> {document.due_date}</span>
               {activeProfile.gstin && <span><strong>GSTIN:</strong> <span className="mono">{activeProfile.gstin}</span></span>}
             </div>
           </div>

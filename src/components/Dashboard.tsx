@@ -69,23 +69,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return `${symbol}${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'paid':
-      case 'accepted':
-      case 'completed':
-        return { bg: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' };
-      case 'sent':
-      case 'active':
-        return { bg: 'rgba(37, 99, 235, 0.1)', color: 'var(--accent-primary)' };
-      case 'cancelled':
-        return { bg: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-danger)' };
-      case 'draft':
-      default:
-        return { bg: 'var(--bg-input)', color: 'var(--text-secondary)' };
-    }
-  };
-
   const filteredDocs = documents
     .filter(d => !activeProfile || d.company_id === activeProfile.id)
     .filter(d => {
@@ -270,15 +253,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <th>Doc Number</th>
                     <th>Customer</th>
                     <th>Type</th>
-                    <th>Date</th>
                     <th>Total</th>
-                    <th>Status</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDocs.map(doc => {
-                    const statusStyle = getStatusColor(doc.status);
                     return (
                       <tr key={doc.id}>
                         <td className="mono" style={{ fontWeight: 600 }}>{doc.document_number}</td>
@@ -286,22 +266,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <td style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
                           {doc.document_type.replace('_', ' ')}
                         </td>
-                        <td>{doc.issue_date}</td>
                         <td className="mono" style={{ fontWeight: 600 }}>
                           {formatCurrency(doc.total, activeProfile?.currency || 'INR')}
-                        </td>
-                        <td>
-                          <span style={{
-                            padding: '0.25rem 0.5rem',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            textTransform: 'uppercase',
-                            backgroundColor: statusStyle.bg,
-                            color: statusStyle.color
-                          }}>
-                            {doc.status}
-                          </span>
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
