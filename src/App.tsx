@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Document } from './types';
-import { dbService, isSupabaseConfigured, supabase } from './services/db';
+import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { Documents } from './components/Documents';
@@ -298,6 +298,37 @@ function App() {
               Create Company Profile
             </button>
           </form>
+
+          {isSupabaseConfigured() && (
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(37, 99, 235, 0.05)',
+              border: '1px solid rgba(37, 99, 235, 0.2)',
+              fontSize: '0.8rem',
+              color: 'var(--text-secondary)',
+              textAlign: 'left'
+            }}>
+              <p style={{ marginBottom: '0.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Database Setup Required (Supabase Cloud)
+              </p>
+              <p style={{ marginBottom: '0.75rem', lineHeight: '1.4' }}>
+                Before creating your first profile, please copy this SQL Setup script and run it inside your Supabase project's SQL Editor to initialize the tables.
+              </p>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  navigator.clipboard.writeText(SQL_SCHEMA);
+                  alert('SQL database schema copied to clipboard! Paste and Run it in your Supabase SQL Editor.');
+                }}
+                style={{ width: '100%', padding: '0.4rem', fontSize: '0.75rem' }}
+              >
+                Copy SQL Setup Schema
+              </button>
+            </div>
+          )}
 
           {/* Simple toggle theme button for welcome screen */}
           <button
