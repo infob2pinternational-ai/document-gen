@@ -11,10 +11,10 @@ import {
   Sun, 
   Moon, 
   LogOut,
-  Plus
+  Plus,
+  X
 } from 'lucide-react';
 import type { CompanyProfile } from '../types';
-// no-op import removed
 
 interface SidebarProps {
   currentTab: string;
@@ -27,6 +27,8 @@ interface SidebarProps {
   toggleTheme: () => void;
   user: any;
   onLogout: () => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -39,7 +41,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   theme,
   toggleTheme,
   user,
-  onLogout
+  onLogout,
+  isOpen,
+  onClose
 }) => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const isCloudActive = !!user;
@@ -53,7 +57,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+      {/* Mobile close button */}
+      <div className="mobile-only-display" style={{ width: '100%', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button
+          onClick={onClose}
+          className="btn-secondary"
+          style={{ padding: '0.35rem', borderRadius: '4px', border: 'none', background: 'transparent' }}
+          title="Close Menu"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
       {/* Brand Header & Profile Switcher */}
       <div style={{ position: 'relative', marginBottom: '2rem', width: '100%' }}>
         <button 

@@ -555,8 +555,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </div>
             </div>
 
-            {/* Line items Table */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Line items Table (Scrollable on mobile) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
               {items.length > 0 ? (
                 items.map((item, idx) => (
                   <div 
@@ -572,7 +572,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       padding: '0.5rem',
                       borderRadius: 'var(--radius-sm)',
                       border: '1px solid var(--border-color)',
-                      background: 'var(--bg-card)'
+                      background: 'var(--bg-card)',
+                      minWidth: '820px'
                     }}
                   >
                     <div style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>

@@ -10,7 +10,7 @@ import { Settings } from './components/Settings';
 import { DocumentEditor } from './components/DocumentEditor';
 import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
-import { Building } from 'lucide-react';
+import { Building, Menu, Moon, Sun } from 'lucide-react';
 
 function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
@@ -36,6 +36,7 @@ function App() {
 
   // Supabase Auth States
   const [user, setUser] = useState<any>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Initialize Theme
   useEffect(() => {
@@ -346,10 +347,41 @@ function App() {
   return (
     <div className="app-container">
       
+      {/* Mobile top-bar header */}
+      <header className="mobile-header">
+        <button 
+          onClick={() => setMobileMenuOpen(true)}
+          className="btn-secondary"
+          style={{ padding: '0.5rem', borderRadius: 'var(--radius-sm)' }}
+          title="Open Menu"
+        >
+          <Menu size={20} />
+        </button>
+        <span style={{ fontWeight: 700, fontSize: '0.95rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {activeProfile?.name || 'Document Gen'}
+        </span>
+        <button
+          onClick={toggleTheme}
+          className="btn-secondary"
+          style={{ padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: 'none', background: 'transparent' }}
+          title="Theme Toggle"
+        >
+          {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+        </button>
+      </header>
+
+      {/* Backdrop overlay for mobile menu */}
+      {mobileMenuOpen && (
+        <div className="sidebar-overlay" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
       {/* Navigation Sidebar */}
       <Sidebar 
         currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
+        setCurrentTab={(tab) => {
+          setCurrentTab(tab);
+          setMobileMenuOpen(false);
+        }}
         profiles={profiles}
         activeProfile={activeProfile}
         setActiveProfile={(prof) => {
@@ -361,6 +393,8 @@ function App() {
         toggleTheme={toggleTheme}
         user={user}
         onLogout={handleLogout}
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
       />
 
       {/* Main Content viewport */}
