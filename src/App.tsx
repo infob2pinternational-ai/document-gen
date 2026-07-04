@@ -1,0 +1,460 @@
+import React, { useState, useEffect } from 'react';
+import type { CompanyProfile, Document } from './types';
+import { dbService, isSupabaseConfigured, supabase } from './services/db';
+import { Sidebar } from './components/Sidebar';
+import { Dashboard } from './components/Dashboard';
+import { Documents } from './components/Documents';
+import { Customers } from './components/Customers';
+import { Services } from './components/Services';
+import { Settings } from './components/Settings';
+import { DocumentEditor } from './components/DocumentEditor';
+import { DocumentPreview } from './components/DocumentPreview';
+import { AuthPanel } from './components/AuthPanel';
+import { Building } from 'lucide-react';
+
+function App() {
+  const [currentTab, setCurrentTab] = useState<string>('dashboard');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  
+  // Profiles
+  const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
+  const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(null);
+  
+  // Documents
+  const [documents, setDocuments] = useState<Document[]>([]);
+  
+  // Sub-views
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [documentToEdit, setDocumentToEdit] = useState<Document | null>(null);
+  const [documentToPreview, setDocumentToPreview] = useState<Document | null>(null);
+  
+  // Modals
+  const [showAddProfileModal, setShowAddProfileModal] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [newProfileCurrency, setNewProfileCurrency] = useState('INR');
+
+  // Supabase Auth States
+  const [user, setUser] = useState<any>(null);
+  const [forceSandbox, setForceSandbox] = useState(false);
+
+  // Initialize Theme
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('docgen_theme') as 'light' | 'dark' | null;
+    const initialTheme = savedTheme || 'dark';
+    setTheme(initialTheme);
+    document.documentElement.setAttribute('data-theme', initialTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('docgen_theme', newTheme);
+  };
+
+  // Initialize Supabase User Session
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    
+    // Read cached user
+    const cached = localStorage.getItem('supabase_user');
+    if (cached) {
+      setUser(JSON.parse(cached));
+    }
+
+    // Listener
+    const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        localStorage.setItem('supabase_user', JSON.stringify(session.user));
+        setUser(session.user);
+        setForceSandbox(false);
+      } else {
+        localStorage.removeItem('supabase_user');
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    localStorage.removeItem('supabase_user');
+    setUser(null);
+    setProfiles([]);
+    setActiveProfile(null);
+    setDocuments([]);
+  };
+
+  // Load Company Profiles & Documents
+  const loadData = async (selectNewId?: string) => {
+    try {
+      const profileList = await dbService.getProfiles();
+      setProfiles(profileList);
+
+      if (profileList.length > 0) {
+        // If a new profile ID was passed, set it active. Else find in localStorage or default to first
+        let active = profileList[0];
+        if (selectNewId) {
+          const found = profileList.find(p => p.id === selectNewId);
+          if (found) active = found;
+        } else {
+          const lastActiveId = localStorage.getItem('docgen_active_profile_id');
+          const found = profileList.find(p => p.id === lastActiveId);
+          if (found) active = found;
+        }
+
+        setActiveProfile(active);
+        localStorage.setItem('docgen_active_profile_id', active.id);
+        
+        // Fetch docs for active profile
+        const docs = await dbService.getDocuments(active.id);
+        setDocuments(docs);
+      } else {
+        setActiveProfile(null);
+        setDocuments([]);
+      }
+    } catch (err) {
+      console.error('Error loading application data:', err);
+    }
+  };
+
+  useEffect(() => {
+    // Load data if either Cloud connection is logged in or Sandbox is forced
+    if (!isSupabaseConfigured() || forceSandbox || user) {
+      loadData();
+    }
+  }, [user, forceSandbox]);
+
+  // Load documents when active company profile switches
+  useEffect(() => {
+    if (activeProfile) {
+      dbService.getDocuments(activeProfile.id).then(setDocuments);
+    }
+  }, [activeProfile]);
+
+  // Document management actions
+  const handleEditDocument = (doc: Document) => {
+    setDocumentToEdit(doc);
+    setEditorOpen(true);
+  };
+
+  const handleCreateDocument = () => {
+    setDocumentToEdit(null);
+    setEditorOpen(true);
+  };
+
+  const handleViewDocument = (doc: Document) => {
+    setDocumentToPreview(doc);
+    setPreviewOpen(true);
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    try {
+      await dbService.deleteDocument(id);
+      if (activeProfile) {
+        const docs = await dbService.getDocuments(activeProfile.id);
+        setDocuments(docs);
+      }
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      alert('Failed to delete document.');
+    }
+  };
+
+  const handleUpdateDocStatus = async (doc: Document, newStatus: string) => {
+    try {
+      const updatedDoc = { ...doc, status: newStatus };
+      // Load current items
+      const res = await dbService.getDocumentById(doc.id);
+      if (res) {
+        await dbService.saveDocument(updatedDoc, res.items);
+        if (activeProfile) {
+          const docs = await dbService.getDocuments(activeProfile.id);
+          setDocuments(docs);
+        }
+      }
+    } catch (err) {
+      console.error('Error updating status:', err);
+    }
+  };
+
+  // Add Company profile action
+  const handleAddProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProfileName.trim()) return;
+
+    try {
+      const newId = crypto.randomUUID();
+      const newProf: CompanyProfile = {
+        id: newId,
+        name: newProfileName,
+        currency: newProfileCurrency,
+        col_name_description: 'Description',
+        col_name_quantity: 'Quantity',
+        col_name_unit: 'Unit',
+        col_name_rate: 'Rate',
+        col_name_amount: 'Amount',
+        invoice_prefix: 'INV/',
+        invoice_start_number: 1001,
+        proforma_prefix: 'PI/',
+        proforma_start_number: 1001,
+        quotation_prefix: 'QTN/',
+        quotation_start_number: 1001,
+        work_order_prefix: 'WO/',
+        work_order_start_number: 1001
+      };
+
+      await dbService.saveProfile(newProf);
+      setNewProfileName('');
+      setShowAddProfileModal(false);
+      
+      // Reload and set this new profile as active
+      await loadData(newId);
+    } catch (err) {
+      console.error('Error creating company profile:', err);
+      alert('Failed to create company profile.');
+    }
+  };
+
+  // If Supabase credentials exist, and user is not authenticated and hasn't bypassed to Sandbox: Show AuthPanel
+  if (isSupabaseConfigured() && !user && !forceSandbox) {
+    return (
+      <AuthPanel 
+        onAuthSuccess={(usr) => setUser(usr)}
+        onContinueSandbox={() => setForceSandbox(true)}
+      />
+    );
+  }
+
+  // Welcome Screen for Fresh setup (Zero profiles)
+  if (profiles.length === 0) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: 'var(--bg-canvas)',
+        padding: '2rem'
+      }}>
+        <div className="card text-center animate-fade-in" style={{
+          maxWidth: '520px',
+          width: '100%',
+          padding: '3rem',
+          textAlign: 'center',
+          boxShadow: 'var(--shadow-lg)'
+        }}>
+          <div style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '16px',
+            background: 'rgba(37,99,235,0.1)',
+            color: 'var(--accent-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1.5rem auto'
+          }}>
+            <Building size={32} />
+          </div>
+          
+          <h2 style={{ fontSize: '1.75rem', marginBottom: '0.75rem', fontWeight: 700 }}>
+            Set Up Your Business
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '2rem', lineHeight: '1.6' }}>
+            Welcome! To generate quotations, work orders, and invoices, please create your first company profile.
+          </p>
+
+          <form onSubmit={handleAddProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'left' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" htmlFor="w-name">Company / Business Name *</label>
+              <input
+                id="w-name"
+                type="text"
+                required
+                placeholder="e.g. Acme Software Solutions"
+                value={newProfileName}
+                onChange={(e) => setNewProfileName(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" htmlFor="w-currency">Billing Currency</label>
+              <select
+                id="w-currency"
+                value={newProfileCurrency}
+                onChange={(e) => setNewProfileCurrency(e.target.value)}
+              >
+                <option value="INR">INR (₹) - Indian Rupee</option>
+                <option value="USD">USD ($) - US Dollar</option>
+              </select>
+            </div>
+
+            <button type="submit" className="btn-primary" style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}>
+              Create Company Profile
+            </button>
+          </form>
+
+          {/* Simple toggle theme button for welcome screen */}
+          <button
+            onClick={toggleTheme}
+            className="btn-secondary"
+            style={{ marginTop: '1.5rem', width: '100%', padding: '0.5rem', border: 'none', background: 'transparent' }}
+          >
+            {theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-container">
+      
+      {/* Navigation Sidebar */}
+      <Sidebar 
+        currentTab={currentTab}
+        setCurrentTab={setCurrentTab}
+        profiles={profiles}
+        activeProfile={activeProfile}
+        setActiveProfile={(prof) => {
+          setActiveProfile(prof);
+          localStorage.setItem('docgen_active_profile_id', prof.id);
+        }}
+        onAddProfileClick={() => setShowAddProfileModal(true)}
+        theme={theme}
+        toggleTheme={toggleTheme}
+        user={user}
+        onLogout={handleLogout}
+      />
+
+      {/* Main Content viewport */}
+      <main className="main-content">
+        
+        {/* Editor Screen view */}
+        {editorOpen ? (
+          <DocumentEditor 
+            activeProfile={activeProfile}
+            documentToEdit={documentToEdit}
+            onClose={() => setEditorOpen(false)}
+            onRefreshDocs={() => {
+              if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
+            }}
+          />
+        ) : previewOpen && documentToPreview ? (
+          /* Preview Screen view */
+          <DocumentPreview 
+            activeProfile={activeProfile}
+            document={documentToPreview}
+            onClose={() => setPreviewOpen(false)}
+          />
+        ) : (
+          /* Normal Tab routing rendering */
+          <>
+            {currentTab === 'dashboard' && (
+              <Dashboard 
+                activeProfile={activeProfile}
+                profiles={profiles}
+                documents={documents}
+                onEditDocument={handleEditDocument}
+                onViewDocument={handleViewDocument}
+                onDeleteDocument={handleDeleteDocument}
+                setCurrentTab={setCurrentTab}
+              />
+            )}
+            
+            {currentTab === 'documents' && (
+              <Documents 
+                activeProfile={activeProfile}
+                documents={documents}
+                onAddDocument={handleCreateDocument}
+                onEditDocument={handleEditDocument}
+                onViewDocument={handleViewDocument}
+                onDeleteDocument={handleDeleteDocument}
+                onUpdateDocStatus={handleUpdateDocStatus}
+              />
+            )}
+
+            {currentTab === 'customers' && (
+              <Customers 
+                activeProfile={activeProfile}
+                onRefreshStats={() => loadData(activeProfile?.id)}
+              />
+            )}
+
+            {currentTab === 'services' && (
+              <Services 
+                activeProfile={activeProfile}
+                onRefreshStats={() => loadData(activeProfile?.id)}
+              />
+            )}
+
+            {currentTab === 'settings' && (
+              <Settings 
+                profiles={profiles}
+                activeProfile={activeProfile}
+                onRefreshProfiles={loadData}
+                user={user}
+              />
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Add Profile modal triggered from Sidebar */}
+      {showAddProfileModal && (
+        <div className="modal-overlay">
+          <div className="modal-content animate-fade-in">
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              Add Company Profile
+            </h3>
+            <form onSubmit={handleAddProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="m-name">Company Name *</label>
+                <input
+                  id="m-name"
+                  type="text"
+                  required
+                  placeholder="e.g. Acme Services Ltd"
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="m-curr">Billing Currency</label>
+                <select
+                  id="m-curr"
+                  value={newProfileCurrency}
+                  onChange={(e) => setNewProfileCurrency(e.target.value)}
+                >
+                  <option value="INR">INR (₹) - Indian Rupee</option>
+                  <option value="USD">USD ($) - US Dollar</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button type="button" onClick={() => setShowAddProfileModal(false)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Create Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+export default App;
