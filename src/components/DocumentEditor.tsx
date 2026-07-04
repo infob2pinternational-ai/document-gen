@@ -417,24 +417,24 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   };
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Editor Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div className="editor-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button onClick={onClose} className="btn-secondary" style={{ padding: '0.5rem', borderRadius: '50%' }}>
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
               {documentToEdit ? `Edit ${docType.replace('_', ' ')}` : `Create ${docType.replace('_', ' ')}`}
             </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '2px 0 0 0' }}>
               Sequence details and custom branding will be locked upon save.
             </p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="editor-header-buttons">
           <button onClick={onClose} className="btn-secondary">
             Cancel
           </button>

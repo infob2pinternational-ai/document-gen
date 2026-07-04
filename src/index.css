@@ -550,3 +550,71 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+
+/* Responsive Card Paddings */
+@media (max-width: 640px) {
+  .card {
+    padding: 1rem !important;
+  }
+}
+
+/* Document Editor Header */
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 1rem;
+}
+
+.editor-header-buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .editor-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .editor-header h1 {
+    font-size: 1.25rem !important;
+  }
+  
+  .editor-header-buttons {
+    width: 100%;
+    gap: 0.5rem;
+  }
+  
+  .editor-header-buttons button {
+    flex: 1;
+    justify-content: center;
+    padding: 0.65rem 1rem !important;
+    font-size: 0.85rem;
+  }
+}
+
+/* Custom Scrollbar Styles for horizontal scroll elements */
+div[style*="overflow-x: auto"],
+div[style*="overflowX: auto"],
+.table-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+div[style*="overflow-x: auto"]::-webkit-scrollbar,
+div[style*="overflowX: auto"]::-webkit-scrollbar,
+.table-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+div[style*="overflow-x: auto"]::-webkit-scrollbar-thumb,
+div[style*="overflowX: auto"]::-webkit-scrollbar-thumb,
+.table-container::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 3px;
+}
