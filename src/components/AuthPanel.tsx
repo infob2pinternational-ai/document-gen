@@ -12,7 +12,7 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'admin' | 'user'>('admin');
+  const role = 'user';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,20 +158,6 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
               />
             </div>
           </div>
-
-          {!isLogin && (
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" htmlFor="role">Account Type / Role</label>
-              <select
-                id="role"
-                value={role}
-                onChange={(e) => setRole(e.target.value as 'admin' | 'user')}
-              >
-                <option value="admin">Administrator (Full Control)</option>
-                <option value="user">Standard User (View/Create Documents, Read-Only Setup)</option>
-              </select>
-            </div>
-          )}
 
           <button
             type="submit"
