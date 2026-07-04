@@ -349,58 +349,60 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             </tbody>
           </table>
 
-          {/* Watermark/Signature Block with Seal & Stamp */}
-          <div style={{
-            marginTop: 'auto',
-            paddingTop: '2rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-end',
-            fontSize: '0.85rem',
-            paddingBottom: activeProfile.letterhead_footer_url ? '0' : '2.5rem'
-          }}>
-            <div>
-              {/* Stamp and Seal visual box */}
-              <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
-                {activeProfile.seal_url && (
-                  <div style={{ textAlign: 'center' }}>
-                    <img 
-                      src={activeProfile.seal_url} 
-                      alt="Company Seal" 
-                      style={{ width: '80px', height: '80px', objectFit: 'contain', opacity: 0.85 }} 
-                    />
-                    <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem' }}>Company Seal</p>
-                  </div>
-                )}
-                {activeProfile.stamp_url && (
-                  <div style={{ textAlign: 'center' }}>
-                    <img 
-                      src={activeProfile.stamp_url} 
-                      alt="Company Stamp" 
-                      style={{ width: '80px', height: '80px', objectFit: 'contain', opacity: 0.85 }} 
-                    />
-                    <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem' }}>Official Stamp</p>
-                  </div>
-                )}
+          {/* Watermark/Signature Block with Seal & Stamp - Hidden if letterhead footer image handles it */}
+          {!activeProfile.letterhead_footer_url && (
+            <div style={{
+              marginTop: 'auto',
+              paddingTop: '2rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+              fontSize: '0.85rem',
+              paddingBottom: '2.5rem'
+            }}>
+              <div>
+                {/* Stamp and Seal visual box */}
+                <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
+                  {activeProfile.seal_url && (
+                    <div style={{ textAlign: 'center' }}>
+                      <img 
+                        src={activeProfile.seal_url} 
+                        alt="Company Seal" 
+                        style={{ width: '80px', height: '80px', objectFit: 'contain', opacity: 0.85 }} 
+                      />
+                      <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem' }}>Company Seal</p>
+                    </div>
+                  )}
+                  {activeProfile.stamp_url && (
+                    <div style={{ textAlign: 'center' }}>
+                      <img 
+                        src={activeProfile.stamp_url} 
+                        alt="Company Stamp" 
+                        style={{ width: '80px', height: '80px', objectFit: 'contain', opacity: 0.85 }} 
+                      />
+                      <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem' }}>Official Stamp</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div style={{ textAlign: 'right', minWidth: '220px' }}>
-              <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '2.5rem' }}>
-                For <strong>{activeProfile.name}</strong>
-              </p>
-              {activeProfile.show_signature && activeProfile.signature_text && (
-                <p style={{ fontStyle: 'italic', fontFamily: 'Outfit, sans-serif', color: '#3b82f6', fontSize: '1rem', marginBottom: '0.25rem' }}>
-                  {activeProfile.signature_text}
+              <div style={{ textAlign: 'right', minWidth: '220px' }}>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '2.5rem' }}>
+                  For <strong>{activeProfile.name}</strong>
                 </p>
-              )}
-              <div style={{ borderTop: '1px solid #0f172a', paddingTop: '0.35rem', marginTop: '0.5rem' }}>
-                <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                  Authorized Signatory
-                </p>
+                {activeProfile.show_signature && activeProfile.signature_text && (
+                  <p style={{ fontStyle: 'italic', fontFamily: 'Outfit, sans-serif', color: '#3b82f6', fontSize: '1rem', marginBottom: '0.25rem' }}>
+                    {activeProfile.signature_text}
+                  </p>
+                )}
+                <div style={{ borderTop: '1px solid #0f172a', paddingTop: '0.35rem', marginTop: '0.5rem' }}>
+                  <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                    Authorized Signatory
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
         </div>
 
