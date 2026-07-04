@@ -401,13 +401,26 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 <div className="grid-2">
                   <div className="form-group">
-                    <label className="form-label">Company Name *</label>
-                    <input type="text" required value={name} onChange={(e) => setName(e.target.value)} />
+                    <label className="form-label" htmlFor="settings-company-name">Company Name *</label>
+                    <input 
+                      id="settings-company-name" 
+                      name="company_name" 
+                      type="text" 
+                      required 
+                      value={name} 
+                      onChange={(e) => setName(e.target.value)} 
+                      autoComplete="organization"
+                    />
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Default Currency</label>
-                    <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                    <label className="form-label" htmlFor="settings-company-currency">Default Currency</label>
+                    <select 
+                      id="settings-company-currency" 
+                      name="company_currency" 
+                      value={currency} 
+                      onChange={(e) => setCurrency(e.target.value)}
+                    >
                       <option value="INR">INR (₹) - Indian Rupee</option>
                       <option value="USD">USD ($) - US Dollar</option>
                     </select>
@@ -416,33 +429,78 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 <div className="grid-2">
                   <div className="form-group">
-                    <label className="form-label">GSTIN (Optional)</label>
-                    <input type="text" placeholder="e.g. 07AAAAA1111A1Z1" value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} />
+                    <label className="form-label" htmlFor="settings-company-gstin">GSTIN (Optional)</label>
+                    <input 
+                      id="settings-company-gstin" 
+                      name="company_gstin" 
+                      type="text" 
+                      placeholder="e.g. 07AAAAA1111A1Z1" 
+                      value={gstin} 
+                      onChange={(e) => setGstin(e.target.value.toUpperCase())} 
+                      autoComplete="off"
+                    />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">PAN Card Number (Optional)</label>
-                    <input type="text" placeholder="e.g. ABCDE1234F" value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} />
+                    <label className="form-label" htmlFor="settings-company-pan">PAN Card Number (Optional)</label>
+                    <input 
+                      id="settings-company-pan" 
+                      name="company_pan" 
+                      type="text" 
+                      placeholder="e.g. ABCDE1234F" 
+                      value={pan} 
+                      onChange={(e) => setPan(e.target.value.toUpperCase())} 
+                      autoComplete="off"
+                    />
                   </div>
                 </div>
 
                 <div className="grid-3">
                   <div className="form-group">
-                    <label className="form-label">Contact Email</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <label className="form-label" htmlFor="settings-company-email">Contact Email</label>
+                    <input 
+                      id="settings-company-email" 
+                      name="company_email" 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      autoComplete="email"
+                    />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Contact Phone</label>
-                    <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    <label className="form-label" htmlFor="settings-company-phone">Contact Phone</label>
+                    <input 
+                      id="settings-company-phone" 
+                      name="company_phone" 
+                      type="text" 
+                      value={phone} 
+                      onChange={(e) => setPhone(e.target.value)} 
+                      autoComplete="tel"
+                    />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Company Website</label>
-                    <input type="url" placeholder="https://mycompany.com" value={website} onChange={(e) => setWebsite(e.target.value)} />
+                    <label className="form-label" htmlFor="settings-company-website">Company Website</label>
+                    <input 
+                      id="settings-company-website" 
+                      name="company_website" 
+                      type="url" 
+                      placeholder="https://mycompany.com" 
+                      value={website} 
+                      onChange={(e) => setWebsite(e.target.value)} 
+                      autoComplete="url"
+                    />
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Registered Office Address</label>
-                  <textarea rows={3} value={address} onChange={(e) => setAddress(e.target.value)} />
+                  <label className="form-label" htmlFor="settings-company-address">Registered Office Address</label>
+                  <textarea 
+                    id="settings-company-address" 
+                    name="company_address" 
+                    rows={3} 
+                    value={address} 
+                    onChange={(e) => setAddress(e.target.value)} 
+                    autoComplete="street-address"
+                  />
                 </div>
               </div>
 

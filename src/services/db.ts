@@ -12,8 +12,13 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured()
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
-// Raw SQL schema string to show in Settings
-export const SQL_SCHEMA = `-- Profiles (Company entities)
+export const SQL_SCHEMA = `DROP TABLE IF EXISTS document_items CASCADE;
+DROP TABLE IF EXISTS documents CASCADE;
+DROP TABLE IF EXISTS services CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
+
+-- Profiles (Company entities)
 CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -128,10 +133,16 @@ CREATE TABLE document_items (
   rate NUMERIC NOT NULL DEFAULT 0,
   unit TEXT DEFAULT 'nos',
   hsn_sac TEXT,
-  gst_percentage NUMERIC DEFAULT 0,
   amount NUMERIC NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0
-);`;
+);
+
+-- Disable Row Level Security (RLS) to ensure immediate insert access
+ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE customers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE services DISABLE ROW LEVEL SECURITY;
+ALTER TABLE documents DISABLE ROW LEVEL SECURITY;
+ALTER TABLE document_items DISABLE ROW LEVEL SECURITY;`;
 
 // Helper to check if we should write to local storage or supabase
 const useCloud = (): boolean => {
