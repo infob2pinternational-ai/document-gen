@@ -361,7 +361,7 @@ tr:last-child td {
   max-width: 800px;
   min-height: 1050px; /* Approx A4 proportions */
   margin: 0 auto;
-  padding: 3rem;
+  padding: 0 !important;
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-canvas);

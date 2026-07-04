@@ -779,12 +779,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             </div>
             
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Internal Notes / Remarks</label>
-              <textarea 
+              <label className="form-label">Service Name & Period</label>
+              <input 
+                type="text"
                 value={notes} 
                 onChange={(e) => setNotes(e.target.value)} 
-                placeholder="Remarks, bank check instructions..."
-                rows={2}
+                placeholder="e.g. led van advertisement"
               />
             </div>
           </div>

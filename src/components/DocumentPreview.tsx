@@ -62,10 +62,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     }
   };
 
-  const formatCurrency = (val: number, curr: string) => {
-    const symbol = curr === 'INR' ? '₹' : '$';
-    return `${symbol}${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
 
   if (loading) {
     return (
@@ -112,325 +108,289 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       </div>
 
       {/* Printable Sheet Canvas */}
-      <div className="document-canvas" style={{ position: 'relative' }}>
+      <div className="document-canvas" style={{ 
+        position: 'relative', 
+        padding: '0', 
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '1050px',
+        boxSizing: 'border-box',
+        background: '#ffffff',
+        color: '#000000',
+        fontFamily: "'Outfit', sans-serif"
+      }}>
         
         {/* Watermark overlay */}
         {activeProfile.watermark_text && (
-          <div className="document-watermark">
+          <div className="document-watermark" style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%) rotate(-45deg)',
+            fontSize: '5rem',
+            fontWeight: 800,
+            color: 'rgba(15, 23, 42, 0.035)',
+            pointerEvents: 'none',
+            userSelect: 'none',
+            zIndex: 1,
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap'
+          }}>
             {activeProfile.watermark_text}
           </div>
         )}
 
-        {/* Letterhead Header Image if present */}
-        {activeProfile.letterhead_header_url ? (
-          <img 
-            src={activeProfile.letterhead_header_url} 
-            alt="Letterhead Header" 
-            className="doc-header-image"
-          />
-        ) : (
-          /* Text-based Header with Logo */
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            borderBottom: '2px solid #0f172a',
-            paddingBottom: '1.5rem',
-            marginBottom: '1.5rem'
-          }}>
-            <div>
-              {activeProfile.logo_url && (
-                <img 
-                  src={activeProfile.logo_url} 
-                  alt={activeProfile.name} 
-                  style={{ maxHeight: '50px', maxWidth: '150px', objectFit: 'contain', marginBottom: '0.75rem' }} 
-                />
-              )}
-              <h2 style={{ fontSize: '1.5rem', color: '#0f172a', fontWeight: 700, margin: 0 }}>{activeProfile.name}</h2>
-              <p style={{ fontSize: '0.8rem', color: '#475569', whiteSpace: 'pre-wrap', marginTop: '0.25rem', maxWidth: '360px' }}>
-                {activeProfile.address}
-              </p>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.75rem', color: '#475569' }}>
-                {activeProfile.phone && <span><strong>Phone:</strong> {activeProfile.phone}</span>}
-                {activeProfile.email && <span><strong>Email:</strong> {activeProfile.email}</span>}
-              </div>
-              {activeProfile.website && (
-                <p style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.15rem' }}>
-                  <strong>Web:</strong> {activeProfile.website}
-                </p>
-              )}
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <h1 style={{ fontSize: '1.75rem', color: '#0f172a', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>
-                {getDocTitle(document.document_type)}
-              </h1>
-              <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                <span><strong>Doc No:</strong> <span className="mono" style={{ fontWeight: 700 }}>{document.document_number}</span></span>
-                {activeProfile.gstin && <span><strong>GSTIN:</strong> <span className="mono">{activeProfile.gstin}</span></span>}
-                {activeProfile.pan && <span><strong>PAN:</strong> <span className="mono">{activeProfile.pan}</span></span>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* If letterhead header image is uploaded, we still need metadata (Doc No, Date, etc.) rendered clearly */}
-        {activeProfile.letterhead_header_url && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            borderBottom: '1px solid #e2e8f0',
-            paddingBottom: '1rem',
-            marginBottom: '1.5rem'
-          }}>
-            <div>
-              <h1 style={{ fontSize: '1.5rem', color: '#0f172a', fontWeight: 800, margin: 0 }}>
-                {getDocTitle(document.document_type)}
-              </h1>
-              <p style={{ fontSize: '0.8rem', color: '#475569', marginTop: '0.25rem' }}>
-                Issued by <strong>{activeProfile.name}</strong>
-              </p>
-            </div>
-            <div style={{ textAlign: 'right', fontSize: '0.8rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-              <span><strong>Doc ID:</strong> <span className="mono" style={{ fontWeight: 700 }}>{document.document_number}</span></span>
-              {activeProfile.gstin && <span><strong>GSTIN:</strong> <span className="mono">{activeProfile.gstin}</span></span>}
-            </div>
-          </div>
-        )}
-
-        {/* Customer Details Block */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '2rem',
-          marginBottom: '2rem',
-          fontSize: '0.85rem',
-          color: '#334155'
-        }}>
-          <div style={{
-            border: '1px solid #e2e8f0',
-            borderRadius: '4px',
-            padding: '1rem',
-            background: '#f8fafc'
-          }}>
-            <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', marginBottom: '0.5rem', fontWeight: 700 }}>
-              BILL TO:
-            </h4>
-            <h3 style={{ fontSize: '1rem', color: '#0f172a', fontWeight: 700, marginBottom: '0.25rem' }}>{document.customer_name}</h3>
-            {document.customer_address && (
-              <p style={{ whiteSpace: 'pre-wrap', color: '#475569', marginBottom: '0.5rem' }}>{document.customer_address}</p>
-            )}
-            <div style={{ fontSize: '0.8rem', color: '#475569' }}>
-              {document.customer_email && <p><strong>Email:</strong> {document.customer_email}</p>}
-              {document.customer_phone && <p><strong>Phone:</strong> {document.customer_phone}</p>}
-              {document.customer_gstin && <p><strong>GSTIN:</strong> <span className="mono">{document.customer_gstin}</span></p>}
-            </div>
-          </div>
-
-          <div style={{
+        {/* Diagonal Header Banner */}
+        <div style={{ display: 'flex', minHeight: '130px', color: 'white', overflow: 'hidden', width: '100%', marginBottom: '2rem' }}>
+          {/* Left section (blue) */}
+          <div style={{ 
+            backgroundColor: '#1d3b68', 
+            flex: '1.4', 
+            padding: '1.5rem 1.5rem 1rem 1.5rem', 
+            clipPath: 'polygon(0 0, 100% 0, 88% 100%, 0 100%)', 
+            marginRight: '-50px', 
+            zIndex: 2,
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'flex-start',
-            padding: '1rem',
-            border: '1px solid #e2e8f0',
-            borderRadius: '4px'
+            justifyContent: 'center'
           }}>
-            <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', marginBottom: '0.5rem', fontWeight: 700 }}>
-              PAYMENT INFO:
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: '#475569' }}>
-              <span><strong>Payment Term:</strong> {document.terms || 'Due on Receipt'}</span>
-              {activeProfile.bank_name && activeProfile.show_bank_details && (
-                <>
-                  <span style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.25rem', marginBottom: '0.25rem', fontWeight: 600, color: '#0f172a' }}>
-                    Bank details:
-                  </span>
-                  <span><strong>Bank Name:</strong> {activeProfile.bank_name}</span>
-                  <span><strong>Account Holder:</strong> {activeProfile.bank_holder || activeProfile.name}</span>
-                  <span><strong>A/C No:</strong> <span className="mono">{activeProfile.bank_account_no}</span></span>
-                  <span><strong>IFSC Code:</strong> <span className="mono">{activeProfile.bank_ifsc}</span></span>
-                  {activeProfile.bank_branch && <span><strong>Branch:</strong> {activeProfile.bank_branch}</span>}
-                </>
-              )}
-            </div>
+            {activeProfile.logo_url ? (
+              <img 
+                src={activeProfile.logo_url} 
+                alt={activeProfile.name} 
+                style={{ maxHeight: '45px', maxWidth: '180px', objectFit: 'contain', marginBottom: '0.5rem', alignSelf: 'flex-start' }} 
+              />
+            ) : (
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'white' }}>{activeProfile.name}</h2>
+            )}
+            <p style={{ fontSize: '0.75rem', color: '#e2e8f0', margin: 0, whiteSpace: 'pre-wrap', lineHeight: '1.3', maxWidth: '380px' }}>
+              {activeProfile.address}
+            </p>
+          </div>
+          {/* Right section (orange) */}
+          <div style={{ 
+            backgroundColor: '#eb5406', 
+            flex: '1', 
+            padding: '1.5rem 2rem 1rem 5rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'flex-end', 
+            zIndex: 1 
+          }}>
+            <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: 'white', textTransform: 'uppercase', letterSpacing: '-0.02em' }}>
+              {getDocTitle(document.document_type)}
+            </h1>
           </div>
         </div>
 
-        {/* Line Items Table */}
-        <table style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          marginBottom: '2rem',
-          fontSize: '0.8rem'
-        }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #0f172a' }}>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', width: '40px' }}>#</th>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'left' }}>
-                {document.col_name_description}
-              </th>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'center', width: '80px' }}>HSN</th>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'center', width: '60px' }}>
-                {document.col_name_quantity}
-              </th>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'center', width: '60px' }}>
-                {document.col_name_unit}
-              </th>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right', width: '90px' }}>
-                {document.col_name_rate}
-              </th>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'center', width: '60px' }}>Tax %</th>
-              <th style={{ color: '#0f172a', background: 'transparent', borderBottom: 'none', padding: '0.75rem 0.5rem', textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right', width: '100px' }}>
-                {document.col_name_amount}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, idx) => (
-              <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
-                <td style={{ padding: '0.75rem 0.5rem', fontWeight: 500, color: '#0f172a', whiteSpace: 'pre-wrap' }}>{item.description}</td>
-                <td className="mono" style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#64748b' }}>{item.hsn_sac || '-'}</td>
-                <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>{item.quantity}</td>
-                <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', textTransform: 'lowercase' }}>{item.unit}</td>
-                <td className="mono" style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
-                  {formatCurrency(Number(item.rate), activeProfile.currency)}
-                </td>
-                <td className="mono" style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#64748b' }}>{item.gst_percentage}%</td>
-                <td className="mono" style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
-                  {formatCurrency(Number(item.amount), activeProfile.currency)}
+        {/* Outer content container with standard A4 page margins */}
+        <div style={{ padding: '0 2rem', display: 'flex', flexDirection: 'column', flex: 1 }}>
+          
+          {/* Metadata Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '2rem', marginBottom: '1.25rem', fontSize: '0.85rem', color: '#000000' }}>
+            <div>
+              <strong style={{ fontSize: '0.95rem' }}>To, {document.customer_name}</strong>
+              <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', color: '#334155', lineHeight: '1.4' }}>
+                {document.customer_address}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div>
+                <strong style={{ color: '#475569' }}>Date</strong> &nbsp;&nbsp;&nbsp;: &nbsp;
+                <span style={{ fontWeight: 600 }}>{document.issue_date.split('-').reverse().join('/')}</span>
+              </div>
+              <div>
+                <strong style={{ color: '#475569' }}>
+                  {document.document_type === 'invoice' ? 'Invoice No' : document.document_type === 'proforma_invoice' ? 'Invoice No' : document.document_type === 'quotation' ? 'Quotation No' : 'Order No'}
+                </strong> : &nbsp;
+                <span style={{ fontWeight: 600 }} className="mono">{document.document_number}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Service Name & Period Section */}
+          {document.notes && (
+            <div style={{ marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+              <strong style={{ color: '#475569' }}>Service Name & Period :</strong>
+              <div style={{ fontWeight: 600, fontSize: '0.95rem', marginTop: '0.15rem', color: '#000000' }}>
+                {document.notes}
+              </div>
+            </div>
+          )}
+
+          {/* Line Items Table with Blue Borders */}
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            border: '1.5px solid #1d3b68',
+            marginBottom: '1.5rem',
+            fontSize: '0.8rem',
+            color: '#000000'
+          }}>
+            <thead>
+              <tr style={{ borderBottom: '1.5px solid #1d3b68', background: '#f8fafc' }}>
+                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'center', width: '40px', fontWeight: 700 }}>No</th>
+                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'left', fontWeight: 700 }}>
+                  {document.col_name_description || 'Particulars'}
+                </th>
+                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'center', width: '60px', fontWeight: 700 }}>
+                  {document.col_name_quantity || 'Qty'}
+                </th>
+                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'center', width: '60px', fontWeight: 700 }}>
+                  {document.col_name_unit || 'Days'}
+                </th>
+                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'right', width: '90px', fontWeight: 700 }}>
+                  {document.col_name_rate || 'Rate'}
+                </th>
+                <th style={{ padding: '0.5rem', textAlign: 'right', width: '100px', fontWeight: 700 }}>
+                  {document.col_name_amount || 'Amount'}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, idx) => (
+                <tr key={item.id} style={{ borderBottom: '1px solid #1d3b68' }}>
+                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{idx + 1}</td>
+                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.description}</td>
+                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.quantity}</td>
+                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.unit}</td>
+                  <td className="mono" style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                    {Number(item.rate).toFixed(2)}
+                  </td>
+                  <td className="mono" style={{ padding: '0.65rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
+                    {Number(item.amount).toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+              {/* Spacer rows if items count is small to simulate the format grid height */}
+              {items.length < 5 && Array.from({ length: 5 - items.length }).map((_, idx) => (
+                <tr key={`spacer-${idx}`} style={{ borderBottom: '1px solid #1d3b68', height: '2.5rem' }}>
+                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                  <td></td>
+                </tr>
+              ))}
+              {/* Total Row */}
+              <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                <td style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'right' }}>Amount</td>
+                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                <td className="mono" style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.85rem' }}>
+                  {Number(document.total).toFixed(2)}
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
 
-        {/* Calculations / Totals Summary */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1.2fr 1fr',
-          gap: '2rem',
-          alignItems: 'start',
-          fontSize: '0.85rem',
-          color: '#334155',
-          marginBottom: '2rem'
-        }}>
-          <div>
-            {document.notes && (
-              <div style={{ border: '1px dashed #e2e8f0', padding: '0.75rem', borderRadius: '4px', background: '#f8fafc' }}>
-                <h5 style={{ fontWeight: 700, color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
-                  Terms & Conditions / Notes:
-                </h5>
-                <p style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'pre-wrap' }}>{document.notes}</p>
-              </div>
-            )}
-          </div>
-
+          {/* Bottom bank details and signature signatory box */}
           <div style={{
             display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-            border: '1px solid #e2e8f0',
-            borderRadius: '4px',
-            padding: '1rem',
-            background: '#f8fafc'
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            fontSize: '0.8rem',
+            marginTop: 'auto', 
+            paddingBottom: '2.5rem'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#64748b' }}>Subtotal:</span>
-              <span className="mono" style={{ fontWeight: 600 }}>
-                {formatCurrency(Number(document.subtotal), activeProfile.currency)}
-              </span>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#64748b' }}>GST Tax amount:</span>
-              <span className="mono" style={{ fontWeight: 600 }}>
-                {formatCurrency(Number(document.tax_total), activeProfile.currency)}
-              </span>
-            </div>
-
-            {Number(document.discount_total) > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent-danger)' }}>
-                <span>Discount Applied:</span>
-                <span className="mono" style={{ fontWeight: 600 }}>
-                  -{formatCurrency(Number(document.discount_total), activeProfile.currency)}
-                </span>
+            {/* Left: Bank details inside border box */}
+            {activeProfile.bank_name && (
+              <div style={{
+                border: '1.5px solid #1d3b68',
+                borderRadius: '4px',
+                padding: '0.75rem 1rem',
+                lineHeight: '1.6',
+                width: '55%',
+                background: '#ffffff',
+                color: '#000000'
+              }}>
+                <strong>Account No :</strong> <span className="mono">{activeProfile.bank_account_no}</span><br />
+                <strong>Acc Name :</strong> {activeProfile.bank_holder || activeProfile.name}<br />
+                <strong>IFSC :</strong> <span className="mono">{activeProfile.bank_ifsc}</span><br />
+                <strong>Bank Details :</strong> {activeProfile.bank_name}<br />
+                <span style={{ paddingLeft: '5.2rem' }}>{activeProfile.bank_branch} Branch</span>
               </div>
             )}
 
-            <hr style={{ border: 'none', borderBottom: '1px solid #e2e8f0', margin: '0.25rem 0' }} />
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>Grand Total:</span>
-              <span className="mono" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
-                {formatCurrency(Number(document.total), activeProfile.currency)}
-              </span>
+            {/* Right: Signature stamp and seal and Authorized Signatory */}
+            <div style={{ 
+              textAlign: 'right', 
+              minWidth: '220px', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'flex-end' 
+            }}>
+              {activeProfile.seal_url && (
+                <img 
+                  src={activeProfile.seal_url} 
+                  alt="Company Seal" 
+                  style={{ maxHeight: '70px', maxWidth: '140px', objectFit: 'contain', marginBottom: '0.5rem', marginRight: '2rem' }} 
+                />
+              )}
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '2.5rem' }}>
+                For {activeProfile.name}
+              </div>
+              <div style={{ borderTop: '1px solid #000000', width: '180px', paddingTop: '0.25rem', textAlign: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Authorized Signatory
+                </span>
+              </div>
             </div>
           </div>
+
+          {/* Terms info box if present */}
+          {document.terms && (
+            <div style={{ borderTop: '1.5px solid #1d3b68', paddingTop: '0.75rem', paddingBottom: '1.5rem', fontSize: '0.75rem', color: '#334155' }}>
+              <strong>PAYMENT INFO:</strong>
+              <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', lineHeight: '1.4' }}>{document.terms}</div>
+            </div>
+          )}
+
         </div>
 
-        {/* Watermark/Signature Block with Seal & Stamp */}
-        <div style={{
-          marginTop: 'auto',
-          paddingTop: '2rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          fontSize: '0.85rem'
-        }}>
-          <div>
-            {/* Stamp and Seal visual box */}
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
-              {activeProfile.seal_url && activeProfile.show_signature && (
-                <div style={{ textAlign: 'center' }}>
-                  <img 
-                    src={activeProfile.seal_url} 
-                    alt="Company Seal" 
-                    style={{ width: '80px', height: '80px', objectFit: 'contain', opacity: 0.85 }} 
-                  />
-                  <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem' }}>Company Seal</p>
-                </div>
-              )}
-              {activeProfile.stamp_url && activeProfile.show_signature && (
-                <div style={{ textAlign: 'center' }}>
-                  <img 
-                    src={activeProfile.stamp_url} 
-                    alt="Company Stamp" 
-                    style={{ width: '80px', height: '80px', objectFit: 'contain', opacity: 0.85 }} 
-                  />
-                  <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem' }}>Official Stamp</p>
-                </div>
-              )}
+        {/* Diagonal Footer Banner */}
+        <div style={{ display: 'flex', minHeight: '65px', color: 'white', overflow: 'hidden', width: '100%', marginTop: 'auto' }}>
+          {/* Left section (blue) */}
+          <div style={{ 
+            backgroundColor: '#1d3b68', 
+            flex: '1.4', 
+            padding: '0.5rem 1.5rem', 
+            clipPath: 'polygon(0 0, 100% 0, 92% 100%, 0 100%)', 
+            marginRight: '-30px', 
+            zIndex: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            fontSize: '0.75rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span style={{ fontWeight: 600 }}>f 📷 / {activeProfile.name.toLowerCase()}</span>
             </div>
-          </div>
-
-          <div style={{ textAlign: 'right', minWidth: '220px' }}>
-            <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '2.5rem' }}>
-              For <strong>{activeProfile.name}</strong>
-            </p>
-            {activeProfile.show_signature && activeProfile.signature_text && (
-              <p style={{ fontStyle: 'italic', fontFamily: 'Outfit, sans-serif', color: '#3b82f6', fontSize: '1rem', marginBottom: '0.25rem' }}>
-                {activeProfile.signature_text}
-              </p>
+            {activeProfile.website && (
+              <div style={{ marginTop: '2px', color: '#e2e8f0' }}>w w w.{activeProfile.website.replace(/https?:\/\/(www\.)?/, '')}</div>
             )}
-            <div style={{ borderTop: '1px solid #0f172a', paddingTop: '0.35rem', marginTop: '0.5rem' }}>
-              <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                Authorized Signatory
-              </p>
-            </div>
+          </div>
+          {/* Right section (orange) */}
+          <div style={{ 
+            backgroundColor: '#eb5406', 
+            flex: '1', 
+            padding: '0.5rem 2rem 0.5rem 3rem', 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'flex-end', 
+            zIndex: 1,
+            fontSize: '0.75rem',
+            textAlign: 'right'
+          }}>
+            {activeProfile.phone && <div>{activeProfile.phone.split('/').join(' / ')}</div>}
+            {activeProfile.email && <div style={{ marginTop: '2px' }}>{activeProfile.email}</div>}
           </div>
         </div>
-
-        {/* Letterhead Footer Image if present */}
-        {activeProfile.letterhead_footer_url && (
-          <img 
-            src={activeProfile.letterhead_footer_url} 
-            alt="Letterhead Footer" 
-            className="doc-footer-image"
-          />
-        )}
-      </div>
     </div>
+  </div>
   );
 };
