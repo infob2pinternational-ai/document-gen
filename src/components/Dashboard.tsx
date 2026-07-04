@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 interface DashboardProps {
+  role: string;
   activeProfile: CompanyProfile | null;
   profiles: CompanyProfile[];
   documents: Document[];
@@ -22,6 +23,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
+  role,
   activeProfile,
   profiles,
   documents,
@@ -319,18 +321,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             >
                               <Edit size={14} />
                             </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete ${doc.document_number}?`)) {
-                                  onDeleteDocument(doc.id);
-                                }
-                              }}
-                              className="btn-secondary"
-                              style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-danger)' }}
-                              title="Delete Document"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {role === 'admin' && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete ${doc.document_number}?`)) {
+                                    onDeleteDocument(doc.id);
+                                  }
+                                }}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-danger)' }}
+                                title="Delete Document"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

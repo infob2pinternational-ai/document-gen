@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 interface SettingsProps {
+  role: string;
   profiles: CompanyProfile[];
   activeProfile: CompanyProfile | null;
   onRefreshProfiles: (selectNewId?: string) => void;
@@ -19,6 +20,7 @@ interface SettingsProps {
 }
 
 export const Settings: React.FC<SettingsProps> = ({
+  role,
   profiles,
   activeProfile,
   onRefreshProfiles,
@@ -356,8 +358,28 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
       ) : (
         <>
+          {/* Read-only warning banner */}
+          {role !== 'admin' && (activeTab === 'profile' || activeTab === 'sheets') && (
+            <div style={{
+              padding: '1rem',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid var(--accent-danger)',
+              color: 'var(--accent-danger)',
+              fontSize: '0.875rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <AlertCircle size={18} />
+              <span><strong>Read-Only Access:</strong> You are logged in as a Standard User. Only Administrators can modify company profiles, bank details, templates, or webhook URLs.</span>
+            </div>
+          )}
+
           {activeTab === 'profile' && (
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <fieldset disabled={role !== 'admin'} style={{ border: 'none', padding: 0, margin: 0, display: 'contents' }}>
+              <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               
               {/* Profile details */}
               <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -653,9 +675,11 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
             </form>
+            </fieldset>
           )}
 
           {activeTab === 'sheets' && (
+            <fieldset disabled={role !== 'admin'} style={{ border: 'none', padding: 0, margin: 0, display: 'contents' }}>
             <div className="card animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <div style={{
@@ -766,6 +790,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 </ol>
               </div>
             </div>
+            </fieldset>
           )}
 
           {activeTab === 'database' && (

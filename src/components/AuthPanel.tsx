@@ -1,19 +1,18 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/db';
-import { KeyRound, Mail, ShieldAlert, ArrowRight } from 'lucide-react';
+import { KeyRound, Mail, ShieldAlert } from 'lucide-react';
 
 interface AuthPanelProps {
   onAuthSuccess: (user: any) => void;
-  onContinueSandbox: () => void;
 }
 
 export const AuthPanel: React.FC<AuthPanelProps> = ({
-  onAuthSuccess,
-  onContinueSandbox
+  onAuthSuccess
 }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'admin' | 'user'>('admin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +37,12 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
       } else {
         const { data, error: authError } = await supabase.auth.signUp({
           email,
-          password
+          password,
+          options: {
+            data: {
+              role
+            }
+          }
         });
         if (authError) throw authError;
         if (data?.user) {
@@ -64,7 +68,7 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
       backgroundColor: 'var(--bg-canvas)'
     }}>
       <div className="card" style={{
-        maxWidth: '420px',
+        maxWidth: '450px',
         width: '100%',
         padding: '2.5rem',
         boxShadow: 'var(--shadow-lg)',
@@ -155,6 +159,20 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             </div>
           </div>
 
+          {!isLogin && (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="role">Account Type / Role</label>
+              <select
+                id="role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as 'admin' | 'user')}
+              >
+                <option value="admin">Administrator (Full Control)</option>
+                <option value="user">Standard User (View/Create Documents, Read-Only Setup)</option>
+              </select>
+            </div>
+          )}
+
           <button
             type="submit"
             className="btn-primary"
@@ -180,42 +198,6 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
           </button>
         </div>
-
-        <div style={{
-          position: 'relative',
-          margin: '2rem 0 1.5rem 0',
-          textAlign: 'center'
-        }}>
-          <hr style={{ border: 'none', borderBottom: '1px solid var(--border-color)' }} />
-          <span style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: 'var(--bg-card)',
-            padding: '0 0.75rem',
-            fontSize: '0.75rem',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>Or</span>
-        </div>
-
-        <button
-          onClick={onContinueSandbox}
-          className="btn-secondary"
-          style={{
-            width: '100%',
-            padding: '0.75rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem'
-          }}
-        >
-          <span>Try Local Sandbox Mode</span>
-          <ArrowRight size={16} />
-        </button>
       </div>
     </div>
   );

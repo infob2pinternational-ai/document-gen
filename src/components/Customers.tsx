@@ -4,11 +4,13 @@ import { dbService } from '../services/db';
 import { Search, Plus, Edit, Trash2, ShieldAlert } from 'lucide-react';
 
 interface CustomersProps {
+  role: string;
   activeProfile: CompanyProfile | null;
   onRefreshStats: () => void;
 }
 
 export const Customers: React.FC<CustomersProps> = ({
+  role,
   activeProfile,
   onRefreshStats
 }) => {
@@ -114,14 +116,16 @@ export const Customers: React.FC<CustomersProps> = ({
             Add, update, and manage clients details for billing.
           </p>
         </div>
-        <button 
-          onClick={() => handleOpenModal()} 
-          className="btn-primary"
-          disabled={!activeProfile}
-        >
-          <Plus size={16} />
-          <span>Add Customer</span>
-        </button>
+        {role === 'admin' && (
+          <button 
+            onClick={() => handleOpenModal()} 
+            className="btn-primary"
+            disabled={!activeProfile}
+          >
+            <Plus size={16} />
+            <span>Add Customer</span>
+          </button>
+        )}
       </div>
 
       {!activeProfile ? (
@@ -161,7 +165,7 @@ export const Customers: React.FC<CustomersProps> = ({
                     <th>Email Address</th>
                     <th>Phone Number</th>
                     <th>Billing Address</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    {role === 'admin' && <th style={{ textAlign: 'right' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -174,26 +178,28 @@ export const Customers: React.FC<CustomersProps> = ({
                       <td style={{ maxWidth: '300px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                         {cust.address || '-'}
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={() => handleOpenModal(cust)}
-                            className="btn-secondary"
-                            style={{ padding: '0.35rem', borderRadius: '4px' }}
-                            title="Edit"
-                          >
-                            <Edit size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(cust.id)}
-                            className="btn-secondary"
-                            style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-danger)' }}
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
+                      {role === 'admin' && (
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => handleOpenModal(cust)}
+                              className="btn-secondary"
+                              style={{ padding: '0.35rem', borderRadius: '4px' }}
+                              title="Edit"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(cust.id)}
+                              className="btn-secondary"
+                              style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-danger)' }}
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

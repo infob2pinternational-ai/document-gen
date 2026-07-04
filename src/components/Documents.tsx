@@ -3,6 +3,7 @@ import type { CompanyProfile, Document } from '../types';
 import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, CheckCircle } from 'lucide-react';
 
 interface DocumentsProps {
+  role: string;
   activeProfile: CompanyProfile | null;
   documents: Document[];
   onAddDocument: () => void;
@@ -13,6 +14,7 @@ interface DocumentsProps {
 }
 
 export const Documents: React.FC<DocumentsProps> = ({
+  role,
   activeProfile,
   documents,
   onAddDocument,
@@ -212,18 +214,20 @@ export const Documents: React.FC<DocumentsProps> = ({
                             >
                               <Edit size={14} />
                             </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete ${doc.document_number}?`)) {
-                                  onDeleteDocument(doc.id);
-                                }
-                              }}
-                              className="btn-secondary"
-                              style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-danger)' }}
-                              title="Delete Document"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {role === 'admin' && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete ${doc.document_number}?`)) {
+                                    onDeleteDocument(doc.id);
+                                  }
+                                }}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-danger)' }}
+                                title="Delete Document"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

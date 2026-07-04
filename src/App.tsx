@@ -36,7 +36,6 @@ function App() {
 
   // Supabase Auth States
   const [user, setUser] = useState<any>(null);
-  const [forceSandbox, setForceSandbox] = useState(false);
 
   // Initialize Theme
   useEffect(() => {
@@ -68,7 +67,6 @@ function App() {
       if (session?.user) {
         localStorage.setItem('supabase_user', JSON.stringify(session.user));
         setUser(session.user);
-        setForceSandbox(false);
       } else {
         localStorage.removeItem('supabase_user');
         setUser(null);
@@ -125,11 +123,11 @@ function App() {
   };
 
   useEffect(() => {
-    // Load data if either Cloud connection is logged in or Sandbox is forced
-    if (!isSupabaseConfigured() || forceSandbox || user) {
+    // Load data if either Cloud connection is logged in or Sandbox is active
+    if (!isSupabaseConfigured() || user) {
       loadData();
     }
-  }, [user, forceSandbox]);
+  }, [user]);
 
   // Load documents when active company profile switches
   useEffect(() => {
@@ -222,12 +220,11 @@ function App() {
     }
   };
 
-  // If Supabase credentials exist, and user is not authenticated and hasn't bypassed to Sandbox: Show AuthPanel
-  if (isSupabaseConfigured() && !user && !forceSandbox) {
+  // If Supabase credentials exist and user is not authenticated: Show AuthPanel (forced)
+  if (isSupabaseConfigured() && !user) {
     return (
       <AuthPanel 
         onAuthSuccess={(usr) => setUser(usr)}
-        onContinueSandbox={() => setForceSandbox(true)}
       />
     );
   }
@@ -358,8 +355,9 @@ function App() {
         ) : (
           /* Normal Tab routing rendering */
           <>
-            {currentTab === 'dashboard' && (
+             {currentTab === 'dashboard' && (
               <Dashboard 
+                role={user?.user_metadata?.role || 'admin'}
                 activeProfile={activeProfile}
                 profiles={profiles}
                 documents={documents}
@@ -372,6 +370,7 @@ function App() {
             
             {currentTab === 'documents' && (
               <Documents 
+                role={user?.user_metadata?.role || 'admin'}
                 activeProfile={activeProfile}
                 documents={documents}
                 onAddDocument={handleCreateDocument}
@@ -384,6 +383,7 @@ function App() {
 
             {currentTab === 'customers' && (
               <Customers 
+                role={user?.user_metadata?.role || 'admin'}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
               />
@@ -391,6 +391,7 @@ function App() {
 
             {currentTab === 'services' && (
               <Services 
+                role={user?.user_metadata?.role || 'admin'}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
               />
@@ -398,6 +399,7 @@ function App() {
 
             {currentTab === 'settings' && (
               <Settings 
+                role={user?.user_metadata?.role || 'admin'}
                 profiles={profiles}
                 activeProfile={activeProfile}
                 onRefreshProfiles={loadData}
