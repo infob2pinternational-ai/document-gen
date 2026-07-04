@@ -168,10 +168,24 @@ h1, h2, h3, h4, h5, h6 {
     z-index: 100;
     box-shadow: var(--shadow-lg);
     transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    align-items: stretch; /* Override tablet centering */
   }
   
   .sidebar.open {
     left: 0; /* Slide in */
+  }
+
+  /* Force display text details inside mobile drawer (overriding max-width: 1024px) */
+  .sidebar .logo-text,
+  .sidebar .nav-label,
+  .sidebar .profile-details,
+  .sidebar .db-mode-text {
+    display: block !important;
+  }
+  
+  .sidebar .nav-label,
+  .sidebar .db-mode-text {
+    display: inline !important;
   }
 
   .sidebar-overlay {
