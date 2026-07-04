@@ -496,9 +496,10 @@ tr:last-child td {
   backdrop-filter: blur(4px);
   z-index: 100;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 1rem;
+  padding: 2rem 1rem;
+  overflow-y: auto;
 }
 
 .modal-content {
@@ -509,8 +510,8 @@ tr:last-child td {
   width: 100%;
   padding: 2rem;
   box-shadow: var(--shadow-lg);
-  max-height: 90vh;
-  overflow-y: auto;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
 }
 
 /* Document Editor Responsive Layout */
