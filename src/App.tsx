@@ -37,6 +37,9 @@ function App() {
   // Supabase Auth States
   const [user, setUser] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   // Initialize Theme
   useEffect(() => {
@@ -64,7 +67,10 @@ function App() {
     }
 
     // Listener
-    const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase!.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowPasswordResetModal(true);
+      }
       if (session?.user) {
         localStorage.setItem('supabase_user', JSON.stringify(session.user));
         setUser(session.user);
@@ -88,6 +94,24 @@ function App() {
     setProfiles([]);
     setActiveProfile(null);
     setDocuments([]);
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    setResetLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      alert('Password updated successfully!');
+      setShowPasswordResetModal(false);
+      setNewPassword('');
+    } catch (err: any) {
+      console.error('Error resetting password:', err);
+      alert(err.message || 'Failed to reset password.');
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   // Load Company Profiles & Documents
@@ -495,6 +519,50 @@ function App() {
                 </button>
                 <button type="submit" className="btn-primary">
                   Create Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset Modal triggered on recovery link landing */}
+      {showPasswordResetModal && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '400px' }}>
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              Update Password
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+              Your email recovery link has been verified. Please enter a new password below to update your account.
+            </p>
+            <form onSubmit={handlePasswordReset} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="new-password">New Password</label>
+                <input
+                  id="new-password"
+                  type="password"
+                  required
+                  placeholder="Minimum 6 characters"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowPasswordResetModal(false)}
+                  disabled={resetLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={resetLoading}
+                >
+                  {resetLoading ? 'Saving...' : 'Update Password'}
                 </button>
               </div>
             </form>

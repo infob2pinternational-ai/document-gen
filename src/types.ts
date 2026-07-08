@@ -22,16 +22,7 @@ export interface CompanyProfile {
   
   // Document Defaults
   default_terms?: string;
-  letterhead_header_url?: string;
-  letterhead_footer_url?: string;
-  seal_url?: string;
-  stamp_url?: string;
-  
-  // Branding options
-  show_letterhead?: boolean;
-  watermark_text?: string;
-  show_signature?: boolean;
-  signature_text?: string;
+
   show_bank_details?: boolean;
   
   // Custom column headings
@@ -85,9 +76,7 @@ export interface Document {
   customer_phone?: string;
   customer_address?: string;
   customer_gstin?: string;
-  issue_date: string; // YYYY-MM-DD
-  due_date: string;    // YYYY-MM-DD (internally propagated based on terms)
-  status: string;      // e.g. 'draft', 'sent', 'paid', 'completed', 'cancelled'
+
   
   // Column titles locked at creation
   col_name_description: string;

@@ -23,11 +23,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       try {
         console.log('DocumentPreview: Fetching details for document ID:', document.id);
         console.log('DocumentPreview: Active profile branding details:', {
-          name: activeProfile?.name,
-          has_header: !!activeProfile?.letterhead_header_url,
-          header_length: activeProfile?.letterhead_header_url ? activeProfile.letterhead_header_url.length : 0,
-          has_footer: !!activeProfile?.letterhead_footer_url,
-          footer_length: activeProfile?.letterhead_footer_url ? activeProfile.letterhead_footer_url.length : 0
+          name: activeProfile?.name
         });
 
         const res = await dbService.getDocumentById(document.id);
@@ -120,25 +116,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         fontFamily: "'Outfit', sans-serif"
       }}>
         
-        {/* Watermark overlay */}
-        {activeProfile.watermark_text && (
-          <div className="document-watermark" style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%) rotate(-45deg)',
-            fontSize: '5rem',
-            fontWeight: 800,
-            color: 'rgba(15, 23, 42, 0.035)',
-            pointerEvents: 'none',
-            userSelect: 'none',
-            zIndex: 1,
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap'
-          }}>
-            {activeProfile.watermark_text}
-          </div>
-        )}
+
 
         {/* Diagonal Header Banner */}
         <div style={{ display: 'flex', minHeight: '130px', color: 'white', overflow: 'hidden', width: '100%', marginBottom: '2rem' }}>
@@ -195,10 +173,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               </div>
             </div>
             <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <div>
-                <strong style={{ color: '#475569' }}>Date</strong> &nbsp;&nbsp;&nbsp;: &nbsp;
-                <span style={{ fontWeight: 600 }}>{document.issue_date.split('-').reverse().join('/')}</span>
-              </div>
               <div>
                 <strong style={{ color: '#475569' }}>
                   {document.document_type === 'invoice' ? 'Invoice No' : document.document_type === 'proforma_invoice' ? 'Invoice No' : document.document_type === 'quotation' ? 'Quotation No' : 'Order No'}
@@ -315,7 +289,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               </div>
             )}
 
-            {/* Right: Signature stamp and seal and Authorized Signatory */}
+            {/* Right: Signature and Authorized Signatory */}
             <div style={{ 
               textAlign: 'right', 
               minWidth: '220px', 
@@ -323,13 +297,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               flexDirection: 'column', 
               alignItems: 'flex-end' 
             }}>
-              {activeProfile.seal_url && (
-                <img 
-                  src={activeProfile.seal_url} 
-                  alt="Company Seal" 
-                  style={{ maxHeight: '70px', maxWidth: '140px', objectFit: 'contain', marginBottom: '0.5rem', marginRight: '2rem' }} 
-                />
-              )}
               <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '2.5rem' }}>
                 For {activeProfile.name}
               </div>

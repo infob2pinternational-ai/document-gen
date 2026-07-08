@@ -9,7 +9,7 @@ interface AuthPanelProps {
 export const AuthPanel: React.FC<AuthPanelProps> = ({
   onAuthSuccess
 }) => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const role = 'user';
@@ -24,7 +24,7 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
     setError(null);
     
     try {
-      if (isLogin) {
+      if (authMode === 'login') {
         const { data, error: authError } = await supabase.auth.signInWithPassword({
           email,
           password
@@ -34,7 +34,7 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
           localStorage.setItem('supabase_user', JSON.stringify(data.user));
           onAuthSuccess(data.user);
         }
-      } else {
+      } else if (authMode === 'signup') {
         const { data, error: authError } = await supabase.auth.signUp({
           email,
           password,
@@ -47,8 +47,15 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
         if (authError) throw authError;
         if (data?.user) {
           alert('Sign up successful! You can now log in.');
-          setIsLogin(true);
+          setAuthMode('login');
         }
+      } else if (authMode === 'forgot') {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        });
+        if (resetError) throw resetError;
+        alert('Password reset link sent! Please check your email inbox.');
+        setAuthMode('login');
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred during authentication.');
@@ -90,10 +97,14 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             <KeyRound size={24} />
           </div>
           <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem', fontWeight: 700 }}>
-            {isLogin ? 'Welcome Back' : 'Create Account'}
+            {authMode === 'login' ? 'Welcome Back' : authMode === 'signup' ? 'Create Account' : 'Reset Password'}
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {isLogin ? 'Log in to sync documents to Supabase Cloud' : 'Sign up to secure your documents online'}
+            {authMode === 'login' 
+              ? 'Log in to sync documents to Supabase Cloud' 
+              : authMode === 'signup' 
+                ? 'Sign up to secure your documents online' 
+                : 'Enter your email to receive a password reset link'}
           </p>
         </div>
 
@@ -137,27 +148,49 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="form-label" htmlFor="password">Password</label>
-            <div style={{ position: 'relative' }}>
-              <KeyRound size={16} style={{
-                position: 'absolute',
-                left: '0.875rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--text-muted)'
-              }} />
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                style={{ paddingLeft: '2.5rem' }}
-              />
+          {authMode !== 'forgot' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label className="form-label" htmlFor="password" style={{ marginBottom: 0 }}>Password</label>
+                {authMode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('forgot')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent-primary)',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      padding: 0,
+                      marginBottom: '0.25rem'
+                    }}
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <KeyRound size={16} style={{
+                  position: 'absolute',
+                  left: '0.875rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)'
+                }} />
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ paddingLeft: '2.5rem' }}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="submit"
@@ -165,24 +198,40 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             disabled={loading}
             style={{ width: '100%', padding: '0.75rem', marginTop: '0.5rem' }}
           >
-            {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Register'}
+            {loading ? 'Processing...' : authMode === 'login' ? 'Sign In' : authMode === 'signup' ? 'Register' : 'Send Reset Link'}
           </button>
         </form>
 
         <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent-primary)',
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              fontWeight: 500
-            }}
-          >
-            {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
-          </button>
+          {authMode === 'forgot' ? (
+            <button
+              onClick={() => setAuthMode('login')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--accent-primary)',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              Back to Login
+            </button>
+          ) : (
+            <button
+              onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--accent-primary)',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
+            </button>
+          )}
         </div>
       </div>
     </div>

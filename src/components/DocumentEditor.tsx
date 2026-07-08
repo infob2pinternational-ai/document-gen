@@ -24,9 +24,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const [docType, setDocType] = useState<DocumentType>('invoice');
   const [docNumber, setDocNumber] = useState('');
   const [sequenceNumber, setSequenceNumber] = useState<number>(1001);
-  const [issueDate, setIssueDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [status, setStatus] = useState('draft');
+
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountTotal, setDiscountTotal] = useState<number>(0);
@@ -85,9 +83,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             setDocType(document.document_type);
             setDocNumber(document.document_number);
             setSequenceNumber(document.sequence_number);
-            setIssueDate(document.issue_date);
-            setDueDate(document.due_date);
-            setStatus(document.status);
+
             setNotes(document.notes || '');
             setTerms(document.terms || '');
             setDiscountTotal(Number(document.discount_total));
@@ -118,9 +114,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       loadDocData();
     } else {
       // Create Mode
-      // Issue Date defaults to today
-      const today = new Date().toISOString().split('T')[0];
-      setIssueDate(today);
+
       
       // Load column names from profile
       setColDesc(activeProfile.col_name_description || 'Description');
@@ -145,13 +139,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
   }, [documentToEdit, activeProfile]);
 
-  // Handle document type or date change -> update sequence & due date
+  // Handle document type change -> update sequence
   useEffect(() => {
-    if (!documentToEdit && activeProfile && issueDate) {
+    if (!documentToEdit && activeProfile) {
       generateSequenceNumber(docType);
-      calculateDueDate(docType, issueDate);
     }
-  }, [docType, issueDate]);
+  }, [docType]);
 
   // Sequence generator
   const generateSequenceNumber = async (type: DocumentType) => {
@@ -192,17 +185,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
   };
 
-  // Due Date calculation based on type
-  const calculateDueDate = (type: DocumentType, dateStr: string) => {
-    if (!dateStr) return;
-    const date = new Date(dateStr);
-    let daysToAdd = 14; // Default Invoice term
-    if (type === 'proforma_invoice') daysToAdd = 7;
-    else if (type === 'quotation' || type === 'work_order') daysToAdd = 30;
 
-    date.setDate(date.getDate() + daysToAdd);
-    setDueDate(date.toISOString().split('T')[0]);
-  };
 
   // Customer dropdown select
   const handleCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -329,9 +312,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         customer_phone: customerPhone || undefined,
         customer_address: customerAddress || undefined,
         customer_gstin: customerGstin || undefined,
-        issue_date: issueDate,
-        due_date: dueDate,
-        status,
         col_name_description: colDesc,
         col_name_quantity: colQty,
         col_name_unit: colUnit,
@@ -361,14 +341,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           document_type: docType,
           customer_name: customerName,
           customer_gstin: customerGstin,
-          issue_date: issueDate,
-          due_date: dueDate,
           subtotal,
           tax_total: taxTotal,
           discount_total: discountTotal,
           total,
-          status,
-          items: itemsPayload.map(it => ({
+          items: items.map(it => ({
             description: it.description,
             qty: it.quantity,
             unit: it.unit,

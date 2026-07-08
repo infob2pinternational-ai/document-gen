@@ -49,16 +49,6 @@ export const Settings: React.FC<SettingsProps> = ({
 
   // Branding
   const [defaultTerms, setDefaultTerms] = useState('');
-  const [letterheadHeader, setLetterheadHeader] = useState('');
-  const [letterheadFooter, setLetterheadFooter] = useState('');
-  const [seal, setSeal] = useState('');
-  const [stamp, setStamp] = useState('');
-
-  // Branding Toggles
-  const [showLetterhead, setShowLetterhead] = useState(true);
-  const [watermarkText, setWatermarkText] = useState('');
-  const [showSignature, setShowSignature] = useState(false);
-  const [signatureText, setSignatureText] = useState('');
   const [showBankDetails, setShowBankDetails] = useState(true);
 
   // Column Headings
@@ -106,15 +96,6 @@ export const Settings: React.FC<SettingsProps> = ({
       setBankBranch(activeProfile.bank_branch || '');
 
       setDefaultTerms(activeProfile.default_terms || '');
-      setLetterheadHeader(activeProfile.letterhead_header_url || '');
-      setLetterheadFooter(activeProfile.letterhead_footer_url || '');
-      setSeal(activeProfile.seal_url || '');
-      setStamp(activeProfile.stamp_url || '');
-
-      setShowLetterhead(activeProfile.show_letterhead !== false);
-      setWatermarkText(activeProfile.watermark_text || '');
-      setShowSignature(activeProfile.show_signature === true);
-      setSignatureText(activeProfile.signature_text || '');
       setShowBankDetails(activeProfile.show_bank_details !== false);
 
       setColDesc(activeProfile.col_name_description || 'Description');
@@ -204,14 +185,6 @@ export const Settings: React.FC<SettingsProps> = ({
         bank_holder: bankHolder || undefined,
         bank_branch: bankBranch || undefined,
         default_terms: defaultTerms || undefined,
-        letterhead_header_url: letterheadHeader || undefined,
-        letterhead_footer_url: letterheadFooter || undefined,
-        seal_url: seal || undefined,
-        stamp_url: stamp || undefined,
-        show_letterhead: showLetterhead,
-        watermark_text: watermarkText || undefined,
-        show_signature: showSignature,
-        signature_text: signatureText || undefined,
         show_bank_details: showBankDetails,
         google_sheets_url: googleSheetsUrl || undefined,
         
@@ -276,13 +249,10 @@ export const Settings: React.FC<SettingsProps> = ({
         document_type: 'invoice',
         customer_name: 'John Doe Test Customer',
         customer_gstin: '07AAAAA1111A1Z1',
-        issue_date: new Date().toISOString().split('T')[0],
-        due_date: new Date().toISOString().split('T')[0],
         subtotal: 1000,
         tax_total: 180,
         discount_total: 0,
         total: 1180,
-        status: 'paid',
         items: [
           { qty: 1, unit: 'nos', description: 'Test Consulting Services', rate: 1000 }
         ]
@@ -579,67 +549,10 @@ export const Settings: React.FC<SettingsProps> = ({
                       </label>
                     </div>
                   </div>
-
-                  {/* Letterhead Header Upload */}
-                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label className="form-label">Letterhead Header</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      {letterheadHeader && <div style={{ fontSize: '0.7rem', color: 'var(--accent-success)', fontWeight: 600 }}>Uploaded</div>}
-                      <label className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                        <Upload size={12} />
-                        <span>Upload</span>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setLetterheadHeader)} style={{ display: 'none' }} />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Letterhead Footer Upload */}
-                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label className="form-label">Letterhead Footer</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      {letterheadFooter && <div style={{ fontSize: '0.7rem', color: 'var(--accent-success)', fontWeight: 600 }}>Uploaded</div>}
-                      <label className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                        <Upload size={12} />
-                        <span>Upload</span>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setLetterheadFooter)} style={{ display: 'none' }} />
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid-2">
-                  {/* Seal Upload */}
-                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label className="form-label">Company Seal</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      {seal && <img src={seal} alt="Seal" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />}
-                      <label className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                        <Upload size={12} />
-                        <span>Upload</span>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setSeal)} style={{ display: 'none' }} />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Stamp Upload */}
-                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <label className="form-label">Company Stamp</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      {stamp && <img src={stamp} alt="Stamp" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />}
-                      <label className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                        <Upload size={12} />
-                        <span>Upload</span>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setStamp)} style={{ display: 'none' }} />
-                      </label>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Toggles */}
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '1rem',
                   padding: '1rem',
                   background: 'var(--bg-canvas)',
                   borderRadius: 'var(--radius-sm)',
@@ -648,21 +561,6 @@ export const Settings: React.FC<SettingsProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <input type="checkbox" id="t-bank" checked={showBankDetails} onChange={(e) => setShowBankDetails(e.target.checked)} style={{ width: 'auto' }} />
                     <label htmlFor="t-bank" style={{ fontSize: '0.85rem', fontWeight: 500 }}>Include Bank account block on sheets</label>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <input type="checkbox" id="t-sig" checked={showSignature} onChange={(e) => setShowSignature(e.target.checked)} style={{ width: 'auto' }} />
-                    <label htmlFor="t-sig" style={{ fontSize: '0.85rem', fontWeight: 500 }}>Include Seal/Stamp & Signature block</label>
-                  </div>
-                </div>
-
-                <div className="grid-2">
-                  <div className="form-group">
-                    <label className="form-label">Signature Text Label (e.g. Director Name)</label>
-                    <input type="text" placeholder="e.g. John Doe, Director" value={signatureText} onChange={(e) => setSignatureText(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Watermark Text (Diagonal background text)</label>
-                    <input type="text" placeholder="e.g. DUPLICATE, DRAFT" value={watermarkText} onChange={(e) => setWatermarkText(e.target.value)} />
                   </div>
                 </div>
 
@@ -972,13 +870,10 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
         "Document Type", 
         "Customer Name", 
         "Customer GSTIN", 
-        "Issue Date", 
-        "Due Date", 
         "Subtotal", 
         "Tax (GST)", 
         "Discount", 
         "Grand Total", 
-        "Status", 
         "Items Summary"
       ]);
     }
@@ -994,13 +889,10 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
       data.document_type,
       data.customer_name,
       data.customer_gstin || "-",
-      data.issue_date,
-      data.due_date,
       data.subtotal,
       data.tax_total,
       data.discount_total,
       data.total,
-      data.status,
       itemsSummary
     ]);
     

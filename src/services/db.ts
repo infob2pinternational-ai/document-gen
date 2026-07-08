@@ -37,10 +37,6 @@ CREATE TABLE profiles (
   bank_holder TEXT,
   bank_branch TEXT,
   default_terms TEXT,
-  letterhead_header_url TEXT,
-  letterhead_footer_url TEXT,
-  seal_url TEXT,
-  stamp_url TEXT,
   
   -- Column headings
   col_name_description TEXT DEFAULT 'Description',
@@ -102,9 +98,6 @@ CREATE TABLE documents (
   customer_phone TEXT,
   customer_address TEXT,
   customer_gstin TEXT,
-  issue_date DATE NOT NULL,
-  due_date DATE NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft',
   
   -- Custom Column Headings
   col_name_description TEXT NOT NULL DEFAULT 'Description',
@@ -340,7 +333,7 @@ export const dbService = {
       if (companyId) {
         query = query.eq('company_id', companyId);
       }
-      const { data, error } = await query.order('issue_date', { ascending: false }).order('created_at', { ascending: false });
+      const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     } else {
