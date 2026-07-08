@@ -94,7 +94,13 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       `*Total Amount:* ₹${formattedTotal}\n\n` +
       `We appreciate your consideration and look forward to working with you. Please let us know if you need any additional information or revisions.\n\n` +
       `Best regards,\n` +
-      `*${activeProfile?.name}*`;
+      `*${activeProfile?.name}*\n\n` +
+      `---\n` +
+      `📲 *Follow us on Social Media:*\n` +
+      `Instagram: https://instagram.com/b2pinternational\n` +
+      `Facebook: https://facebook.com/b2pinternational\n\n` +
+      `⭐ *We value your feedback!*\n` +
+      `Please leave us a review on Google: [Insert Google Review Link]`;
 
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
