@@ -319,7 +319,8 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             <div style={{ 
               display: 'flex', 
               flexDirection: 'column', 
-              alignItems: 'flex-end' 
+              alignItems: 'flex-end',
+              marginLeft: 'auto'
             }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '2.5rem' }}>
                 For {activeProfile.name}
