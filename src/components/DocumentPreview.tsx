@@ -69,8 +69,18 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       cleanPhone = '91' + cleanPhone;
     }
 
-    const docTypeLabel = getDocTitle(document.document_type);
-    const message = `Hello *${document.customer_name}*,\n\nHere is your *${docTypeLabel}* *#${document.document_number}* dated *${document.date ? document.date.split('-').reverse().join('/') : ''}* from *${activeProfile?.name}*.\n\n*Amount:* ₹${Number(document.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\nThank you!`;
+    const docTypeLabel = getDocTitle(document.document_type) === 'TAX INVOICE' ? 'Tax Invoice' : getDocTitle(document.document_type) === 'PROFORMA INVOICE' ? 'Proforma Invoice' : getDocTitle(document.document_type) === 'QUOTATION' ? 'Quotation' : 'Work Order';
+    const docDate = document.date ? document.date.split('-').reverse().join('/') : '';
+    const formattedTotal = Number(document.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    
+    const message = `Dear *${document.customer_name}*,\n\n` +
+      `Thank you for considering *${activeProfile?.name}*.\n\n` +
+      `Please find attached your *${docTypeLabel}* (*#${document.document_number}*) dated *${docDate}*.\n\n` +
+      `*Total Amount:* ₹${formattedTotal}\n\n` +
+      `We appreciate your consideration and look forward to working with you. Please let us know if you need any additional information or revisions.\n\n` +
+      `Best regards,\n` +
+      `*${activeProfile?.name}*`;
+
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
   };

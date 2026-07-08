@@ -138,8 +138,16 @@ export const Documents: React.FC<DocumentsProps> = ({
                                   if (!doc.customer_phone) return;
                                   let cleanPhone = doc.customer_phone.replace(/\D/g, '');
                                   if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
-                                  const docTitle = doc.document_type === 'invoice' ? 'TAX INVOICE' : doc.document_type === 'proforma_invoice' ? 'PROFORMA INVOICE' : doc.document_type === 'quotation' ? 'QUOTATION' : 'WORK ORDER';
-                                  const msg = `Hello *${doc.customer_name}*,\n\nHere is your *${docTitle}* *#${doc.document_number}* dated *${doc.date ? doc.date.split('-').reverse().join('/') : ''}* from *${activeProfile?.name}*.\n\n*Amount:* ₹${Number(doc.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\nThank you!`;
+                                  const docTitle = doc.document_type === 'invoice' ? 'Tax Invoice' : doc.document_type === 'proforma_invoice' ? 'Proforma Invoice' : doc.document_type === 'quotation' ? 'Quotation' : 'Work Order';
+                                  const docDate = doc.date ? doc.date.split('-').reverse().join('/') : '';
+                                  const formattedTotal = Number(doc.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                  const msg = `Dear *${doc.customer_name}*,\n\n` +
+                                    `Thank you for considering *${activeProfile?.name}*.\n\n` +
+                                    `Please find attached your *${docTitle}* (*#${doc.document_number}*) dated *${docDate}*.\n\n` +
+                                    `*Total Amount:* ₹${formattedTotal}\n\n` +
+                                    `We appreciate your consideration and look forward to working with you. Please let us know if you need any additional information or revisions.\n\n` +
+                                    `Best regards,\n` +
+                                    `*${activeProfile?.name}*`;
                                   window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
                                 }}
                                 className="btn-secondary"
