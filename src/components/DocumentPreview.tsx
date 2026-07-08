@@ -115,7 +115,33 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         color: '#000000',
         fontFamily: "'Outfit', sans-serif"
       }}>
-        
+        {/* Logo Watermark */}
+        {activeProfile.logo_url && (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            opacity: 0.05,
+            pointerEvents: 'none',
+            zIndex: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '320px',
+            height: '320px'
+          }}>
+            <img 
+              src={activeProfile.logo_url} 
+              alt="Watermark" 
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain'
+              }}
+            />
+          </div>
+        )}
 
 
         {/* Standard Corporate Header */}
