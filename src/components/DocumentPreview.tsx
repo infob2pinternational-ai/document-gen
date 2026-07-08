@@ -118,44 +118,46 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         
 
 
-        {/* Diagonal Header Banner */}
-        <div style={{ display: 'flex', minHeight: '130px', color: 'white', overflow: 'hidden', width: '100%', marginBottom: '2rem' }}>
-          {/* Left section (blue) */}
-          <div style={{ 
-            backgroundColor: '#1d3b68', 
-            flex: '1.4', 
-            padding: '1.5rem 1.5rem 1rem 1.5rem', 
-            clipPath: 'polygon(0 0, 100% 0, 88% 100%, 0 100%)', 
-            marginRight: '-50px', 
-            zIndex: 2,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center'
-          }}>
+        {/* Standard Corporate Header */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-start', 
+          padding: '2.5rem 2rem 1.5rem 2rem', 
+          borderBottom: '2px solid #cbd5e1', 
+          marginBottom: '2rem',
+          color: '#0f172a'
+        }}>
+          {/* Left Column: Company Info */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '60%' }}>
             {activeProfile.logo_url ? (
               <img 
                 src={activeProfile.logo_url} 
                 alt={activeProfile.name} 
-                style={{ maxHeight: '45px', maxWidth: '180px', objectFit: 'contain', marginBottom: '0.5rem', alignSelf: 'flex-start' }} 
+                style={{ maxHeight: '55px', maxWidth: '200px', objectFit: 'contain', alignSelf: 'flex-start' }} 
               />
             ) : (
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'white' }}>{activeProfile.name}</h2>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>{activeProfile.name}</h2>
             )}
-            <p style={{ fontSize: '0.75rem', color: '#e2e8f0', margin: 0, whiteSpace: 'pre-wrap', lineHeight: '1.3', maxWidth: '380px' }}>
-              {activeProfile.address}
-            </p>
+            <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: '1.4', marginTop: '0.25rem' }}>
+              <p style={{ margin: '0 0 2px 0', whiteSpace: 'pre-wrap' }}>{activeProfile.address}</p>
+              {activeProfile.phone && <p style={{ margin: '0 0 2px 0' }}>Phone: {activeProfile.phone}</p>}
+              {activeProfile.email && <p style={{ margin: '0 0 2px 0' }}>Email: {activeProfile.email}</p>}
+              {activeProfile.website && <p style={{ margin: 0 }}>Web: {activeProfile.website}</p>}
+            </div>
           </div>
-          {/* Right section (orange) */}
-          <div style={{ 
-            backgroundColor: '#eb5406', 
-            flex: '1', 
-            padding: '1.5rem 2rem 1rem 5rem', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'flex-end', 
-            zIndex: 1 
-          }}>
-            <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: 'white', textTransform: 'uppercase', letterSpacing: '-0.02em' }}>
+
+          {/* Right Column: Document Type Title */}
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+            <h1 style={{ 
+              fontSize: '2.25rem', 
+              fontWeight: 800, 
+              margin: 0, 
+              color: '#0f172a', 
+              textTransform: 'uppercase', 
+              letterSpacing: '-0.02em',
+              lineHeight: '1.1'
+            }}>
               {getDocTitle(document.document_type)}
             </h1>
           </div>
@@ -196,28 +198,28 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             </div>
           )}
 
-          {/* Line Items Table with Blue Borders */}
+          {/* Line Items Table */}
           <table style={{
             width: '100%',
             borderCollapse: 'collapse',
-            border: '1.5px solid #1d3b68',
+            border: '1px solid #cbd5e1',
             marginBottom: '1.5rem',
             fontSize: '0.8rem',
-            color: '#000000'
+            color: '#0f172a'
           }}>
             <thead>
-              <tr style={{ borderBottom: '1.5px solid #1d3b68', background: '#f8fafc' }}>
-                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'center', width: '40px', fontWeight: 700 }}>No</th>
-                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'left', fontWeight: 700 }}>
+              <tr style={{ borderBottom: '2px solid #cbd5e1', background: '#f8fafc' }}>
+                <th style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'center', width: '40px', fontWeight: 700 }}>No</th>
+                <th style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'left', fontWeight: 700 }}>
                   {document.col_name_description || 'Particulars'}
                 </th>
-                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'center', width: '60px', fontWeight: 700 }}>
+                <th style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'center', width: '60px', fontWeight: 700 }}>
                   {document.col_name_quantity || 'Qty'}
                 </th>
-                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'center', width: '60px', fontWeight: 700 }}>
+                <th style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'center', width: '60px', fontWeight: 700 }}>
                   {document.col_name_unit || 'Days'}
                 </th>
-                <th style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'right', width: '90px', fontWeight: 700 }}>
+                <th style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'right', width: '90px', fontWeight: 700 }}>
                   {document.col_name_rate || 'Rate'}
                 </th>
                 <th style={{ padding: '0.5rem', textAlign: 'right', width: '100px', fontWeight: 700 }}>
@@ -227,12 +229,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             </thead>
             <tbody>
               {items.map((item, idx) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid #1d3b68' }}>
-                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{idx + 1}</td>
-                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.description}</td>
-                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.quantity}</td>
-                  <td style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.unit}</td>
-                  <td className="mono" style={{ borderRight: '1px solid #1d3b68', padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                <tr key={item.id} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{idx + 1}</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.description}</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.quantity}</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.unit}</td>
+                  <td className="mono" style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'right' }}>
                     {Number(item.rate).toFixed(2)}
                   </td>
                   <td className="mono" style={{ padding: '0.65rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
@@ -242,22 +244,22 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               ))}
               {/* Spacer rows if items count is small to simulate the format grid height */}
               {items.length < 5 && Array.from({ length: 5 - items.length }).map((_, idx) => (
-                <tr key={`spacer-${idx}`} style={{ borderBottom: '1px solid #1d3b68', height: '2.5rem' }}>
-                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
-                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
-                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
-                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
-                  <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                <tr key={`spacer-${idx}`} style={{ borderBottom: '1px solid #cbd5e1', height: '2.5rem' }}>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td></td>
                 </tr>
               ))}
               {/* Total Row */}
               <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
-                <td style={{ borderRight: '1px solid #1d3b68', padding: '0.5rem', textAlign: 'right' }}>Amount</td>
-                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
-                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
-                <td style={{ borderRight: '1px solid #1d3b68' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'right' }}>Amount</td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                 <td className="mono" style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.85rem' }}>
                   {Number(document.total).toFixed(2)}
                 </td>
@@ -277,7 +279,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             {/* Left: Bank details inside border box */}
             {activeProfile.bank_name && (
               <div style={{
-                border: '1.5px solid #1d3b68',
+                border: '1px solid #cbd5e1',
                 borderRadius: '4px',
                 padding: '0.75rem 1rem',
                 lineHeight: '1.6',
@@ -288,15 +290,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 <strong>Account No :</strong> <span className="mono">{activeProfile.bank_account_no}</span><br />
                 <strong>Acc Name :</strong> {activeProfile.bank_holder || activeProfile.name}<br />
                 <strong>IFSC :</strong> <span className="mono">{activeProfile.bank_ifsc}</span><br />
-                <strong>Bank Details :</strong> {activeProfile.bank_name}<br />
-                <span style={{ paddingLeft: '5.2rem' }}>{activeProfile.bank_branch} Branch</span>
+                <strong>Bank Name :</strong> {activeProfile.bank_name}
               </div>
             )}
 
-            {/* Right: Signature and Authorized Signatory */}
+            {/* Right: Signatory block */}
             <div style={{ 
-              textAlign: 'right', 
-              minWidth: '220px', 
               display: 'flex', 
               flexDirection: 'column', 
               alignItems: 'flex-end' 
@@ -314,7 +313,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
 
           {/* Terms info box if present */}
           {document.terms && (
-            <div style={{ borderTop: '1.5px solid #1d3b68', paddingTop: '0.75rem', paddingBottom: '1.5rem', fontSize: '0.75rem', color: '#334155' }}>
+            <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '0.75rem', paddingBottom: '1.5rem', fontSize: '0.75rem', color: '#334155' }}>
               <strong>PAYMENT INFO:</strong>
               <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', lineHeight: '1.4' }}>{document.terms}</div>
             </div>
@@ -322,44 +321,35 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
 
         </div>
 
-        {/* Diagonal Footer Banner */}
-        <div style={{ display: 'flex', minHeight: '65px', color: 'white', overflow: 'hidden', width: '100%', marginTop: 'auto' }}>
-          {/* Left section (blue) */}
-          <div style={{ 
-            backgroundColor: '#1d3b68', 
-            flex: '1.4', 
-            padding: '0.5rem 1.5rem', 
-            clipPath: 'polygon(0 0, 100% 0, 92% 100%, 0 100%)', 
-            marginRight: '-30px', 
-            zIndex: 2,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            fontSize: '0.75rem'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={{ fontWeight: 600 }}>f 📷 / {activeProfile.name.toLowerCase()}</span>
+        {/* Standard Corporate Footer */}
+        <div style={{ 
+          borderTop: '1px solid #cbd5e1', 
+          padding: '1.25rem 2rem', 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          gap: '1.5rem',
+          fontSize: '0.75rem', 
+          color: '#475569',
+          marginTop: 'auto',
+          flexWrap: 'wrap',
+          textAlign: 'center'
+        }}>
+          {activeProfile.phone && (
+            <div>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>Phone:</span> {activeProfile.phone}
             </div>
-            {activeProfile.website && (
-              <div style={{ marginTop: '2px', color: '#e2e8f0' }}>w w w.{activeProfile.website.replace(/https?:\/\/(www\.)?/, '')}</div>
-            )}
-          </div>
-          {/* Right section (orange) */}
-          <div style={{ 
-            backgroundColor: '#eb5406', 
-            flex: '1', 
-            padding: '0.5rem 2rem 0.5rem 3rem', 
-            display: 'flex', 
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'flex-end', 
-            zIndex: 1,
-            fontSize: '0.75rem',
-            textAlign: 'right'
-          }}>
-            {activeProfile.phone && <div>{activeProfile.phone.split('/').join(' / ')}</div>}
-            {activeProfile.email && <div style={{ marginTop: '2px' }}>{activeProfile.email}</div>}
-          </div>
+          )}
+          {activeProfile.email && (
+            <div>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>Email:</span> {activeProfile.email}
+            </div>
+          )}
+          {activeProfile.website && (
+            <div>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>Web:</span> {activeProfile.website}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -436,19 +436,19 @@ tr:last-child td {
 
 .document-canvas th {
   background-color: #f8fafc !important;
-  color: #475569 !important;
+  color: #334155 !important;
   font-weight: 700 !important;
-  padding: 0.5rem !important;
-  border-bottom: 1.5px solid #1d3b68 !important;
+  padding: 0.65rem 0.75rem !important;
+  border-bottom: 2px solid #cbd5e1 !important;
   font-size: 0.8rem !important;
-  text-transform: none !important;
-  letter-spacing: normal !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
 }
 
 .document-canvas td {
-  color: #000000 !important;
-  padding: 0.65rem 0.5rem !important;
-  border-bottom: 1px solid #1d3b68 !important;
+  color: #0f172a !important;
+  padding: 0.75rem 0.75rem !important;
+  border-bottom: 1px solid #e2e8f0 !important;
   font-size: 0.8rem !important;
 }
 
