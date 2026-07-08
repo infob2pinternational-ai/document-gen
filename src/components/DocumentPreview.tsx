@@ -44,6 +44,16 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     fetchDocDetails();
   }, [document, activeProfile]);
 
+  useEffect(() => {
+    const originalTitle = window.document.title;
+    // Replace slashes with underscores for valid OS file naming
+    const safeTitle = document.document_number.replace(/[\/\\]/g, '_');
+    window.document.title = safeTitle;
+    return () => {
+      window.document.title = originalTitle;
+    };
+  }, [document.document_number]);
+
   const handlePrint = () => {
     window.print();
   };
