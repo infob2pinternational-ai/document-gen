@@ -76,6 +76,7 @@ export interface Document {
   customer_phone?: string;
   customer_address?: string;
   customer_gstin?: string;
+  date: string; // YYYY-MM-DD
 
   
   // Column titles locked at creation

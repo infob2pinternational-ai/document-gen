@@ -98,6 +98,7 @@ CREATE TABLE documents (
   customer_phone TEXT,
   customer_address TEXT,
   customer_gstin TEXT,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
   
   -- Custom Column Headings
   col_name_description TEXT NOT NULL DEFAULT 'Description',
@@ -333,7 +334,7 @@ export const dbService = {
       if (companyId) {
         query = query.eq('company_id', companyId);
       }
-      const { data, error } = await query.order('created_at', { ascending: false });
+      const { data, error } = await query.order('date', { ascending: false }).order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     } else {

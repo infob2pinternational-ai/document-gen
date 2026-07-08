@@ -109,6 +109,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <thead>
                   <tr>
                     <th>Doc Number</th>
+                    <th>Date</th>
                     <th>Customer Name</th>
                     <th>Document Type</th>
                     <th>Total Amount</th>
@@ -120,6 +121,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                     return (
                       <tr key={doc.id}>
                         <td className="mono" style={{ fontWeight: 600 }}>{doc.document_number}</td>
+                        <td>{doc.date ? doc.date.split('-').reverse().join('/') : ''}</td>
                         <td>{doc.customer_name}</td>
                         <td style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
                           {doc.document_type.replace('_', ' ')}

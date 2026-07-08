@@ -24,6 +24,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const [docType, setDocType] = useState<DocumentType>('invoice');
   const [docNumber, setDocNumber] = useState('');
   const [sequenceNumber, setSequenceNumber] = useState<number>(1001);
+  const [date, setDate] = useState('');
 
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
@@ -83,6 +84,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             setDocType(document.document_type);
             setDocNumber(document.document_number);
             setSequenceNumber(document.sequence_number);
+            setDate(document.date || '');
 
             setNotes(document.notes || '');
             setTerms(document.terms || '');
@@ -114,6 +116,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       loadDocData();
     } else {
       // Create Mode
+      const today = new Date().toISOString().split('T')[0];
+      setDate(today);
 
       
       // Load column names from profile
@@ -332,6 +336,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         customer_phone: customerPhone || undefined,
         customer_address: customerAddress || undefined,
         customer_gstin: customerGstin || undefined,
+        date,
         col_name_description: colDesc,
         col_name_quantity: colQty,
         col_name_unit: colUnit,
@@ -361,6 +366,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           document_type: docType,
           customer_name: customerName,
           customer_gstin: customerGstin,
+          date,
           subtotal,
           tax_total: taxTotal,
           discount_total: discountTotal,
@@ -452,7 +458,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <h3 style={{ fontSize: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Document Configuration</h3>
             
-            <div className="grid-2">
+            <div className="grid-3">
               <div className="form-group">
                 <label className="form-label">Document Type</label>
                 <select 
@@ -473,6 +479,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   type="text" 
                   value={docNumber} 
                   onChange={(e) => setDocNumber(e.target.value)} 
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Document Date</label>
+                <input 
+                  type="date" 
+                  value={date} 
+                  onChange={(e) => setDate(e.target.value)} 
                 />
               </div>
             </div>

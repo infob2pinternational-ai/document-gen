@@ -174,6 +174,10 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             </div>
             <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <div>
+                <strong style={{ color: '#475569' }}>Date</strong> &nbsp;&nbsp;&nbsp;: &nbsp;
+                <span style={{ fontWeight: 600 }}>{document.date ? document.date.split('-').reverse().join('/') : ''}</span>
+              </div>
+              <div>
                 <strong style={{ color: '#475569' }}>
                   {document.document_type === 'invoice' ? 'Invoice No' : document.document_type === 'proforma_invoice' ? 'Invoice No' : document.document_type === 'quotation' ? 'Quotation No' : 'Order No'}
                 </strong> : &nbsp;
