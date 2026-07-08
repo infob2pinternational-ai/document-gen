@@ -160,7 +160,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               <img 
                 src={activeProfile.logo_url} 
                 alt={activeProfile.name} 
-                style={{ maxHeight: '55px', maxWidth: '200px', objectFit: 'contain', alignSelf: 'flex-start' }} 
+                style={{ maxHeight: '70px', maxWidth: '240px', objectFit: 'contain', alignSelf: 'flex-start' }} 
               />
             ) : (
               <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>{activeProfile.name}</h2>
