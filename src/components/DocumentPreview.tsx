@@ -20,6 +20,21 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(propProfile);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      if (width < 840) {
+        setScale((width - 32) / 800);
+      } else {
+        setScale(1);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const fetchDocDetails = async () => {
@@ -177,18 +192,30 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         </div>
       </div>
 
-      {/* Printable Sheet Canvas */}
-      <div className="document-canvas" style={{ 
-        position: 'relative', 
-        padding: '0', 
+      {/* Scaling Wrapper for Mobile Responsiveness */}
+      <div style={{
+        width: '100%',
+        overflowX: 'hidden',
         display: 'flex',
-        flexDirection: 'column',
-        minHeight: '1050px',
-        boxSizing: 'border-box',
-        background: '#ffffff',
-        color: '#000000',
-        fontFamily: "'Outfit', sans-serif"
+        justifyContent: 'center',
+        height: scale < 1 ? `${1050 * scale}px` : 'auto'
       }}>
+        {/* Printable Sheet Canvas */}
+        <div className="document-canvas" style={{ 
+          position: 'relative', 
+          padding: '0', 
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '1050px',
+          boxSizing: 'border-box',
+          background: '#ffffff',
+          color: '#000000',
+          fontFamily: "'Outfit', sans-serif",
+          transform: scale < 1 ? `scale(${scale})` : 'none',
+          transformOrigin: 'top center',
+          flexShrink: 0,
+          margin: '0'
+        }}>
         {/* Logo Watermark */}
         {activeProfile.logo_url && (
           <div style={{
@@ -343,10 +370,52 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 </tr>
               ))}
 
-              {/* Total Row */}
+              {/* Subtotal Row */}
+              {(Number(document.discount_total) > 0 || Number(document.tax_total) > 0) && (
+                <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Subtotal</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                    {Number(document.subtotal).toFixed(2)}
+                  </td>
+                </tr>
+              )}
+
+              {/* Discount Row */}
+              {Number(document.discount_total) > 0 && (
+                <tr style={{ fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Discount</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                    -{Number(document.discount_total).toFixed(2)}
+                  </td>
+                </tr>
+              )}
+
+              {/* Tax Row */}
+              {Number(document.tax_total) > 0 && (
+                <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Calculated Tax (GST)</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                    {Number(document.tax_total).toFixed(2)}
+                  </td>
+                </tr>
+              )}
+
+              {/* Grand Total Row */}
               <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'right' }}>Amount</td>
+                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'right' }}>Grand Total</td>
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
@@ -468,6 +537,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
