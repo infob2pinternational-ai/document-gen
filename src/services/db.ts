@@ -347,30 +347,41 @@ export const dbService = {
     }
   },
 
+  async getProfileById(id: string): Promise<CompanyProfile | null> {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+        if (!error && data) return data;
+      } catch (err) {
+        console.log('dbService: Supabase fetch failed in getProfileById:', err);
+      }
+    }
+    const profiles = getLocal<CompanyProfile[]>('profiles', []);
+    return profiles.find(p => p.id === id) || null;
+  },
+
   async getDocumentById(id: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
-    console.log('dbService: getDocumentById called with ID:', id, 'useCloud:', useCloud());
-    if (useCloud() && supabase) {
-      const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
-      if (docError) {
-        console.error('dbService: Error fetching document:', docError);
-        if (docError.code === 'PGRST116') return null; // not found
-        throw docError;
+    console.log('dbService: getDocumentById called with ID:', id);
+    if (supabase) {
+      try {
+        const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
+        if (!docError && document) {
+          const { data: items, error: itemsError } = await supabase
+            .from('document_items')
+            .select('*')
+            .eq('document_id', id)
+            .order('sort_order', { ascending: true });
+          if (!itemsError) {
+            console.log('dbService: Supabase returned document and items successfully');
+            return { document, items: items || [] };
+          }
+        }
+      } catch (err) {
+        console.log('dbService: Supabase fetch failed in getDocumentById, falling back to local:', err);
       }
-      const { data: items, error: itemsError } = await supabase
-        .from('document_items')
-        .select('*')
-        .eq('document_id', id)
-        .order('sort_order', { ascending: true });
-      if (itemsError) {
-        console.error('dbService: Error fetching document items:', itemsError);
-        throw itemsError;
-      }
-      console.log('dbService: Supabase returned document:', document);
-      console.log('dbService: Supabase returned items count:', items?.length, 'items:', items);
-      return { document, items: items || [] };
-    } else {
-      const docs = getLocal<Document[]>('documents', []);
-      const doc = docs.find(d => d.id === id);
+    }
+    const docs = getLocal<Document[]>('documents', []);
+    const doc = docs.find(d => d.id === id);
       if (!doc) {
         console.log('dbService: Local Document not found for ID:', id);
         return null;
@@ -380,7 +391,6 @@ export const dbService = {
       console.log('dbService: LocalStorage returned document:', doc);
       console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
       return { document: doc, items: docItems };
-    }
   },
 
   async saveDocument(doc: Document, items: DocumentItem[]): Promise<Document> {

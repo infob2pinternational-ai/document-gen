@@ -7,23 +7,36 @@ interface DocumentPreviewProps {
   activeProfile: CompanyProfile | null;
   document: Document;
   onClose: () => void;
+  isPublicShare?: boolean;
 }
 
 export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
-  activeProfile,
+  activeProfile: propProfile,
   document,
-  onClose
+  onClose,
+  isPublicShare = false
 }) => {
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(propProfile);
 
   useEffect(() => {
     const fetchDocDetails = async () => {
       try {
         console.log('DocumentPreview: Fetching details for document ID:', document.id);
+        
+        let profileToUse = activeProfile;
+        if (!profileToUse) {
+          const prof = await dbService.getProfileById(document.company_id);
+          if (prof) {
+            setActiveProfile(prof);
+            profileToUse = prof;
+          }
+        }
+
         console.log('DocumentPreview: Active profile branding details:', {
-          name: activeProfile?.name
+          name: profileToUse?.name
         });
 
         const res = await dbService.getDocumentById(document.id);
@@ -72,10 +85,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     const docTypeLabel = getDocTitle(document.document_type) === 'TAX INVOICE' ? 'Tax Invoice' : getDocTitle(document.document_type) === 'PROFORMA INVOICE' ? 'Proforma Invoice' : getDocTitle(document.document_type) === 'QUOTATION' ? 'Quotation' : 'Work Order';
     const docDate = document.date ? document.date.split('-').reverse().join('/') : '';
     const formattedTotal = Number(document.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const shareLink = window.location.origin + '/?view=' + document.id;
     
     const message = `Dear *${document.customer_name}*,\n\n` +
       `Thank you for considering *${activeProfile?.name}*.\n\n` +
       `Please find attached your *${docTypeLabel}* (*#${document.document_number}*) dated *${docDate}*.\n\n` +
+      `*View / Download PDF:* ${shareLink}\n\n` +
       `*Total Amount:* ₹${formattedTotal}\n\n` +
       `We appreciate your consideration and look forward to working with you. Please let us know if you need any additional information or revisions.\n\n` +
       `Best regards,\n` +
@@ -130,10 +145,16 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         borderRadius: 'var(--radius-md)',
         border: '1px solid var(--border-color)'
       }}>
-        <button onClick={onClose} className="btn-secondary">
-          <ArrowLeft size={16} />
-          <span>Back to List</span>
-        </button>
+        {!isPublicShare ? (
+          <button onClick={onClose} className="btn-secondary">
+            <ArrowLeft size={16} />
+            <span>Back to List</span>
+          </button>
+        ) : (
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            Document View
+          </span>
+        )}
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           {document.customer_phone && (
             <button onClick={handleWhatsAppSend} className="btn-secondary" style={{ color: '#25D366', borderColor: '#25D366' }}>

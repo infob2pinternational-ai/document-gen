@@ -41,12 +41,40 @@ function App() {
   const [newPassword, setNewPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
+  // Public View States
+  const [publicViewDocId, setPublicViewDocId] = useState<string | null>(null);
+  const [publicViewDoc, setPublicViewDoc] = useState<Document | null>(null);
+  const [publicViewLoading, setPublicViewLoading] = useState(false);
+
   // Initialize Theme
   useEffect(() => {
     const savedTheme = localStorage.getItem('docgen_theme') as 'light' | 'dark' | null;
     const initialTheme = savedTheme || 'dark';
     setTheme(initialTheme);
     document.documentElement.setAttribute('data-theme', initialTheme);
+  }, []);
+
+  // Detect Public Share URL Parameter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const viewId = params.get('view');
+    if (viewId) {
+      console.log('App: Public view parameter detected for ID:', viewId);
+      setPublicViewDocId(viewId);
+      setPublicViewLoading(true);
+      dbService.getDocumentById(viewId).then((res) => {
+        if (res) {
+          console.log('App: Public view document loaded successfully:', res.document);
+          setPublicViewDoc(res.document);
+        } else {
+          console.log('App: Public view document not found');
+        }
+        setPublicViewLoading(false);
+      }).catch((err) => {
+        console.error('App: Error loading public view document:', err);
+        setPublicViewLoading(false);
+      });
+    }
   }, []);
 
   const toggleTheme = () => {
@@ -227,6 +255,63 @@ function App() {
       alert('Failed to create company profile.');
     }
   };
+
+  // Render Public Share Document View if parameter is present
+  if (publicViewDocId) {
+    if (publicViewLoading) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          backgroundColor: '#030712',
+          color: '#ffffff',
+          fontFamily: "'Outfit', sans-serif"
+        }}>
+          <p style={{ fontSize: '1rem', fontWeight: 500 }}>Loading shared document...</p>
+        </div>
+      );
+    }
+    if (!publicViewDoc) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          backgroundColor: '#030712',
+          color: '#ffffff',
+          fontFamily: "'Outfit', sans-serif",
+          padding: '2rem',
+          textAlign: 'center'
+        }}>
+          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: 'var(--accent-danger)' }}>Document Not Found</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>The requested document does not exist or has been deleted.</p>
+        </div>
+      );
+    }
+    return (
+      <div style={{
+        backgroundColor: '#030712',
+        minHeight: '100vh',
+        padding: '2rem 1rem',
+        display: 'flex',
+        justifyContent: 'center'
+      }}>
+        <div style={{ width: '100%', maxWidth: '800px' }}>
+          <DocumentPreview 
+            activeProfile={null}
+            document={publicViewDoc}
+            onClose={() => {}}
+            isPublicShare={true}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // If Supabase credentials exist and user is not authenticated: Show AuthPanel (forced)
   if (isSupabaseConfigured() && !user) {
