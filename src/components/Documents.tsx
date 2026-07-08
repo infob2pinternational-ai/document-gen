@@ -141,7 +141,8 @@ export const Documents: React.FC<DocumentsProps> = ({
                                   const docTitle = doc.document_type === 'invoice' ? 'Tax Invoice' : doc.document_type === 'proforma_invoice' ? 'Proforma Invoice' : doc.document_type === 'quotation' ? 'Quotation' : 'Work Order';
                                   const docDate = doc.date ? doc.date.split('-').reverse().join('/') : '';
                                   const formattedTotal = Number(doc.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                  const shareLink = 'https://www.b2pinternational.com/doc/' + doc.id;
+                                  const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
+                                  const shareLink = baseUrl + '/doc/' + doc.id;
                                   const msg = `Dear *${doc.customer_name}*,\n\n` +
                                     `Thank you for considering *${activeProfile?.name}*.\n\n` +
                                     `Please find attached your *${docTitle}* (*#${doc.document_number}*) dated *${docDate}*.\n\n` +

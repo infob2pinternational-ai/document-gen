@@ -100,7 +100,8 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     const docTypeLabel = getDocTitle(document.document_type) === 'TAX INVOICE' ? 'Tax Invoice' : getDocTitle(document.document_type) === 'PROFORMA INVOICE' ? 'Proforma Invoice' : getDocTitle(document.document_type) === 'QUOTATION' ? 'Quotation' : 'Work Order';
     const docDate = document.date ? document.date.split('-').reverse().join('/') : '';
     const formattedTotal = Number(document.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const shareLink = 'https://www.b2pinternational.com/doc/' + document.id;
+    const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
+    const shareLink = baseUrl + '/doc/' + document.id;
     
     const message = `Dear *${document.customer_name}*,\n\n` +
       `Thank you for considering *${activeProfile?.name}*.\n\n` +
