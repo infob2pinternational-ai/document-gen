@@ -314,10 +314,18 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             <div style={{ 
               display: 'flex', 
               flexDirection: 'column', 
-              alignItems: 'flex-end',
+              alignItems: 'center',
+              width: '180px',
               position: 'relative'
             }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '3.5rem' }}>
+              <div style={{ 
+                fontSize: '0.8rem', 
+                fontWeight: 700, 
+                color: '#475569', 
+                marginBottom: '4.5rem', 
+                textAlign: 'center',
+                width: '100%'
+              }}>
                 For {activeProfile.name}
               </div>
               {activeProfile.seal_url && (
@@ -326,17 +334,19 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   alt="Seal/Stamp" 
                   style={{
                     position: 'absolute',
-                    right: '15px',
+                    left: '50%',
                     top: '20px',
-                    maxHeight: '75px',
-                    maxWidth: '120px',
+                    transform: 'translateX(-50%)',
+                    height: '90px',
+                    width: '90px',
                     objectFit: 'contain',
                     pointerEvents: 'none',
-                    mixBlendMode: 'multiply'
+                    mixBlendMode: 'multiply',
+                    zIndex: 2
                   }}
                 />
               )}
-              <div style={{ borderTop: '1px solid #000000', width: '180px', paddingTop: '0.25rem', textAlign: 'center' }}>
+              <div style={{ borderTop: '1px solid #000000', width: '100%', paddingTop: '0.25rem', textAlign: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Authorized Signatory
                 </span>
