@@ -205,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Navigation Links */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, width: '100%' }}>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, width: '100%' }}>
         {navItems.map(item => {
           const Icon = item.icon;
           const isActive = currentTab === item.id;
@@ -213,21 +213,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               onClick={() => setCurrentTab(item.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                width: '100%',
-                padding: '0.75rem 1rem',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: isActive ? 'var(--accent-primary)' : 'transparent',
-                color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontWeight: 500
-              }}
-              className="nav-link"
+              className={`nav-link ${isActive ? 'active' : ''}`}
             >
               <Icon size={20} style={{ flexShrink: 0 }} />
               <span className="nav-label">{item.label}</span>
