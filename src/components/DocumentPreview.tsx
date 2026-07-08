@@ -268,17 +268,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   </td>
                 </tr>
               ))}
-              {/* Spacer rows if items count is small to simulate the format grid height */}
-              {items.length < 5 && Array.from({ length: 5 - items.length }).map((_, idx) => (
-                <tr key={`spacer-${idx}`} style={{ borderBottom: '1px solid #cbd5e1', height: '2.5rem' }}>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td></td>
+              {/* Spacer row if items count is small to simulate the format grid height */}
+              {items.length < 5 && (
+                <tr style={{ height: `${(5 - items.length) * 2.5}rem`, borderBottom: '1px solid #cbd5e1' }}>
+                  <td colSpan={6} style={{ padding: 0 }}></td>
                 </tr>
-              ))}
+              )}
               {/* Total Row */}
               <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
