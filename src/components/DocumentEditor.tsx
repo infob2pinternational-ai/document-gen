@@ -299,6 +299,26 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     setLoading(true);
     try {
       const docId = documentToEdit?.id || crypto.randomUUID();
+
+      // Check if this is a new customer and auto-save to CRM list if it doesn't exist
+      let finalCustomerId = selectedCustomerId;
+      if (customerName.trim()) {
+        const customerExists = customers.some(c => c.name.trim().toLowerCase() === customerName.trim().toLowerCase());
+        if (!customerExists) {
+          const newCustId = crypto.randomUUID();
+          const newCust: Customer = {
+            id: newCustId,
+            company_id: activeProfile.id,
+            name: customerName.trim(),
+            email: customerEmail.trim() || undefined,
+            phone: customerPhone.trim() || undefined,
+            address: customerAddress.trim() || undefined,
+            gstin: customerGstin.trim() || undefined
+          };
+          await dbService.saveCustomer(newCust);
+          finalCustomerId = newCustId;
+        }
+      }
       
       const docPayload: Document = {
         id: docId,
@@ -306,7 +326,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         document_type: docType,
         document_number: docNumber,
         sequence_number: sequenceNumber,
-        customer_id: selectedCustomerId || undefined,
+        customer_id: finalCustomerId || undefined,
         customer_name: customerName,
         customer_email: customerEmail || undefined,
         customer_phone: customerPhone || undefined,
