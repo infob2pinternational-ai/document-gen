@@ -314,11 +314,28 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             <div style={{ 
               display: 'flex', 
               flexDirection: 'column', 
-              alignItems: 'flex-end' 
+              alignItems: 'flex-end',
+              position: 'relative'
             }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '2.5rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '3.5rem' }}>
                 For {activeProfile.name}
               </div>
+              {activeProfile.seal_url && (
+                <img 
+                  src={activeProfile.seal_url} 
+                  alt="Seal/Stamp" 
+                  style={{
+                    position: 'absolute',
+                    right: '15px',
+                    top: '20px',
+                    maxHeight: '75px',
+                    maxWidth: '120px',
+                    objectFit: 'contain',
+                    pointerEvents: 'none',
+                    mixBlendMode: 'multiply'
+                  }}
+                />
+              )}
               <div style={{ borderTop: '1px solid #000000', width: '180px', paddingTop: '0.25rem', textAlign: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Authorized Signatory

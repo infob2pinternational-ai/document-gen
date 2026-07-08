@@ -24,6 +24,7 @@ CREATE TABLE profiles (
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   logo_url TEXT, -- Base64 logo or url
+  seal_url TEXT,
   gstin TEXT,
   pan TEXT,
   email TEXT,

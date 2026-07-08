@@ -32,6 +32,7 @@ export const Settings: React.FC<SettingsProps> = ({
   // Active Profile Form States
   const [name, setName] = useState('');
   const [logo, setLogo] = useState('');
+  const [seal, setSeal] = useState('');
   const [gstin, setGstin] = useState('');
   const [pan, setPan] = useState('');
   const [email, setEmail] = useState('');
@@ -81,6 +82,7 @@ export const Settings: React.FC<SettingsProps> = ({
     if (activeProfile) {
       setName(activeProfile.name);
       setLogo(activeProfile.logo_url || '');
+      setSeal(activeProfile.seal_url || '');
       setGstin(activeProfile.gstin || '');
       setPan(activeProfile.pan || '');
       setEmail(activeProfile.email || '');
@@ -172,6 +174,7 @@ export const Settings: React.FC<SettingsProps> = ({
         ...activeProfile,
         name,
         logo_url: logo || undefined,
+        seal_url: seal || undefined,
         gstin: gstin || undefined,
         pan: pan || undefined,
         email: email || undefined,
@@ -547,6 +550,19 @@ export const Settings: React.FC<SettingsProps> = ({
                         <Upload size={12} />
                         <span>Upload</span>
                         <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setLogo)} style={{ display: 'none' }} />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Seal/Stamp Upload */}
+                  <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <label className="form-label">Company Seal & Stamp</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      {seal && <img src={seal} alt="Seal" style={{ width: '40px', height: '40px', objectFit: 'contain', border: '1px solid var(--border-color)', borderRadius: '4px' }} />}
+                      <label className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                        <Upload size={12} />
+                        <span>Upload</span>
+                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setSeal)} style={{ display: 'none' }} />
                       </label>
                     </div>
                   </div>

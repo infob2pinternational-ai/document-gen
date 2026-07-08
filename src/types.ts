@@ -10,6 +10,7 @@ export interface CompanyProfile {
   phone?: string;
   address?: string;
   website?: string;
+  seal_url?: string;
   google_sheets_url?: string;
   currency: string; // e.g. 'INR' or 'USD'
   
