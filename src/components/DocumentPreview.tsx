@@ -268,12 +268,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   </td>
                 </tr>
               ))}
-              {/* Spacer row if items count is small to simulate the format grid height */}
-              {items.length < 5 && (
-                <tr style={{ height: `${(5 - items.length) * 2.5}rem`, borderBottom: '1px solid #cbd5e1' }}>
-                  <td colSpan={6} style={{ padding: 0 }}></td>
-                </tr>
-              )}
+
               {/* Total Row */}
               <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
@@ -319,8 +314,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             <div style={{ 
               display: 'flex', 
               flexDirection: 'column', 
-              alignItems: 'flex-end',
-              marginLeft: 'auto'
+              alignItems: 'flex-end' 
             }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '2.5rem' }}>
                 For {activeProfile.name}
