@@ -360,6 +360,40 @@ export const dbService = {
     return profiles.find(p => p.id === id) || null;
   },
 
+  async getDocumentByNumber(docNumber: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
+    console.log('dbService: getDocumentByNumber called with:', docNumber);
+    if (supabase) {
+      try {
+        const cleanNum = docNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        const { data: docs, error: docError } = await supabase.from('documents').select('*');
+        if (!docError && docs) {
+          const matched = docs.find(d => d.document_number.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanNum);
+          if (matched) {
+            const { data: items, error: itemsError } = await supabase
+              .from('document_items')
+              .select('*')
+              .eq('document_id', matched.id)
+              .order('sort_order', { ascending: true });
+            if (!itemsError) {
+              return { document: matched, items: items || [] };
+            }
+          }
+        }
+      } catch (err) {
+        console.log('dbService: Supabase fetch failed in getDocumentByNumber:', err);
+      }
+    }
+    const docs = getLocal<Document[]>('documents', []);
+    const cleanNum = docNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const matched = docs.find(d => d.document_number.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanNum);
+    if (matched) {
+      const items = getLocal<DocumentItem[]>('document_items', []);
+      const docItems = items.filter(it => it.document_id === matched.id).sort((a, b) => a.sort_order - b.sort_order);
+      return { document: matched, items: docItems };
+    }
+    return null;
+  },
+
   async getDocumentById(id: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
     console.log('dbService: getDocumentById called with ID:', id);
     if (supabase) {

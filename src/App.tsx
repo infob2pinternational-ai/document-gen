@@ -54,24 +54,53 @@ function App() {
     document.documentElement.setAttribute('data-theme', initialTheme);
   }, []);
 
-  // Detect Public Share URL Parameter
+  // Detect Public Share URL Parameter or Path Routing
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const viewId = params.get('view');
+    const viewIdParam = params.get('view');
+    const path = window.location.pathname;
+    
+    let viewId: string | null = viewIdParam;
+    let docNumber: string | null = null;
+    
+    if (path.startsWith('/doc/') || path.startsWith('/view/')) {
+      const parts = path.split('/');
+      viewId = parts[2] || null;
+    } else if (path.startsWith('/q/')) {
+      const parts = path.split('/');
+      docNumber = parts[2] || null;
+    }
+    
     if (viewId) {
-      console.log('App: Public view parameter detected for ID:', viewId);
+      console.log('App: Public view detected for ID:', viewId);
       setPublicViewDocId(viewId);
       setPublicViewLoading(true);
       dbService.getDocumentById(viewId).then((res) => {
         if (res) {
-          console.log('App: Public view document loaded successfully:', res.document);
+          console.log('App: Public view document loaded successfully by ID:', res.document);
           setPublicViewDoc(res.document);
         } else {
           console.log('App: Public view document not found');
         }
         setPublicViewLoading(false);
       }).catch((err) => {
-        console.error('App: Error loading public view document:', err);
+        console.error('App: Error loading public view document by ID:', err);
+        setPublicViewLoading(false);
+      });
+    } else if (docNumber) {
+      console.log('App: Public view detected for Document Number:', docNumber);
+      setPublicViewLoading(true);
+      dbService.getDocumentByNumber(docNumber).then((res) => {
+        if (res) {
+          console.log('App: Public view document loaded successfully by Number:', res.document);
+          setPublicViewDocId(res.document.id);
+          setPublicViewDoc(res.document);
+        } else {
+          console.log('App: Public view document not found by Number');
+        }
+        setPublicViewLoading(false);
+      }).catch((err) => {
+        console.error('App: Error loading public view document by number:', err);
         setPublicViewLoading(false);
       });
     }
