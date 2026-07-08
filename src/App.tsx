@@ -420,7 +420,7 @@ function App() {
         ) : previewOpen && documentToPreview ? (
           /* Preview Screen view */
           <DocumentPreview 
-            activeProfile={activeProfile}
+            activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
             document={documentToPreview}
             onClose={() => setPreviewOpen(false)}
           />

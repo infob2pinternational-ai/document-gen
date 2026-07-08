@@ -371,6 +371,29 @@ tr:last-child td {
   flex-direction: column;
 }
 
+/* Overrides for printed document elements to prevent dark mode leakage */
+.document-canvas table {
+  border-collapse: collapse !important;
+}
+
+.document-canvas th {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  font-weight: 700 !important;
+  padding: 0.5rem !important;
+  border-bottom: 1.5px solid #1d3b68 !important;
+  font-size: 0.8rem !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.document-canvas td {
+  color: #000000 !important;
+  padding: 0.65rem 0.5rem !important;
+  border-bottom: 1px solid #1d3b68 !important;
+  font-size: 0.8rem !important;
+}
+
 .document-watermark {
   position: absolute;
   top: 50%;
