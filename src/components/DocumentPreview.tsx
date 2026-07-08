@@ -100,7 +100,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       `Instagram: https://instagram.com/b2pinternational\n` +
       `Facebook: https://facebook.com/b2pinternational\n\n` +
       `⭐ *We value your feedback!*\n` +
-      `Please leave us a review on Google: [Insert Google Review Link]`;
+      `Please leave us a review on Google: https://g.page/r/CcC1J3PCvB_BEBM/review`;
 
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
