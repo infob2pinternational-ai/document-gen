@@ -180,7 +180,13 @@ function App() {
   const loadData = async (selectNewId?: string) => {
     setProfilesLoading(true);
     try {
-      const profileList = await dbService.getProfiles();
+      const rawProfiles = await dbService.getProfiles();
+      const profileList = rawProfiles.map(p => {
+        if (p.name.toLowerCase().includes('b2p')) {
+          return { ...p, logo_url: '/logo_b2p.png' };
+        }
+        return p;
+      });
       setProfiles(profileList);
 
       if (profileList.length > 0) {
