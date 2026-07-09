@@ -31,6 +31,8 @@ function App() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [documentToEdit, setDocumentToEdit] = useState<Document | null>(null);
   const [documentToPreview, setDocumentToPreview] = useState<Document | null>(null);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [draftToRestore, setDraftToRestore] = useState<any>(null);
   
   // Modals
   const [showAddProfileModal, setShowAddProfileModal] = useState(false);
@@ -224,6 +226,45 @@ function App() {
       loadData();
     }
   }, [user]);
+
+  // Check for unsaved drafts on startup
+  useEffect(() => {
+    const draft = localStorage.getItem('docgen_draft_document');
+    if (draft) {
+      setHasDraft(true);
+    }
+  }, []);
+
+  const handleRestoreDraft = () => {
+    const draftStr = localStorage.getItem('docgen_draft_document');
+    if (draftStr) {
+      try {
+        const draft = JSON.parse(draftStr);
+        setDraftToRestore(draft);
+        setDocumentToEdit(draft.documentToEdit || null);
+        setCurrentTab('documents');
+        setEditorOpen(true);
+      } catch (err) {
+        console.error('Failed to parse draft:', err);
+      }
+    }
+    setHasDraft(false);
+  };
+
+  const handleDiscardDraft = () => {
+    localStorage.removeItem('docgen_draft_document');
+    setHasDraft(false);
+    setDraftToRestore(null);
+  };
+
+  const handleCloseEditor = () => {
+    setEditorOpen(false);
+    setDraftToRestore(null);
+    setTimeout(() => {
+      localStorage.removeItem('docgen_draft_document');
+      setHasDraft(false);
+    }, 100);
+  };
 
   // Load documents, customers, and services when active company profile switches
   useEffect(() => {
@@ -594,6 +635,58 @@ function App() {
       {/* Main Content viewport */}
       <main className="main-content">
         
+        {hasDraft && !editorOpen && !previewOpen && (
+          <div style={{
+            background: 'var(--accent-primary)',
+            color: '#fff',
+            padding: '0.85rem 1.25rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.85rem',
+            borderRadius: 'var(--radius-sm)',
+            margin: '0 0 1rem 0',
+            boxShadow: 'var(--shadow-sm)',
+            border: '1px solid rgba(255,255,255,0.1)'
+          }}>
+            <span style={{ fontWeight: 500 }}>You have an unsaved document draft from your last session.</span>
+            <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+              <button 
+                onClick={handleRestoreDraft}
+                className="btn-primary"
+                style={{ 
+                  background: '#fff', 
+                  color: 'var(--accent-primary)', 
+                  border: 'none', 
+                  padding: '0.35rem 0.75rem', 
+                  borderRadius: 'var(--radius-sm)', 
+                  cursor: 'pointer', 
+                  fontWeight: 700,
+                  fontSize: '0.75rem'
+                }}
+              >
+                Resume
+              </button>
+              <button 
+                onClick={handleDiscardDraft}
+                className="btn-secondary"
+                style={{ 
+                  background: 'rgba(255,255,255,0.15)', 
+                  color: '#fff', 
+                  border: '1px solid rgba(255,255,255,0.25)', 
+                  padding: '0.35rem 0.75rem', 
+                  borderRadius: 'var(--radius-sm)', 
+                  cursor: 'pointer', 
+                  fontWeight: 500,
+                  fontSize: '0.75rem'
+                }}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+
         {previewOpen && documentToPreview ? (
           /* Preview Screen view (Global Overlay) */
           <DocumentPreview 
@@ -622,10 +715,11 @@ function App() {
                 <DocumentEditor 
                   activeProfile={activeProfile}
                   documentToEdit={documentToEdit}
-                  onClose={() => setEditorOpen(false)}
+                  onClose={handleCloseEditor}
                   onRefreshDocs={() => {
                     if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
                   }}
+                  draftToRestore={draftToRestore}
                 />
               </div>
             )}

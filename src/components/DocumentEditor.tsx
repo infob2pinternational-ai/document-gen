@@ -8,13 +8,15 @@ interface DocumentEditorProps {
   documentToEdit: Document | null; // null if creating
   onClose: () => void;
   onRefreshDocs: () => void;
+  draftToRestore?: any;
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   activeProfile,
   documentToEdit,
   onClose,
-  onRefreshDocs
+  onRefreshDocs,
+  draftToRestore
 }) => {
   // Database Libraries
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -82,7 +84,28 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   useEffect(() => {
     if (!activeProfile) return;
 
-    if (documentToEdit) {
+    if (draftToRestore) {
+      // Restore Draft Mode
+      setDocType(draftToRestore.docType);
+      setDocNumber(draftToRestore.docNumber);
+      setSequenceNumber(draftToRestore.sequenceNumber);
+      setDate(draftToRestore.date);
+      setNotes(draftToRestore.notes);
+      setTerms(draftToRestore.terms);
+      setDiscountTotal(draftToRestore.discountTotal);
+      setSelectedCustomerId(draftToRestore.selectedCustomerId);
+      setCustomerName(draftToRestore.customerName);
+      setCustomerEmail(draftToRestore.customerEmail);
+      setCustomerPhone(draftToRestore.customerPhone);
+      setCustomerAddress(draftToRestore.customerAddress);
+      setCustomerGstin(draftToRestore.customerGstin);
+      setColDesc(draftToRestore.colDesc);
+      setColQty(draftToRestore.colQty);
+      setColUnit(draftToRestore.colUnit);
+      setColRate(draftToRestore.colRate);
+      setColAmt(draftToRestore.colAmt);
+      setItems(draftToRestore.items);
+    } else if (documentToEdit) {
       // Editing Mode
       const loadDocData = async () => {
         try {
@@ -149,7 +172,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       // Auto-sequence numbers
       generateSequenceNumber(docType);
     }
-  }, [documentToEdit, activeProfile]);
+  }, [documentToEdit, activeProfile, draftToRestore]);
 
   // Handle document type change -> update sequence
   useEffect(() => {
@@ -157,6 +180,57 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       generateSequenceNumber(docType);
     }
   }, [docType]);
+
+  // Autosave Draft to localStorage
+  useEffect(() => {
+    // Only save draft if items are present or customer name is filled (avoid saving empty blanks)
+    if (items.length > 0 || customerName || notes || selectedCustomerId) {
+      const draftData = {
+        documentToEdit,
+        docType,
+        docNumber,
+        sequenceNumber,
+        date,
+        notes,
+        terms,
+        discountTotal,
+        selectedCustomerId,
+        customerName,
+        customerEmail,
+        customerPhone,
+        customerAddress,
+        customerGstin,
+        colDesc,
+        colQty,
+        colUnit,
+        colRate,
+        colAmt,
+        items
+      };
+      localStorage.setItem('docgen_draft_document', JSON.stringify(draftData));
+    }
+  }, [
+    documentToEdit,
+    docType,
+    docNumber,
+    sequenceNumber,
+    date,
+    notes,
+    terms,
+    discountTotal,
+    selectedCustomerId,
+    customerName,
+    customerEmail,
+    customerPhone,
+    customerAddress,
+    customerGstin,
+    colDesc,
+    colQty,
+    colUnit,
+    colRate,
+    colAmt,
+    items
+  ]);
 
   // Sequence generator
   const generateSequenceNumber = async (type: DocumentType) => {
