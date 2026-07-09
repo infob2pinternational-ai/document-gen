@@ -183,7 +183,7 @@ function App() {
       const rawProfiles = await dbService.getProfiles();
       const profileList = rawProfiles.map(p => {
         if (p.name.toLowerCase().includes('b2p')) {
-          return { ...p, logo_url: '/logo_b2p.png' };
+          return { ...p, logo_url: '/logo_b2p.png?v=3' };
         }
         return p;
       });
