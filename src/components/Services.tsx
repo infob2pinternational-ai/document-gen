@@ -38,12 +38,11 @@ export const Services: React.FC<ServicesProps> = ({
   }, [preloadedServices]);
 
   const fetchServices = async () => {
-    if (!activeProfile) return;
     try {
       if (onRefreshServices) {
         onRefreshServices();
       } else {
-        const data = await dbService.getServices(activeProfile.id);
+        const data = await dbService.getServices();
         setServices(data);
       }
     } catch (err) {

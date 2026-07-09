@@ -208,7 +208,7 @@ function App() {
         const [docs, custs, servs] = await Promise.all([
           dbService.getDocuments(active.id),
           dbService.getCustomers(active.id),
-          dbService.getServices(active.id)
+          dbService.getServices()
         ]);
         setDocuments(docs);
         setCustomers(custs);
@@ -278,7 +278,7 @@ function App() {
       Promise.all([
         dbService.getDocuments(activeProfile.id),
         dbService.getCustomers(activeProfile.id),
-        dbService.getServices(activeProfile.id)
+        dbService.getServices()
       ]).then(([docs, custs, servs]) => {
         setDocuments(docs);
         setCustomers(custs);
@@ -761,7 +761,7 @@ function App() {
                 onRefreshStats={() => loadData(activeProfile?.id)}
                 preloadedServices={services}
                 onRefreshServices={() => {
-                  if (activeProfile) dbService.getServices(activeProfile.id).then(setServices);
+                  dbService.getServices().then(setServices);
                 }}
               />
             )}

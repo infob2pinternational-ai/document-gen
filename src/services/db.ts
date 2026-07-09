@@ -279,14 +279,21 @@ export const dbService = {
   },
 
   // Services
-  async getServices(companyId: string): Promise<Service[]> {
+  async getServices(companyId?: string): Promise<Service[]> {
     if (useCloud() && supabase) {
-      const { data, error } = await supabase.from('services').select('*').eq('company_id', companyId).order('name', { ascending: true });
+      let query = supabase.from('services').select('*');
+      if (companyId) {
+        query = query.eq('company_id', companyId);
+      }
+      const { data, error } = await query.order('name', { ascending: true });
       if (error) throw error;
       return data || [];
     } else {
       const services = getLocal<Service[]>('services', []);
-      return services.filter(s => s.company_id === companyId);
+      if (companyId) {
+        return services.filter(s => s.company_id === companyId);
+      }
+      return services;
     }
   },
 

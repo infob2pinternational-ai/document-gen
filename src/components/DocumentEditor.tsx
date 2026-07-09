@@ -69,7 +69,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       try {
         const [cList, sList] = await Promise.all([
           dbService.getCustomers(activeProfile.id),
-          dbService.getServices(activeProfile.id)
+          dbService.getServices()
         ]);
         setCustomers(cList);
         setServices(sList);
