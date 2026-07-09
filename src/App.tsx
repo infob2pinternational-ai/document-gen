@@ -257,7 +257,24 @@ function App() {
   };
 
   const handleDeleteDocument = async (id: string) => {
+    const docToDelete = documents.find(d => d.id === id);
     try {
+      // Trigger Google Sheets auto-delete notification
+      if (activeProfile && activeProfile.google_sheets_url && docToDelete?.document_number) {
+        const deletePayload = {
+          action: 'delete',
+          document_number: docToDelete.document_number
+        };
+        fetch(activeProfile.google_sheets_url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(deletePayload)
+        }).catch(err => console.error('Failed to notify Google Sheet of deletion:', err));
+      }
+
       await dbService.deleteDocument(id);
       if (activeProfile) {
         const docs = await dbService.getDocuments(activeProfile.id);

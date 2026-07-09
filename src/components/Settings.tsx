@@ -879,6 +879,26 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     
+    // Check if this is a deletion request
+    if (data.action === "delete") {
+      var docNum = data.document_number;
+      var lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+        var range = sheet.getRange(1, 3, lastRow, 1); // Column 3 (C) is Document Number
+        var values = range.getValues();
+        // Search and delete rows matching document number (iterate backwards)
+        for (var i = lastRow - 1; i >= 0; i--) {
+          if (values[i][0] === docNum) {
+            sheet.deleteRow(i + 1);
+          }
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", action: "delete" }))
+        .setMimeType(ContentService.MimeType.JSON)
+        .setHeader("Access-Control-Allow-Origin", "*");
+    }
+    
+    // Setup headers if empty sheet
     if (sheet.getLastRow() === 0) {
       sheet.appendRow([
         "Timestamp", 
@@ -896,11 +916,26 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
       ]);
     }
     
+    // Check if the document already exists in the sheet to prevent duplicates on edit/update
+    var docNum = data.document_number;
+    var lastRow = sheet.getLastRow();
+    var foundRowIndex = -1;
+    if (lastRow > 1) {
+      var range = sheet.getRange(1, 3, lastRow, 1);
+      var values = range.getValues();
+      for (var i = 0; i < lastRow; i++) {
+        if (values[i][0] === docNum) {
+          foundRowIndex = i + 1;
+          break;
+        }
+      }
+    }
+    
     var itemsSummary = data.items.map(function(it) {
       return it.qty + " " + it.unit + " x " + it.description + " (@" + it.rate + ")";
     }).join("; ");
     
-    sheet.appendRow([
+    var rowData = [
       new Date(),
       data.company_name,
       data.document_number,
@@ -913,9 +948,17 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
       data.discount_total,
       data.total,
       itemsSummary
-    ]);
+    ];
     
-    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
+    if (foundRowIndex > -1) {
+      // Update existing row
+      sheet.getRange(foundRowIndex, 1, 1, rowData.length).setValues([rowData]);
+    } else {
+      // Append new row
+      sheet.appendRow(rowData);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", action: "save" }))
       .setMimeType(ContentService.MimeType.JSON)
       .setHeader("Access-Control-Allow-Origin", "*");
   } catch (err) {
