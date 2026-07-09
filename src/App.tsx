@@ -182,8 +182,13 @@ function App() {
     try {
       const rawProfiles = await dbService.getProfiles();
       const profileList = rawProfiles.map(p => {
-        if (p.name.toLowerCase().includes('b2p')) {
-          return { ...p, logo_url: '/billing/logo_b2p.png?v=4' };
+        const lowerName = p.name.toLowerCase();
+        if (lowerName.includes('international')) {
+          return { ...p, logo_url: '/billing/logo_b2p_international.png?v=5' };
+        } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
+          return { ...p, logo_url: '/billing/logo_b2p_intermedia.png?v=5' };
+        } else if (lowerName.includes('b2p')) {
+          return { ...p, logo_url: '/billing/logo_b2p_international.png?v=5' };
         }
         return p;
       });

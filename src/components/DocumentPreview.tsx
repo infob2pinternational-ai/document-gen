@@ -239,6 +239,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           padding: '0', 
           display: 'flex',
           flexDirection: 'column',
+          width: '800px',
           minHeight: '1050px',
           boxSizing: 'border-box',
           background: '#ffffff',
