@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Customer, Service, Document, DocumentItem, DocumentType } from '../types';
 import { dbService } from '../services/db';
-import { ArrowLeft, Plus, Trash2, GripVertical, Save } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Save, Calculator } from 'lucide-react';
 
 interface DocumentEditorProps {
   activeProfile: CompanyProfile | null;
@@ -51,6 +51,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
   // Drag and Drop States
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Calculator States
+  const [activeCalcIndex, setActiveCalcIndex] = useState<number | null>(null);
+  const [calcUnits, setCalcUnits] = useState<number>(1);
+  const [calcUnitLabel, setCalcUnitLabel] = useState<string>('Vehicles');
+  const [calcQty, setCalcQty] = useState<number>(1);
+  const [calcQtyLabel, setCalcQtyLabel] = useState<string>('days');
+  const [calcRate, setCalcRate] = useState<number>(0);
 
   // Load Customers and Services libraries
   useEffect(() => {
@@ -262,6 +270,55 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
     updated[index] = item;
     setItems(updated);
+  };
+
+  const handleOpenCalculator = (index: number) => {
+    const item = items[index];
+    
+    // Parse existing parenthetical multiplier if any (e.g. "(2 Vehicles @ ₹4,000/day)")
+    const match = item.description.match(/\((\d+)\s+([\w\s]+)\s+@\s+₹?([\d,]+)\/(\w+)\)/);
+    
+    if (match) {
+      setCalcUnits(Number(match[1]));
+      setCalcUnitLabel(match[2].trim());
+      setCalcRate(Number(match[3].replace(/,/g, '')));
+      setCalcQtyLabel(match[4].trim() + 's'); // append 's' to restore plural label
+      setCalcQty(item.quantity);
+    } else {
+      // Default initial states
+      setCalcUnits(2);
+      setCalcUnitLabel('Vehicles');
+      setCalcQty(item.quantity || 30);
+      setCalcQtyLabel(item.unit || 'days');
+      setCalcRate(item.rate / 2 || 4000);
+    }
+    setActiveCalcIndex(index);
+  };
+
+  const handleApplyCalculation = () => {
+    if (activeCalcIndex === null) return;
+    
+    const updated = [...items];
+    const item = { ...updated[activeCalcIndex] };
+    
+    // Clean original description from existing parenthetical unit details to avoid duplicates
+    let baseDesc = item.description.replace(/\s*\(\d+\s+[\w\s]+\s+@\s+₹?[\d,]+(\/\w+)?.*\)/g, '').trim();
+    if (!baseDesc) {
+      baseDesc = 'Services';
+    }
+    
+    // Format new description: e.g. "LED Van Advertising (2 Vehicles @ ₹4,000/day)"
+    const formattedDesc = `${baseDesc} (${calcUnits} ${calcUnitLabel} @ ₹${calcRate.toLocaleString('en-IN')}/${calcQtyLabel.replace(/s$/, '')})`;
+    
+    item.description = formattedDesc;
+    item.quantity = calcQty;
+    item.rate = calcUnits * calcRate;
+    item.amount = calcQty * item.rate;
+    item.unit = calcQtyLabel;
+    
+    updated[activeCalcIndex] = item;
+    setItems(updated);
+    setActiveCalcIndex(null);
   };
 
   // Totals calculations
@@ -621,6 +678,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       />
                     </div>
 
+                    {/* Multi-unit calculator helper trigger */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCalculator(idx)}
+                      className="btn-secondary"
+                      style={{ padding: '0.4rem', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      title="Multi-unit Billing Calculator"
+                    >
+                      <Calculator size={14} />
+                    </button>
+
                     {/* GST dropdown */}
                     <div style={{ width: '75px' }}>
                       <select 
@@ -804,6 +872,127 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         </div>
 
       </div>
+
+      {activeCalcIndex !== null && (
+        <div className="modal-overlay">
+          <div className="card animate-scale-up" style={{ width: '100%', maxWidth: '440px', padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: 'var(--shadow-lg)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Calculator size={18} style={{ color: 'var(--accent-primary)' }} />
+                <span>Multi-Unit Calculator</span>
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setActiveCalcIndex(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">Number of Units (e.g. Vehicles / Displays)</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input 
+                  type="number" 
+                  value={calcUnits} 
+                  onChange={(e) => setCalcUnits(Math.max(1, Number(e.target.value)))} 
+                  style={{ flex: 1 }}
+                />
+                <input 
+                  type="text" 
+                  value={calcUnitLabel} 
+                  onChange={(e) => setCalcUnitLabel(e.target.value)} 
+                  placeholder="e.g. Vehicles"
+                  style={{ width: '130px' }}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Duration per Unit (e.g. Days / Hours)</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input 
+                  type="number" 
+                  value={calcQty} 
+                  onChange={(e) => setCalcQty(Math.max(1, Number(e.target.value)))} 
+                  style={{ flex: 1 }}
+                />
+                <input 
+                  type="text" 
+                  value={calcQtyLabel} 
+                  onChange={(e) => setCalcQtyLabel(e.target.value)} 
+                  placeholder="e.g. days"
+                  style={{ width: '130px' }}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Rate per Unit per {calcQtyLabel.replace(/s$/, '') || 'unit'}</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                  {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                </span>
+                <input 
+                  type="number" 
+                  value={calcRate} 
+                  onChange={(e) => setCalcRate(Number(e.target.value))} 
+                  style={{ paddingLeft: '1.75rem' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'var(--bg-input)', 
+              padding: '0.85rem', 
+              borderRadius: 'var(--radius-sm)', 
+              fontSize: '0.85rem',
+              border: '1px solid var(--border-color)'
+            }}>
+              <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: 'var(--text-primary)' }}>Calculation Summary:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Total Quantity:</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{calcQty} {calcQtyLabel}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Combined Rate per {calcQtyLabel.replace(/s$/, '')}:</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                    {(calcUnits * calcRate).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <hr style={{ border: 'none', borderBottom: '1px solid var(--border-color)', margin: '0.25rem 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Total Amount:</span>
+                  <span className="mono" style={{ fontWeight: 800, color: 'var(--accent-primary)' }}>
+                    {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                    {(calcUnits * calcQty * calcRate).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button 
+                type="button"
+                className="btn-secondary" 
+                onClick={() => setActiveCalcIndex(null)}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button"
+                className="btn-primary" 
+                onClick={handleApplyCalculation}
+              >
+                Apply Calculation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
