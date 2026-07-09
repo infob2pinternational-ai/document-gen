@@ -361,7 +361,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{idx + 1}</td>
                   <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.description}</td>
                   <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.quantity}</td>
-                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>{item.unit}</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>
+                    {document.col_name_unit?.toLowerCase().trim() === 'days' || document.col_name_unit?.toLowerCase().trim() === 'day'
+                      ? (item.days || 1)
+                      : item.unit
+                    }
+                  </td>
                   <td className="mono" style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'right' }}>
                     {Number(item.rate).toFixed(2)}
                   </td>

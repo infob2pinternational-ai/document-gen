@@ -102,6 +102,7 @@ export interface DocumentItem {
   service_id?: string;
   description: string;
   quantity: number;
+  days?: number;
   rate: number;
   unit: string;
   hsn_sac?: string;

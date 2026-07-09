@@ -227,6 +227,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       document_id: documentToEdit?.id || '',
       description: '',
       quantity: 1,
+      days: 1,
       rate: 0,
       unit: 'nos',
       gst_percentage: 0,
@@ -259,14 +260,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       (item as any)[field] = value;
     }
 
-    // Recalculate item amount
-    if (field === 'quantity' || field === 'rate') {
-      const q = field === 'quantity' ? Number(value) : item.quantity;
-      const r = field === 'rate' ? Number(value) : item.rate;
-      item.amount = q * r;
-    } else {
-      item.amount = item.quantity * item.rate;
-    }
+    // Recalculate item amount using Qty * Days * Rate
+    const q = field === 'quantity' ? Number(value) : item.quantity;
+    const d = field === 'days' ? Number(value) : (item.days || 1);
+    const r = field === 'rate' ? Number(value) : item.rate;
+    item.amount = q * d * r;
 
     updated[index] = item;
     setItems(updated);
@@ -307,13 +305,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       baseDesc = 'Services';
     }
     
-    // Format new description: e.g. "LED Van Advertising (2 Vehicles @ ₹4,000/day)"
-    const formattedDesc = `${baseDesc} (${calcUnits} ${calcUnitLabel} @ ₹${calcRate.toLocaleString('en-IN')}/${calcQtyLabel.replace(/s$/, '')})`;
-    
-    item.description = formattedDesc;
-    item.quantity = calcQty;
-    item.rate = calcUnits * calcRate;
-    item.amount = calcQty * item.rate;
+    item.description = baseDesc;
+    item.quantity = calcUnits;
+    item.days = calcQty;
+    item.rate = calcRate;
+    item.amount = calcUnits * calcQty * calcRate;
     item.unit = calcQtyLabel;
     
     updated[activeCalcIndex] = item;
@@ -602,7 +598,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       borderRadius: 'var(--radius-sm)',
                       border: '1px solid var(--border-color)',
                       background: 'var(--bg-card)',
-                      minWidth: '820px'
+                      minWidth: '880px'
                     }}
                   >
                     <div style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
@@ -652,6 +648,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                         placeholder="Qty" 
                         value={item.quantity} 
                         onChange={(e) => handleItemChange(idx, 'quantity', Number(e.target.value))}
+                        style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
+                      />
+                    </div>
+
+                    {/* Days Input */}
+                    <div style={{ width: '60px' }}>
+                      <input 
+                        type="number" 
+                        placeholder="Days" 
+                        value={item.days || 1} 
+                        onChange={(e) => handleItemChange(idx, 'days', Number(e.target.value))}
                         style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
                       />
                     </div>
