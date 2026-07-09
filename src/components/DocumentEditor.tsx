@@ -664,6 +664,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                     onDragStart={() => handleDragStart(idx)}
                     onDragOver={handleDragOver}
                     onDrop={() => handleDrop(idx)}
+                    className="editor-line-item"
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -671,8 +672,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       padding: '0.5rem',
                       borderRadius: 'var(--radius-sm)',
                       border: '1px solid var(--border-color)',
-                      background: 'var(--bg-card)',
-                      minWidth: '880px'
+                      background: 'var(--bg-card)'
                     }}
                   >
                     <div style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
