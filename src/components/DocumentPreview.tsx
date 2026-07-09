@@ -262,7 +262,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               <img 
                 src={activeProfile.logo_url} 
                 alt={activeProfile.name} 
-                style={{ maxHeight: '110px', maxWidth: '320px', objectFit: 'contain', alignSelf: 'flex-start' }} 
+                style={{ maxHeight: '160px', maxWidth: '320px', objectFit: 'contain', alignSelf: 'flex-start' }} 
               />
             ) : (
               <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>{activeProfile.name}</h2>
@@ -504,10 +504,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           </div>
 
           {/* Terms info box if present */}
-          {document.terms && (
+          {(document.terms || activeProfile.default_terms) && (
             <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '0.75rem', paddingBottom: '1.5rem', fontSize: '0.75rem', color: '#334155' }}>
-              <strong>PAYMENT INFO:</strong>
-              <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', lineHeight: '1.4' }}>{document.terms}</div>
+              <strong>TERMS & CONDITIONS:</strong>
+              <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', lineHeight: '1.4' }}>
+                {document.terms || activeProfile.default_terms}
+              </div>
             </div>
           )}
 
