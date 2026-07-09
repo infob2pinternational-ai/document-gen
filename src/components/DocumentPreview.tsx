@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { CompanyProfile, Document, DocumentItem } from '../types';
 import { dbService } from '../services/db';
 import { ArrowLeft, Printer, AlertTriangle } from 'lucide-react';
@@ -33,11 +33,14 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     return [address];
   };
 
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasHeight, setCanvasHeight] = useState(1050);
+
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
       if (width < 840) {
-        setScale((width - 32) / 800);
+        setScale(Math.min(1, (width - 36) / 800));
       } else {
         setScale(1);
       }
@@ -46,6 +49,23 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Dynamically observe and measure canvas height to avoid vertical clipping
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvasHeight(canvasRef.current.offsetHeight);
+      
+      const observer = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          if (entry.target) {
+            setCanvasHeight(entry.target.clientHeight);
+          }
+        }
+      });
+      observer.observe(canvasRef.current);
+      return () => observer.disconnect();
+    }
+  }, [items, loading]);
 
   useEffect(() => {
     const fetchDocDetails = async () => {
@@ -210,10 +230,10 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         overflowX: 'hidden',
         display: 'flex',
         justifyContent: 'center',
-        height: scale < 1 ? `${1050 * scale}px` : 'auto'
+        height: scale < 1 ? `${canvasHeight * scale}px` : 'auto'
       }}>
         {/* Printable Sheet Canvas */}
-        <div className="document-canvas" style={{ 
+        <div ref={canvasRef} className="document-canvas" style={{ 
           position: 'relative', 
           padding: '0', 
           display: 'flex',

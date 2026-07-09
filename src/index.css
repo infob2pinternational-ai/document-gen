@@ -509,9 +509,13 @@ tr:last-child td {
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    max-width: 100% !important;
+    width: 100% !important;
+    max-width: 800px !important;
+    height: auto !important;
     min-height: 100% !important;
     overflow: visible !important;
+    transform: none !important;
+    transform-origin: initial !important;
   }
 }
 
