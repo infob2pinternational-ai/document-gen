@@ -131,16 +131,14 @@ export const Customers: React.FC<CustomersProps> = ({
             Add, update, and manage clients details for billing.
           </p>
         </div>
-        {role === 'admin' && (
-          <button 
-            onClick={() => handleOpenModal()} 
-            className="btn-primary"
-            disabled={!activeProfile}
-          >
-            <Plus size={16} />
-            <span>Add Customer</span>
-          </button>
-        )}
+        <button 
+          onClick={() => handleOpenModal()} 
+          className="btn-primary"
+          disabled={!activeProfile}
+        >
+          <Plus size={16} />
+          <span>Add Customer</span>
+        </button>
       </div>
 
       {!activeProfile ? (
@@ -180,7 +178,7 @@ export const Customers: React.FC<CustomersProps> = ({
                     <th>Email Address</th>
                     <th>Phone Number</th>
                     <th>Billing Address</th>
-                    {role === 'admin' && <th style={{ textAlign: 'right' }}>Actions</th>}
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -193,17 +191,17 @@ export const Customers: React.FC<CustomersProps> = ({
                       <td style={{ maxWidth: '300px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                         {cust.address || '-'}
                       </td>
-                      {role === 'admin' && (
-                        <td>
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                            <button
-                              onClick={() => handleOpenModal(cust)}
-                              className="btn-secondary"
-                              style={{ padding: '0.35rem', borderRadius: '4px' }}
-                              title="Edit"
-                            >
-                              <Edit size={14} />
-                            </button>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => handleOpenModal(cust)}
+                            className="btn-secondary"
+                            style={{ padding: '0.35rem', borderRadius: '4px' }}
+                            title="Edit"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          {role === 'admin' && (
                             <button
                               onClick={() => handleDelete(cust.id)}
                               className="btn-secondary"
@@ -212,9 +210,9 @@ export const Customers: React.FC<CustomersProps> = ({
                             >
                               <Trash2 size={14} />
                             </button>
-                          </div>
-                        </td>
-                      )}
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -135,16 +135,14 @@ export const Services: React.FC<ServicesProps> = ({
             Manage pre-saved services and inventories for quick insertion into documents.
           </p>
         </div>
-        {role === 'admin' && (
-          <button 
-            onClick={() => handleOpenModal()} 
-            className="btn-primary"
-            disabled={!activeProfile}
-          >
-            <Plus size={16} />
-            <span>Add Service</span>
-          </button>
-        )}
+        <button 
+          onClick={() => handleOpenModal()} 
+          className="btn-primary"
+          disabled={!activeProfile}
+        >
+          <Plus size={16} />
+          <span>Add Service</span>
+        </button>
       </div>
 
       {!activeProfile ? (
@@ -185,7 +183,7 @@ export const Services: React.FC<ServicesProps> = ({
                     <th>Default Rate</th>
                     <th>Unit</th>
                     <th>GST %</th>
-                    {role === 'admin' && <th style={{ textAlign: 'right' }}>Actions</th>}
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -202,17 +200,17 @@ export const Services: React.FC<ServicesProps> = ({
                       </td>
                       <td style={{ textTransform: 'lowercase' }}>{service.unit}</td>
                       <td className="mono">{service.gst_percentage}%</td>
-                      {role === 'admin' && (
-                        <td>
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                            <button
-                              onClick={() => handleOpenModal(service)}
-                              className="btn-secondary"
-                              style={{ padding: '0.35rem', borderRadius: '4px' }}
-                              title="Edit"
-                            >
-                              <Edit size={14} />
-                            </button>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => handleOpenModal(service)}
+                            className="btn-secondary"
+                            style={{ padding: '0.35rem', borderRadius: '4px' }}
+                            title="Edit"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          {role === 'admin' && (
                             <button
                               onClick={() => handleDelete(service.id)}
                               className="btn-secondary"
@@ -221,9 +219,9 @@ export const Services: React.FC<ServicesProps> = ({
                             >
                               <Trash2 size={14} />
                             </button>
-                          </div>
-                        </td>
-                      )}
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
