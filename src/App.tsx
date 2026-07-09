@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { CompanyProfile, Document } from './types';
+import type { CompanyProfile, Document, Customer, Service } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -16,12 +16,15 @@ function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   
-  // Profiles
+  // Profiles & Loading States
   const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(null);
+  const [profilesLoading, setProfilesLoading] = useState(true);
   
-  // Documents
+  // Data States (Preloaded to prevent tab switching lag)
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   
   // Sub-views
   const [editorOpen, setEditorOpen] = useState(false);
@@ -171,8 +174,9 @@ function App() {
     }
   };
 
-  // Load Company Profiles & Documents
+  // Load Company Profiles, Documents, Customers, and Services in parallel
   const loadData = async (selectNewId?: string) => {
+    setProfilesLoading(true);
     try {
       const profileList = await dbService.getProfiles();
       setProfiles(profileList);
@@ -192,15 +196,25 @@ function App() {
         setActiveProfile(active);
         localStorage.setItem('docgen_active_profile_id', active.id);
         
-        // Fetch docs for active profile
-        const docs = await dbService.getDocuments(active.id);
+        // Fetch docs, customers, and services in parallel to avoid load lag
+        const [docs, custs, servs] = await Promise.all([
+          dbService.getDocuments(active.id),
+          dbService.getCustomers(active.id),
+          dbService.getServices(active.id)
+        ]);
         setDocuments(docs);
+        setCustomers(custs);
+        setServices(servs);
       } else {
         setActiveProfile(null);
         setDocuments([]);
+        setCustomers([]);
+        setServices([]);
       }
     } catch (err) {
       console.error('Error loading application data:', err);
+    } finally {
+      setProfilesLoading(false);
     }
   };
 
@@ -211,10 +225,18 @@ function App() {
     }
   }, [user]);
 
-  // Load documents when active company profile switches
+  // Load documents, customers, and services when active company profile switches
   useEffect(() => {
     if (activeProfile) {
-      dbService.getDocuments(activeProfile.id).then(setDocuments);
+      Promise.all([
+        dbService.getDocuments(activeProfile.id),
+        dbService.getCustomers(activeProfile.id),
+        dbService.getServices(activeProfile.id)
+      ]).then(([docs, custs, servs]) => {
+        setDocuments(docs);
+        setCustomers(custs);
+        setServices(servs);
+      });
     }
   }, [activeProfile]);
 
@@ -348,6 +370,38 @@ function App() {
       <AuthPanel 
         onAuthSuccess={(usr) => setUser(usr)}
       />
+    );
+  }
+
+  // Show a clean loading block if still fetching profiles on startup
+  if (profilesLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#050914',
+        color: '#ffffff',
+        fontFamily: "'Outfit', sans-serif"
+      }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '50%',
+          border: '3px solid rgba(255,255,255,0.1)',
+          borderTopColor: '#2563eb',
+          animation: 'spin 1s linear infinite',
+          marginBottom: '1rem'
+        }} />
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+        <p style={{ fontSize: '0.9rem', fontWeight: 500, color: '#94a3b8' }}>Loading your workspace...</p>
+      </div>
     );
   }
 
@@ -571,6 +625,10 @@ function App() {
                 role={user?.user_metadata?.role || 'admin'}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
+                preloadedCustomers={customers}
+                onRefreshCustomers={() => {
+                  if (activeProfile) dbService.getCustomers(activeProfile.id).then(setCustomers);
+                }}
               />
             )}
 
@@ -579,6 +637,10 @@ function App() {
                 role={user?.user_metadata?.role || 'admin'}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
+                preloadedServices={services}
+                onRefreshServices={() => {
+                  if (activeProfile) dbService.getServices(activeProfile.id).then(setServices);
+                }}
               />
             )}
 

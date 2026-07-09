@@ -7,14 +7,18 @@ interface ServicesProps {
   role: string;
   activeProfile: CompanyProfile | null;
   onRefreshStats: () => void;
+  preloadedServices?: Service[];
+  onRefreshServices?: () => void;
 }
 
 export const Services: React.FC<ServicesProps> = ({
   role,
   activeProfile,
-  onRefreshStats
+  onRefreshStats,
+  preloadedServices = [],
+  onRefreshServices
 }) => {
-  const [services, setServices] = useState<Service[]>([]);
+  const [services, setServices] = useState<Service[]>(preloadedServices);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -28,18 +32,29 @@ export const Services: React.FC<ServicesProps> = ({
   const [gstPercentage, setGstPercentage] = useState<number>(18);
   const [loading, setLoading] = useState(false);
 
+  // Sync state if preloadedServices changes in parent
+  useEffect(() => {
+    setServices(preloadedServices);
+  }, [preloadedServices]);
+
   const fetchServices = async () => {
     if (!activeProfile) return;
     try {
-      const data = await dbService.getServices(activeProfile.id);
-      setServices(data);
+      if (onRefreshServices) {
+        onRefreshServices();
+      } else {
+        const data = await dbService.getServices(activeProfile.id);
+        setServices(data);
+      }
     } catch (err) {
       console.error('Error fetching services:', err);
     }
   };
 
   useEffect(() => {
-    fetchServices();
+    if (preloadedServices.length === 0) {
+      fetchServices();
+    }
   }, [activeProfile]);
 
   const handleOpenModal = (service: Service | null = null) => {

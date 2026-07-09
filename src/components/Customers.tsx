@@ -7,14 +7,18 @@ interface CustomersProps {
   role: string;
   activeProfile: CompanyProfile | null;
   onRefreshStats: () => void;
+  preloadedCustomers?: Customer[];
+  onRefreshCustomers?: () => void;
 }
 
 export const Customers: React.FC<CustomersProps> = ({
   role,
   activeProfile,
-  onRefreshStats
+  onRefreshStats,
+  preloadedCustomers = [],
+  onRefreshCustomers
 }) => {
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>(preloadedCustomers);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -27,18 +31,29 @@ export const Customers: React.FC<CustomersProps> = ({
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Sync state if preloadedCustomers changes in parent
+  useEffect(() => {
+    setCustomers(preloadedCustomers);
+  }, [preloadedCustomers]);
+
   const fetchCustomers = async () => {
     if (!activeProfile) return;
     try {
-      const data = await dbService.getCustomers(activeProfile.id);
-      setCustomers(data);
+      if (onRefreshCustomers) {
+        onRefreshCustomers();
+      } else {
+        const data = await dbService.getCustomers(activeProfile.id);
+        setCustomers(data);
+      }
     } catch (err) {
       console.error('Error fetching customers:', err);
     }
   };
 
   useEffect(() => {
-    fetchCustomers();
+    if (preloadedCustomers.length === 0) {
+      fetchCustomers();
+    }
   }, [activeProfile]);
 
   const handleOpenModal = (customer: Customer | null = null) => {
