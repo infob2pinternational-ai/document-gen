@@ -243,17 +243,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       let prefix = 'INV/';
 
       if (type === 'invoice') {
-        prefix = activeProfile.invoice_prefix;
-        nextSeq = activeProfile.invoice_start_number;
+        prefix = activeProfile.invoice_prefix || 'INV/';
+        nextSeq = Number(activeProfile.invoice_start_number) || 1001;
       } else if (type === 'proforma_invoice') {
-        prefix = activeProfile.proforma_prefix;
-        nextSeq = activeProfile.proforma_start_number;
+        prefix = activeProfile.proforma_prefix || 'PI/';
+        nextSeq = Number(activeProfile.proforma_start_number) || 1001;
       } else if (type === 'quotation') {
-        prefix = activeProfile.quotation_prefix;
-        nextSeq = activeProfile.quotation_start_number;
+        prefix = activeProfile.quotation_prefix || 'QTN/';
+        nextSeq = Number(activeProfile.quotation_start_number) || 1001;
       } else if (type === 'work_order') {
-        prefix = activeProfile.work_order_prefix;
-        nextSeq = activeProfile.work_order_start_number;
+        prefix = activeProfile.work_order_prefix || 'WO/';
+        nextSeq = Number(activeProfile.work_order_start_number) || 1001;
       }
 
       if (matchingDocs.length > 0) {
