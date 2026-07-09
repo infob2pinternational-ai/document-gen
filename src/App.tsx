@@ -243,11 +243,13 @@ function App() {
   // Document management actions
   const handleEditDocument = (doc: Document) => {
     setDocumentToEdit(doc);
+    setCurrentTab('documents');
     setEditorOpen(true);
   };
 
   const handleCreateDocument = () => {
     setDocumentToEdit(null);
+    setCurrentTab('documents');
     setEditorOpen(true);
   };
 
@@ -592,18 +594,8 @@ function App() {
       {/* Main Content viewport */}
       <main className="main-content">
         
-        {/* Editor Screen view */}
-        {editorOpen ? (
-          <DocumentEditor 
-            activeProfile={activeProfile}
-            documentToEdit={documentToEdit}
-            onClose={() => setEditorOpen(false)}
-            onRefreshDocs={() => {
-              if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
-            }}
-          />
-        ) : previewOpen && documentToPreview ? (
-          /* Preview Screen view */
+        {previewOpen && documentToPreview ? (
+          /* Preview Screen view (Global Overlay) */
           <DocumentPreview 
             activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
             document={documentToPreview}
@@ -626,15 +618,26 @@ function App() {
             )}
             
             {currentTab === 'documents' && (
-              <Documents 
-                role={user?.user_metadata?.role || 'admin'}
-                activeProfile={activeProfile}
-                documents={documents}
-                onAddDocument={handleCreateDocument}
-                onEditDocument={handleEditDocument}
-                onViewDocument={handleViewDocument}
-                onDeleteDocument={handleDeleteDocument}
-              />
+              editorOpen ? (
+                <DocumentEditor 
+                  activeProfile={activeProfile}
+                  documentToEdit={documentToEdit}
+                  onClose={() => setEditorOpen(false)}
+                  onRefreshDocs={() => {
+                    if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
+                  }}
+                />
+              ) : (
+                <Documents 
+                  role={user?.user_metadata?.role || 'admin'}
+                  activeProfile={activeProfile}
+                  documents={documents}
+                  onAddDocument={handleCreateDocument}
+                  onEditDocument={handleEditDocument}
+                  onViewDocument={handleViewDocument}
+                  onDeleteDocument={handleDeleteDocument}
+                />
+              )
             )}
 
             {currentTab === 'customers' && (
