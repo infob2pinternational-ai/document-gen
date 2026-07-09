@@ -150,7 +150,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       `Please leave us a review on Google: https://g.page/r/CcC1J3PCvB_BEBM/review`;
 
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, '_blank');
+    window.open(waUrl, 'whatsapp_window');
   };
 
   const getDocTitle = (type: string) => {
