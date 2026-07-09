@@ -617,8 +617,8 @@ function App() {
               />
             )}
             
-            {currentTab === 'documents' && (
-              editorOpen ? (
+            {editorOpen && (
+              <div style={{ display: currentTab === 'documents' ? 'block' : 'none' }}>
                 <DocumentEditor 
                   activeProfile={activeProfile}
                   documentToEdit={documentToEdit}
@@ -627,17 +627,19 @@ function App() {
                     if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
                   }}
                 />
-              ) : (
-                <Documents 
-                  role={user?.user_metadata?.role || 'admin'}
-                  activeProfile={activeProfile}
-                  documents={documents}
-                  onAddDocument={handleCreateDocument}
-                  onEditDocument={handleEditDocument}
-                  onViewDocument={handleViewDocument}
-                  onDeleteDocument={handleDeleteDocument}
-                />
-              )
+              </div>
+            )}
+
+            {currentTab === 'documents' && !editorOpen && (
+              <Documents 
+                role={user?.user_metadata?.role || 'admin'}
+                activeProfile={activeProfile}
+                documents={documents}
+                onAddDocument={handleCreateDocument}
+                onEditDocument={handleEditDocument}
+                onViewDocument={handleViewDocument}
+                onDeleteDocument={handleDeleteDocument}
+              />
             )}
 
             {currentTab === 'customers' && (
