@@ -22,6 +22,17 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(propProfile);
   const [scale, setScale] = useState(1);
 
+  const getAddressLines = (address: string) => {
+    if (!address) return [];
+    if (address.includes('\n')) {
+      return address.split('\n').map(line => line.trim()).filter(Boolean);
+    }
+    if (address.includes(',')) {
+      return address.split(',').map(line => line.trim()).filter(Boolean);
+    }
+    return [address];
+  };
+
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
@@ -268,7 +279,13 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>{activeProfile.name}</h2>
             )}
             <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: '1.4', marginTop: '0.25rem' }}>
-              <p style={{ margin: '0 0 2px 0', whiteSpace: 'pre-wrap' }}>{activeProfile.address}</p>
+              {activeProfile.address ? (
+                getAddressLines(activeProfile.address).map((line, idx, arr) => (
+                  <p key={idx} style={{ margin: '0 0 2px 0' }}>
+                    {line}{idx < arr.length - 1 ? ',' : ''}
+                  </p>
+                ))
+              ) : null}
               {activeProfile.phone && <p style={{ margin: '0 0 2px 0' }}>Phone: {activeProfile.phone}</p>}
               {activeProfile.email && <p style={{ margin: '0 0 2px 0' }}>Email: {activeProfile.email}</p>}
               {activeProfile.website && <p style={{ margin: 0 }}>Web: {activeProfile.website}</p>}
