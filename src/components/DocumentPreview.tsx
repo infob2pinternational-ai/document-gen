@@ -76,8 +76,18 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         if (!profileToUse) {
           const prof = await dbService.getProfileById(document.company_id);
           if (prof) {
-            setActiveProfile(prof);
-            profileToUse = prof;
+            const lowerName = prof.name.toLowerCase();
+            let mappedLogo = prof.logo_url;
+            if (lowerName.includes('international')) {
+              mappedLogo = '/billing/logo_b2p_international.png?v=5';
+            } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
+              mappedLogo = '/billing/logo_b2p_intermedia.png?v=5';
+            } else if (lowerName.includes('b2p')) {
+              mappedLogo = '/billing/logo_b2p_international.png?v=5';
+            }
+            const mappedProf = { ...prof, logo_url: mappedLogo };
+            setActiveProfile(mappedProf);
+            profileToUse = mappedProf;
           }
         }
 
