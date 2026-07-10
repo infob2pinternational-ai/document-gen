@@ -77,15 +77,15 @@ function App() {
     }
     
     if (viewId) {
-      console.log('App: Public view detected for ID:', viewId);
+      if (import.meta.env.DEV) console.log('App: Public view detected for ID:', viewId);
       setPublicViewDocId(viewId);
       setPublicViewLoading(true);
       dbService.getDocumentById(viewId).then((res) => {
         if (res) {
-          console.log('App: Public view document loaded successfully by ID:', res.document);
+          if (import.meta.env.DEV) console.log('App: Public view document loaded successfully by ID:', res.document);
           setPublicViewDoc(res.document);
         } else {
-          console.log('App: Public view document not found');
+          if (import.meta.env.DEV) console.log('App: Public view document not found');
         }
         setPublicViewLoading(false);
       }).catch((err) => {
@@ -93,15 +93,15 @@ function App() {
         setPublicViewLoading(false);
       });
     } else if (docNumber) {
-      console.log('App: Public view detected for Document Number:', docNumber);
+      if (import.meta.env.DEV) console.log('App: Public view detected for Document Number:', docNumber);
       setPublicViewLoading(true);
       dbService.getDocumentByNumber(docNumber).then((res) => {
         if (res) {
-          console.log('App: Public view document loaded successfully by Number:', res.document);
+          if (import.meta.env.DEV) console.log('App: Public view document loaded successfully by Number:', res.document);
           setPublicViewDocId(res.document.id);
           setPublicViewDoc(res.document);
         } else {
-          console.log('App: Public view document not found by Number');
+          if (import.meta.env.DEV) console.log('App: Public view document not found by Number');
         }
         setPublicViewLoading(false);
       }).catch((err) => {
@@ -157,6 +157,32 @@ function App() {
     setActiveProfile(null);
     setDocuments([]);
   };
+
+  // Auto-expire inactive cloud sessions: if a logged-in user leaves the
+  // tab idle for 30 minutes, sign them out so a shared/unattended device
+  // doesn't leave a company's billing data open indefinitely. Local
+  // (non-cloud) sandbox usage is unaffected.
+  useEffect(() => {
+    if (!user) return;
+    const IDLE_LIMIT_MS = 30 * 60 * 1000;
+    let idleTimer: ReturnType<typeof setTimeout>;
+
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        handleLogout();
+      }, IDLE_LIMIT_MS);
+    };
+
+    const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    activityEvents.forEach(evt => window.addEventListener(evt, resetIdleTimer));
+    resetIdleTimer();
+
+    return () => {
+      clearTimeout(idleTimer);
+      activityEvents.forEach(evt => window.removeEventListener(evt, resetIdleTimer));
+    };
+  }, [user]);
 
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -133,12 +133,70 @@ CREATE TABLE document_items (
   sort_order INT NOT NULL DEFAULT 0
 );
 
--- Disable Row Level Security (RLS) to ensure immediate insert access
-ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
-ALTER TABLE customers DISABLE ROW LEVEL SECURITY;
-ALTER TABLE services DISABLE ROW LEVEL SECURITY;
-ALTER TABLE documents DISABLE ROW LEVEL SECURITY;
-ALTER TABLE document_items DISABLE ROW LEVEL SECURITY;`;
+-- =====================================================================
+-- Row Level Security (RLS)
+-- Every table is tenant-scoped by the owning auth.users row (user_id).
+-- Without this, the public 'anon' API key (shipped to every browser and
+-- to the /api/doc share-link function) can read and write ALL
+-- customers' data. Documents/document_items also get a narrow
+-- "public read" policy so that shareable WhatsApp document links keep
+-- working for anonymous visitors, but only SELECT, never write.
+-- =====================================================================
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_items ENABLE ROW LEVEL SECURITY;
+
+-- profiles: owner has full write access; anyone may read (needed so a
+-- public document-view page can show the issuing company's name/logo)
+CREATE POLICY profiles_select_public ON profiles
+  FOR SELECT USING (true);
+CREATE POLICY profiles_owner_insert ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY profiles_owner_update ON profiles
+  FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY profiles_owner_delete ON profiles
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- customers: private to the owning user only (never public)
+CREATE POLICY customers_owner_all ON customers
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- services: private to the owning user only
+CREATE POLICY services_owner_all ON services
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- documents: public read (for shareable /doc/:id and /q/:number links),
+-- writes restricted to the owner
+CREATE POLICY documents_select_public ON documents
+  FOR SELECT USING (true);
+CREATE POLICY documents_owner_insert ON documents
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY documents_owner_update ON documents
+  FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY documents_owner_delete ON documents
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- document_items: public read (line items shown on the public doc view),
+-- writes restricted to whoever owns the parent document
+CREATE POLICY document_items_select_public ON document_items
+  FOR SELECT USING (true);
+CREATE POLICY document_items_owner_insert ON document_items
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
+  );
+CREATE POLICY document_items_owner_update ON document_items
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
+  ) WITH CHECK (
+    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
+  );
+CREATE POLICY document_items_owner_delete ON document_items
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
+  );`;
 
 // Helper to check if we should write to local storage or supabase
 const useCloud = (): boolean => {
@@ -361,7 +419,7 @@ export const dbService = {
         const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
         if (!error && data) return data;
       } catch (err) {
-        console.log('dbService: Supabase fetch failed in getProfileById:', err);
+        if (import.meta.env.DEV) console.log('dbService: Supabase fetch failed in getProfileById:', err);
       }
     }
     const profiles = getLocal<CompanyProfile[]>('profiles', []);
@@ -369,7 +427,7 @@ export const dbService = {
   },
 
   async getDocumentByNumber(docNumber: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
-    console.log('dbService: getDocumentByNumber called with:', docNumber);
+    if (import.meta.env.DEV) console.log('dbService: getDocumentByNumber called with:', docNumber);
     if (supabase) {
       try {
         const cleanNum = docNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -388,7 +446,7 @@ export const dbService = {
           }
         }
       } catch (err) {
-        console.log('dbService: Supabase fetch failed in getDocumentByNumber:', err);
+        if (import.meta.env.DEV) console.log('dbService: Supabase fetch failed in getDocumentByNumber:', err);
       }
     }
     const docs = getLocal<Document[]>('documents', []);
@@ -403,7 +461,7 @@ export const dbService = {
   },
 
   async getDocumentById(id: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
-    console.log('dbService: getDocumentById called with ID:', id);
+    if (import.meta.env.DEV) console.log('dbService: getDocumentById called with ID:', id);
     if (supabase) {
       try {
         const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
@@ -414,24 +472,24 @@ export const dbService = {
             .eq('document_id', id)
             .order('sort_order', { ascending: true });
           if (!itemsError) {
-            console.log('dbService: Supabase returned document and items successfully');
+            if (import.meta.env.DEV) console.log('dbService: Supabase returned document and items successfully');
             return { document, items: items || [] };
           }
         }
       } catch (err) {
-        console.log('dbService: Supabase fetch failed in getDocumentById, falling back to local:', err);
+        if (import.meta.env.DEV) console.log('dbService: Supabase fetch failed in getDocumentById, falling back to local:', err);
       }
     }
     const docs = getLocal<Document[]>('documents', []);
     const doc = docs.find(d => d.id === id);
       if (!doc) {
-        console.log('dbService: Local Document not found for ID:', id);
+        if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
         return null;
       }
       const items = getLocal<DocumentItem[]>('document_items', []);
       const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
-      console.log('dbService: LocalStorage returned document:', doc);
-      console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
+      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
+      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
       return { document: doc, items: docItems };
   },
 
