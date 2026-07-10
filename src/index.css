@@ -1,26 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 :root {
-  /* Curator-designed Light Theme (Slate, Indigo & Violet) - Glassmorphism Edition */
-  --bg-canvas: #f1f5f9;
-  --bg-sidebar: rgba(255, 255, 255, 0.45);
-  --bg-card: rgba(255, 255, 255, 0.45);
-  --bg-input: rgba(241, 245, 249, 0.6);
-  --bg-input-hover: rgba(226, 232, 240, 0.8);
-  --border-color: rgba(255, 255, 255, 0.45);
-  --text-primary: #0f172a;
+  /* Curator-designed Light Theme (Cream, Lite Blue & Orange) - Glassmorphism Edition */
+  --bg-canvas: #fcfaf6;
+  --bg-sidebar: rgba(255, 253, 250, 0.45);
+  --bg-card: rgba(255, 253, 250, 0.55);
+  --bg-input: rgba(240, 246, 252, 0.6);
+  --bg-input-hover: rgba(224, 239, 254, 0.8);
+  --border-color: rgba(255, 255, 255, 0.5);
+  --text-primary: #1e293b;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
   
-  --accent-primary: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-success: #10b981;
-  --accent-warning: #f59e0b;
-  --accent-danger: #ef4444;
+  --accent-primary: #ea580c; /* Warm Orange Accent */
+  --accent-hover: #c2410c;
+  --accent-success: #0d9488; /* Teal Success */
+  --accent-warning: #ea580c;
+  --accent-danger: #e11d48;
   
-  --shadow-sm: 0 4px 12px rgba(31, 38, 135, 0.03);
-  --shadow-md: 0 8px 32px 0 rgba(31, 38, 135, 0.06), 0 2px 10px rgba(0, 0, 0, 0.02);
-  --shadow-lg: 0 20px 40px rgba(31, 38, 135, 0.08), 0 8px 24px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 4px 12px rgba(234, 88, 12, 0.02);
+  --shadow-md: 0 8px 32px 0 rgba(14, 165, 233, 0.05), 0 2px 10px rgba(0, 0, 0, 0.02);
+  --shadow-lg: 0 20px 40px rgba(14, 165, 233, 0.08), 0 8px 24px rgba(0, 0, 0, 0.03);
   --shadow-canvas: 0 20px 50px rgba(15, 23, 42, 0.05);
   
   --radius-sm: 8px;
@@ -29,32 +29,32 @@
   
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --bg-app-gradient: linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%);
+  --bg-app-gradient: linear-gradient(135deg, #fdfbf7 0%, #e0f2fe 100%); /* Cream to Lite Blue */
 }
 
 [data-theme="dark"] {
-  /* Curator-designed Dark Theme (Obsidian & Glowing Indigo) - Glassmorphism Edition */
-  --bg-canvas: #090d16;
-  --bg-sidebar: rgba(13, 19, 33, 0.45);
-  --bg-card: rgba(13, 19, 33, 0.45);
-  --bg-input: rgba(21, 30, 51, 0.6);
-  --bg-input-hover: rgba(30, 41, 66, 0.8);
+  /* Curator-designed Dark Theme (Obsidian, Ice Blue & Deep Orange) - Glassmorphism Edition */
+  --bg-canvas: #0a0e17;
+  --bg-sidebar: rgba(15, 23, 42, 0.45);
+  --bg-card: rgba(15, 23, 42, 0.45);
+  --bg-input: rgba(30, 41, 59, 0.6);
+  --bg-input-hover: rgba(51, 65, 85, 0.8);
   --border-color: rgba(255, 255, 255, 0.08);
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #475569;
   
-  --accent-primary: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-success: #34d399;
-  --accent-warning: #fbbf24;
-  --accent-danger: #f87171;
+  --accent-primary: #f97316; /* Vibrant Orange */
+  --accent-hover: #fb923c;
+  --accent-success: #2dd4bf;
+  --accent-warning: #f59e0b;
+  --accent-danger: #fb7185;
   
   --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 8px 32px 0 rgba(0, 0, 0, 0.4), 0 4px 12px rgba(99, 102, 241, 0.04);
   --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.5), 0 10px 20px rgba(99, 102, 241, 0.06);
   --shadow-canvas: 0 25px 60px rgba(0, 0, 0, 0.6);
-  --bg-app-gradient: linear-gradient(135deg, #090d16 0%, #030712 100%);
+  --bg-app-gradient: linear-gradient(135deg, #090d16 0%, #1a1008 100%);
 }
 
 * {
