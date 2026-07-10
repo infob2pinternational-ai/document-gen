@@ -230,36 +230,38 @@ export const Services: React.FC<ServicesProps> = ({
       {/* Edit/Add Modal */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal-content animate-fade-in">
-            <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '720px', padding: '1.25rem' }}>
+            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
               {editingService ? 'Edit Saved Service' : 'Add New Service'}
             </h3>
             
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="s-name">Service/Inventory Name *</label>
-                <input
-                  id="s-name"
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Website Development Consulting"
-                />
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div className="grid-2" style={{ gap: '0.75rem' }}>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="s-name">Service Name *</label>
+                  <input
+                    id="s-name"
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Website Development"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="s-desc">Description</label>
+                  <input
+                    id="s-desc"
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="e.g. Scope of work..."
+                  />
+                </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="s-desc">Description</label>
-                <textarea
-                  id="s-desc"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Detailed breakdown of work scope..."
-                  rows={2}
-                />
-              </div>
-
-              <div className="grid-4-compact">
+              <div className="grid-4-compact" style={{ gap: '0.75rem' }}>
                 <div className="form-group">
                   <label className="form-label" htmlFor="s-rate">Rate ({activeProfile?.currency}) *</label>
                   <input
@@ -309,7 +311,7 @@ export const Services: React.FC<ServicesProps> = ({
                 </div>
               </div>
 
-              <div className="btn-row" style={{ marginTop: '1rem' }}>
+              <div className="btn-row" style={{ marginTop: '0.5rem' }}>
                 <button 
                   type="button" 
                   onClick={() => setShowModal(false)} 
