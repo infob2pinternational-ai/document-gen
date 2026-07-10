@@ -255,13 +255,13 @@ export const Services: React.FC<ServicesProps> = ({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Detailed breakdown of work scope..."
-                  rows={3}
+                  rows={2}
                 />
               </div>
 
-              <div className="grid-2">
+              <div className="grid-4-compact">
                 <div className="form-group">
-                  <label className="form-label" htmlFor="s-rate">Default Rate ({activeProfile?.currency}) *</label>
+                  <label className="form-label" htmlFor="s-rate">Rate ({activeProfile?.currency}) *</label>
                   <input
                     id="s-rate"
                     type="number"
@@ -280,33 +280,30 @@ export const Services: React.FC<ServicesProps> = ({
                     required
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
-                    placeholder="e.g. hrs, nos, sets, days"
+                    placeholder="e.g. nos"
                   />
                 </div>
-              </div>
-
-              <div className="grid-2">
                 <div className="form-group">
-                  <label className="form-label" htmlFor="s-hsn">HSN/SAC Code (Optional)</label>
+                  <label className="form-label" htmlFor="s-hsn">HSN/SAC</label>
                   <input
                     id="s-hsn"
                     type="text"
                     value={hsnSac}
                     onChange={(e) => setHsnSac(e.target.value)}
-                    placeholder="e.g. 998313"
+                    placeholder="998313"
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label" htmlFor="s-gst">GST Percentage (%)</label>
+                  <label className="form-label" htmlFor="s-gst">GST %</label>
                   <select
                     id="s-gst"
                     value={gstPercentage}
                     onChange={(e) => setGstPercentage(Number(e.target.value))}
                   >
-                    <option value={0}>0% (Exempt)</option>
+                    <option value={0}>0%</option>
                     <option value={5}>5%</option>
                     <option value={12}>12%</option>
-                    <option value={18}>18% (Standard)</option>
+                    <option value={18}>18%</option>
                     <option value={28}>28%</option>
                   </select>
                 </div>
