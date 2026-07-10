@@ -669,6 +669,10 @@ tr:last-child td {
   box-shadow: var(--shadow-lg);
   margin-top: 2rem;
   margin-bottom: 2rem;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Document Editor Responsive Layout */
