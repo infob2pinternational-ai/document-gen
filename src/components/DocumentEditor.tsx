@@ -1055,7 +1055,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+            <div className="btn-row" style={{ marginTop: '0.25rem' }}>
               <button 
                 type="button"
                 className="btn-secondary" 

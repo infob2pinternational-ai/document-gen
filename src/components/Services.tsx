@@ -127,7 +127,7 @@ export const Services: React.FC<ServicesProps> = ({
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.25rem' }}>Services Library</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
@@ -153,20 +153,13 @@ export const Services: React.FC<ServicesProps> = ({
       ) : (
         <>
           {/* Search Controls */}
-          <div style={{ position: 'relative', maxWidth: '360px' }}>
-            <Search size={18} style={{
-              position: 'absolute',
-              left: '0.875rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)'
-            }} />
+          <div className="search-box" style={{ maxWidth: '360px' }}>
+            <Search size={18} />
             <input
               type="text"
               placeholder="Search by name, description, HSN..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ paddingLeft: '2.5rem' }}
             />
           </div>
 
@@ -188,18 +181,18 @@ export const Services: React.FC<ServicesProps> = ({
                 <tbody>
                   {filteredServices.map(service => (
                     <tr key={service.id}>
-                      <td style={{ fontWeight: 600 }}>{service.name}</td>
-                      <td style={{ color: 'var(--text-secondary)', maxWidth: '280px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                      <td data-label="Service Name" style={{ fontWeight: 600 }}>{service.name}</td>
+                      <td data-label="Description" style={{ color: 'var(--text-secondary)', maxWidth: '280px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                         {service.description || '-'}
                       </td>
-                      <td className="mono">{service.hsn_sac || '-'}</td>
-                      <td className="mono" style={{ fontWeight: 500 }}>
+                      <td className="mono" data-label="HSN/SAC">{service.hsn_sac || '-'}</td>
+                      <td className="mono" data-label="Default Rate" style={{ fontWeight: 500 }}>
                         {activeProfile.currency === 'INR' ? '₹' : '$'}
                         {service.default_rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
-                      <td style={{ textTransform: 'lowercase' }}>{service.unit}</td>
-                      <td className="mono">{service.gst_percentage}%</td>
-                      <td>
+                      <td data-label="Unit" style={{ textTransform: 'lowercase' }}>{service.unit}</td>
+                      <td className="mono" data-label="GST %">{service.gst_percentage}%</td>
+                      <td data-label="Actions">
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                           <button
                             onClick={() => handleOpenModal(service)}
@@ -319,7 +312,7 @@ export const Services: React.FC<ServicesProps> = ({
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <div className="btn-row" style={{ marginTop: '1rem' }}>
                 <button 
                   type="button" 
                   onClick={() => setShowModal(false)} 

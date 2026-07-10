@@ -157,7 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="dropdown-item"
               >
                 {p.logo_url ? (
-                  <img src={p.logo_url} alt="Logo" style={{ width: '20px', height: '20px', borderRadius: '2px', objectFit: 'cover' }} />
+                  <img src={p.logo_url} alt="Logo" loading="lazy" style={{ width: '20px', height: '20px', borderRadius: '2px', objectFit: 'cover' }} />
                 ) : (
                   <div style={{
                     width: '20px',

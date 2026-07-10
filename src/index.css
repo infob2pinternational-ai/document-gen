@@ -1,5 +1,60 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
+/* ============================================================
+   Global mobile-safety base rules
+   ============================================================ */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+#root {
+  overflow-x: hidden;
+}
+
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+button, a, [role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Visible focus states for keyboard/screen-reader users */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion preference & tone down/disable animations */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Lighter, faster animations on small/mobile devices */
+@media (max-width: 640px) {
+  :root {
+    --transition-fast: 0.12s ease;
+    --transition-normal: 0.18s ease;
+  }
+}
+
 :root {
   /* Curator-designed Light Theme (Cream, Lite Blue & Orange) - Glassmorphism Edition */
   --bg-canvas: #fcfaf6;
@@ -239,6 +294,13 @@ h1, h2, h3, h4, h5, h6 {
   }
   .mobile-only-display {
     display: flex !important;
+  }
+  .mobile-header button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .nav-link {
+    min-height: 44px;
   }
 }
 
@@ -766,5 +828,354 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb,
     order: 4 !important;
     width: auto !important;
     flex-grow: 0 !important;
+  }
+}
+
+/* ============================================================
+   Page header (title + primary action button) utility
+   ============================================================ */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .page-header > button,
+  .page-header > .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ============================================================
+   Filters row (search box + select filters) utility
+   ============================================================ */
+.filters-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .filters-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filters-row > * {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Search input with icon wrapper */
+.search-box {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+}
+
+.search-box input {
+  padding-left: 2.5rem;
+}
+
+.search-box svg {
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .search-box {
+    max-width: 100%;
+  }
+}
+
+/* Fixed-width filter/select dropdowns */
+.filter-select {
+  width: 180px;
+}
+
+@media (max-width: 640px) {
+  .filter-select {
+    width: 100%;
+  }
+}
+
+/* ============================================================
+   Generic button row (modal/form footer actions) utility
+   ============================================================ */
+.btn-row {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .btn-row {
+    flex-direction: column;
+  }
+  .btn-row > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ============================================================
+   Settings tab bar - horizontally scrollable on mobile
+   ============================================================ */
+.settings-tabs {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.settings-tabs button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .settings-tabs {
+    gap: 0.5rem !important;
+  }
+}
+
+/* ============================================================
+   5-column grid (Settings column-renaming section)
+   ============================================================ */
+.grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .grid-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 400px) {
+  .grid-5 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
+   Dashboard two-column layout (main table + side panel)
+   ============================================================ */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+/* ============================================================
+   Touch target sizing for compact icon buttons inside tables
+   ============================================================ */
+@media (max-width: 640px) {
+  .table-container td button,
+  .table-actions button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0.5rem !important;
+  }
+}
+
+/* ============================================================
+   Responsive tables -> stacked cards on small screens
+   Scoped to .table-container so the printable document-canvas
+   invoice table (rendered separately) is never affected.
+   ============================================================ */
+@media (max-width: 640px) {
+  .table-container {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .table-container table,
+  .table-container thead,
+  .table-container tbody,
+  .table-container th,
+  .table-container td,
+  .table-container tr {
+    display: block;
+    width: 100%;
+  }
+
+  .table-container thead {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+  }
+
+  .table-container tbody tr {
+    margin-bottom: 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-card);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    box-shadow: var(--shadow-sm);
+    padding: 0.5rem 0.25rem;
+    overflow: hidden;
+  }
+
+  .table-container tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .table-container td {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    text-align: right;
+    gap: 0.75rem;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+    min-height: 2.25rem;
+    max-width: none !important;
+    white-space: normal !important;
+  }
+
+  .table-container td:last-child {
+    border-bottom: none;
+  }
+
+  .table-container td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    margin-right: auto;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+  }
+
+  /* Cells without a meaningful label (e.g. actions) get no pseudo-label */
+  .table-container td[data-label=""]::before,
+  .table-container td:not([data-label])::before {
+    content: none;
+  }
+
+  .table-container td[data-label="Actions"] {
+    justify-content: flex-start;
+  }
+
+  .table-container td[data-label="Actions"]::before {
+    content: none;
+  }
+
+  .table-container td[data-label="Actions"] > div {
+    width: 100%;
+    justify-content: flex-start !important;
+    flex-wrap: wrap;
+  }
+}
+
+/* ============================================================
+   Modals: near-full-screen on mobile, scroll correctly
+   ============================================================ */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .modal-overlay > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: var(--radius-md) !important;
+    margin: 0.5rem 0 !important;
+    max-height: calc(100vh - 1rem);
+    overflow-y: auto;
+    padding: 1.25rem !important;
+  }
+}
+
+/* ============================================================
+   Document preview action bar - wrap gracefully on small screens
+   ============================================================ */
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .preview-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+  .preview-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ============================================================
+   KPI / stat card grids - tighten spacing at narrow widths
+   ============================================================ */
+@media (max-width: 480px) {
+  .grid-4 .card,
+  .grid-3 .card,
+  .grid-2 .card {
+    padding: 1rem;
+  }
+}
+
+/* ============================================================
+   Draft restore banner - stack on small screens
+   ============================================================ */
+@media (max-width: 480px) {
+  .draft-banner {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  .draft-banner > div {
+    width: 100%;
+  }
+  .draft-banner > div > button {
+    flex: 1;
+  }
+}
+@media (max-width: 480px) {
+  h1 {
+    font-size: 1.5rem !important;
+  }
+  h2 {
+    font-size: 1.15rem !important;
   }
 }

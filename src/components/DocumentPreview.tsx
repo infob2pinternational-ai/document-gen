@@ -203,11 +203,13 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         display: 'flex',
         justifyContent: isPublicShare ? 'center' : 'space-between',
         alignItems: 'center',
+        flexWrap: 'wrap',
         background: 'var(--bg-card)',
         padding: '1rem 1.5rem',
         borderRadius: 'var(--radius-md)',
         border: '1px solid var(--border-color)',
-        width: '100%'
+        width: '100%',
+        gap: '0.75rem'
       }}>
         {!isPublicShare && (
           <button onClick={onClose} className="btn-secondary">
@@ -215,7 +217,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             <span>Back to List</span>
           </button>
         )}
-        <div style={{ display: 'flex', gap: '0.75rem', width: isPublicShare ? '100%' : 'auto', justifyContent: 'center' }}>
+        <div className="preview-actions" style={{ width: isPublicShare ? '100%' : 'auto', justifyContent: 'center' }}>
           {document.customer_phone && !isPublicShare && (
             <button onClick={handleWhatsAppSend} className="btn-secondary" style={{ color: '#25D366', borderColor: '#25D366' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '6px' }}>
@@ -276,6 +278,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             <img 
               src={activeProfile.logo_url} 
               alt="Watermark" 
+              loading="lazy"
               style={{
                 width: '100%',
                 height: '100%',
@@ -527,6 +530,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 <img 
                   src={activeProfile.seal_url} 
                   alt="Seal/Stamp" 
+                  loading="lazy"
                   style={{
                     position: 'absolute',
                     left: '50%',

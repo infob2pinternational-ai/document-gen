@@ -124,7 +124,7 @@ export const Customers: React.FC<CustomersProps> = ({
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.25rem' }}>Customers CRM</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
@@ -150,20 +150,13 @@ export const Customers: React.FC<CustomersProps> = ({
       ) : (
         <>
           {/* Search Controls */}
-          <div style={{ position: 'relative', maxWidth: '360px' }}>
-            <Search size={18} style={{
-              position: 'absolute',
-              left: '0.875rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)'
-            }} />
+          <div className="search-box" style={{ maxWidth: '360px' }}>
+            <Search size={18} />
             <input
               type="text"
               placeholder="Search by name, email, GSTIN..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ paddingLeft: '2.5rem' }}
             />
           </div>
 
@@ -184,14 +177,14 @@ export const Customers: React.FC<CustomersProps> = ({
                 <tbody>
                   {filteredCustomers.map(cust => (
                     <tr key={cust.id}>
-                      <td style={{ fontWeight: 600 }}>{cust.name}</td>
-                      <td className="mono">{cust.gstin || '-'}</td>
-                      <td>{cust.email || '-'}</td>
-                      <td>{cust.phone || '-'}</td>
-                      <td style={{ maxWidth: '300px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                      <td data-label="Customer Name" style={{ fontWeight: 600 }}>{cust.name}</td>
+                      <td className="mono" data-label="GSTIN">{cust.gstin || '-'}</td>
+                      <td data-label="Email Address">{cust.email || '-'}</td>
+                      <td data-label="Phone Number">{cust.phone || '-'}</td>
+                      <td data-label="Billing Address" style={{ maxWidth: '300px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                         {cust.address || '-'}
                       </td>
-                      <td>
+                      <td data-label="Actions">
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                           <button
                             onClick={() => handleOpenModal(cust)}
@@ -292,7 +285,7 @@ export const Customers: React.FC<CustomersProps> = ({
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <div className="btn-row" style={{ marginTop: '1rem' }}>
                 <button 
                   type="button" 
                   onClick={() => setShowModal(false)} 

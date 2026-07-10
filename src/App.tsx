@@ -647,13 +647,15 @@ function App() {
       <main className="main-content">
         
         {hasDraft && !editorOpen && !previewOpen && (
-          <div style={{
+          <div className="draft-banner" style={{
             background: 'var(--accent-primary)',
             color: '#fff',
             padding: '0.85rem 1.25rem',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
             fontSize: '0.85rem',
             borderRadius: 'var(--radius-sm)',
             margin: '0 0 1rem 0',
@@ -816,7 +818,7 @@ function App() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <div className="btn-row" style={{ marginTop: '1rem' }}>
                 <button type="button" onClick={() => setShowAddProfileModal(false)} className="btn-secondary">
                   Cancel
                 </button>
@@ -851,7 +853,7 @@ function App() {
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <div className="btn-row" style={{ marginTop: '1rem' }}>
                 <button
                   type="button"
                   className="btn-secondary"

@@ -37,7 +37,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.25rem' }}>Documents Repository</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
@@ -63,28 +63,15 @@ export const Documents: React.FC<DocumentsProps> = ({
       ) : (
         <>
           {/* Filters Area */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
+          <div className="filters-row">
             {/* Search */}
-            <div style={{ position: 'relative', width: '320px' }}>
-              <Search size={18} style={{
-                position: 'absolute',
-                left: '0.875rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--text-muted)'
-              }} />
+            <div className="search-box" style={{ maxWidth: '320px' }}>
+              <Search size={18} />
               <input
                 type="text"
                 placeholder="Search by doc number, customer..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ paddingLeft: '2.5rem' }}
               />
             </div>
 
@@ -92,6 +79,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
+              className="filter-select"
               style={{ width: '200px' }}
             >
               <option value="all">All Documents</option>
@@ -120,17 +108,17 @@ export const Documents: React.FC<DocumentsProps> = ({
                   {filteredDocs.map(doc => {
                     return (
                       <tr key={doc.id}>
-                        <td className="mono" style={{ fontWeight: 600 }}>{doc.document_number}</td>
-                        <td>{doc.date ? doc.date.split('-').reverse().join('/') : ''}</td>
-                        <td>{doc.customer_name}</td>
-                        <td style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
+                        <td className="mono" data-label="Doc Number" style={{ fontWeight: 600 }}>{doc.document_number}</td>
+                        <td data-label="Date">{doc.date ? doc.date.split('-').reverse().join('/') : ''}</td>
+                        <td data-label="Customer Name">{doc.customer_name}</td>
+                        <td data-label="Document Type" style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
                           {doc.document_type.replace('_', ' ')}
                         </td>
-                        <td className="mono" style={{ fontWeight: 600 }}>
+                        <td className="mono" data-label="Total Amount" style={{ fontWeight: 600 }}>
                           {activeProfile.currency === 'INR' ? '₹' : '$'}
                           {doc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
-                        <td>
+                        <td data-label="Actions">
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                             {doc.customer_phone && (
                               <button

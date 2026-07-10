@@ -196,44 +196,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Main Dashboard Panels */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 320px',
-        gap: '2rem',
-        alignItems: 'start'
-      }} className="grid-2-custom">
+      <div className="dashboard-grid">
         {/* Left Side: Recent Documents with Search */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
+          <div className="filters-row">
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Recent Documents</h2>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', width: 'auto' }}>
               {/* Search */}
-              <div style={{ position: 'relative', width: '220px' }}>
-                <Search size={16} style={{
-                  position: 'absolute',
-                  left: '0.875rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'var(--text-muted)'
-                }} />
+              <div className="search-box" style={{ maxWidth: '220px' }}>
+                <Search size={16} />
                 <input
                   type="text"
                   placeholder="Search by ID or customer..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ paddingLeft: '2.5rem', fontSize: '0.8rem' }}
+                  style={{ fontSize: '0.8rem' }}
                 />
               </div>
               {/* Filter */}
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
+                className="filter-select"
                 style={{ width: '150px', fontSize: '0.8rem' }}
               >
                 <option value="all">All Types</option>
@@ -261,15 +245,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {filteredDocs.map(doc => {
                     return (
                       <tr key={doc.id}>
-                        <td className="mono" style={{ fontWeight: 600 }}>{doc.document_number}</td>
-                        <td>{doc.customer_name}</td>
-                        <td style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
+                        <td className="mono" data-label="Doc Number" style={{ fontWeight: 600 }}>{doc.document_number}</td>
+                        <td data-label="Customer">{doc.customer_name}</td>
+                        <td data-label="Type" style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
                           {doc.document_type.replace('_', ' ')}
                         </td>
-                        <td className="mono" style={{ fontWeight: 600 }}>
+                        <td className="mono" data-label="Total" style={{ fontWeight: 600 }}>
                           {formatCurrency(doc.total, activeProfile?.currency || 'INR')}
                         </td>
-                        <td>
+                        <td data-label="Actions">
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                             <button
                               onClick={() => onViewDocument(doc)}
@@ -344,6 +328,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <img 
                       src={profile.logo_url} 
                       alt={profile.name} 
+                      loading="lazy"
                       style={{ width: '32px', height: '32px', borderRadius: '4px', objectFit: 'cover' }}
                     />
                   ) : (
