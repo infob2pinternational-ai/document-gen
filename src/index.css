@@ -162,6 +162,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   min-height: 100vh;
   position: relative;
+  background-color: var(--bg-canvas);
 }
 
 .main-content {
@@ -171,6 +172,7 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 100vh;
   overflow-y: auto;
   transition: margin-left var(--transition-normal);
+  background-color: var(--bg-canvas);
 }
 
 @media (max-width: 1024px) {
