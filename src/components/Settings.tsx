@@ -73,6 +73,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [copied, setCopied] = useState(false);
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
   const [testingConnection, setTestingConnection] = useState(false);
+  const [approverEmail, setApproverEmail] = useState('');
 
   // Connection active state
   const isCloudConnected = isSupabaseConfigured() && !!user;
@@ -99,6 +100,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
       setDefaultTerms(activeProfile.default_terms || '');
       setShowBankDetails(activeProfile.show_bank_details !== false);
+      setApproverEmail(activeProfile.approver_email || '');
 
       setColDesc(activeProfile.col_name_description || 'Description');
       setColQty(activeProfile.col_name_quantity || 'Quantity');
@@ -190,6 +192,7 @@ export const Settings: React.FC<SettingsProps> = ({
         default_terms: defaultTerms || undefined,
         show_bank_details: showBankDetails,
         google_sheets_url: googleSheetsUrl || undefined,
+        approver_email: approverEmail || undefined,
         
         col_name_description: colDesc,
         col_name_quantity: colQty,
@@ -488,6 +491,17 @@ export const Settings: React.FC<SettingsProps> = ({
                       value={website} 
                       onChange={(e) => setWebsite(e.target.value)} 
                       autoComplete="url"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="settings-approver-email">Authorized Approver Email</label>
+                    <input 
+                      id="settings-approver-email" 
+                      name="approver_email" 
+                      type="email" 
+                      placeholder="e.g. manager@b2pinternational.com" 
+                      value={approverEmail} 
+                      onChange={(e) => setApproverEmail(e.target.value)} 
                     />
                   </div>
                 </div>

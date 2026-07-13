@@ -25,6 +25,7 @@ export interface CompanyProfile {
   default_terms?: string;
 
   show_bank_details?: boolean;
+  approver_email?: string;
   
   // Custom column headings
   col_name_description: string;
