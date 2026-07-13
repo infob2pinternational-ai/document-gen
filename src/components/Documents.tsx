@@ -187,6 +187,9 @@ export const Documents: React.FC<DocumentsProps> = ({
                                   if (doc.document_type === 'invoice') {
                                     docTypeLabel = 'Tax Invoice';
                                     docNoLabel = 'Invoice';
+                                  } else if (doc.document_type === 'non_tax_invoice') {
+                                    docTypeLabel = 'Non-Tax Invoice';
+                                    docNoLabel = 'Invoice';
                                   } else if (doc.document_type === 'proforma_invoice') {
                                     docTypeLabel = 'Proforma Invoice';
                                     docNoLabel = 'Invoice';

@@ -253,6 +253,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       } else if (type === 'work_order') {
         prefix = activeProfile.work_order_prefix || 'WO/';
         nextSeq = Number(activeProfile.work_order_start_number) || 1001;
+      } else if (type === 'non_tax_invoice') {
+        prefix = activeProfile.non_tax_prefix || 'NT/';
+        nextSeq = Number(activeProfile.non_tax_start_number) || 1001;
       }
 
       // Find the first unused sequence number starting from nextSeq
@@ -396,7 +399,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
     items.forEach(item => {
       const amt = item.amount || 0;
-      const gstPercent = item.gst_percentage || 0;
+      const gstPercent = docType === 'non_tax_invoice' ? 0 : (item.gst_percentage || 0);
       const gstAmt = amt * (gstPercent / 100);
       subtotal += amt;
       taxTotal += gstAmt;
@@ -480,13 +483,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         discount_total: discountTotal,
         total,
         notes,
-        terms
+        terms,
+        status: 'pending_approval' // Reset status to pending_approval on edit/save (amendment)
       };
 
       // Map document_id to line items
       const itemsPayload = items.map(it => ({
         ...it,
-        document_id: docId
+        document_id: docId,
+        gst_percentage: docType === 'non_tax_invoice' ? 0 : it.gst_percentage
       }));
 
       await dbService.saveDocument(docPayload, itemsPayload);
@@ -600,6 +605,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
                   <option value="invoice">Tax Invoice</option>
+                  <option value="non_tax_invoice">Non-Tax Invoice</option>
                   <option value="proforma_invoice">Proforma Invoice</option>
                   <option value="quotation">Quotation</option>
                   <option value="work_order">Work Order</option>
@@ -777,19 +783,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                     </button>
 
                     {/* GST dropdown */}
-                    <div style={{ width: '75px' }}>
-                      <select 
-                        value={item.gst_percentage} 
-                        onChange={(e) => handleItemChange(idx, 'gst_percentage', Number(e.target.value))}
-                        style={{ padding: '0.4rem', fontSize: '0.75rem' }}
-                      >
-                        <option value={0}>0%</option>
-                        <option value={5}>5%</option>
-                        <option value={12}>12%</option>
-                        <option value={18}>18%</option>
-                        <option value={28}>28%</option>
-                      </select>
-                    </div>
+                    {docType !== 'non_tax_invoice' && (
+                      <div style={{ width: '75px' }}>
+                        <select 
+                          value={item.gst_percentage} 
+                          onChange={(e) => handleItemChange(idx, 'gst_percentage', Number(e.target.value))}
+                          style={{ padding: '0.4rem', fontSize: '0.75rem' }}
+                        >
+                          <option value={0}>0%</option>
+                          <option value={5}>5%</option>
+                          <option value={12}>12%</option>
+                          <option value={18}>18%</option>
+                          <option value={28}>28%</option>
+                        </select>
+                      </div>
+                    )}
 
                     {/* Amount preview */}
                     <div className="mono" style={{ width: '90px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 600 }}>

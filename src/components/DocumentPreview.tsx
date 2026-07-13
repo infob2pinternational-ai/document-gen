@@ -150,6 +150,9 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     if (document.document_type === 'invoice') {
       docTypeLabel = 'Tax Invoice';
       docNoLabel = 'Invoice';
+    } else if (document.document_type === 'non_tax_invoice') {
+      docTypeLabel = 'Non-Tax Invoice';
+      docNoLabel = 'Invoice';
     } else if (document.document_type === 'proforma_invoice') {
       docTypeLabel = 'Proforma Invoice';
       docNoLabel = 'Invoice';
@@ -189,6 +192,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   const getDocTitle = (type: string) => {
     switch (type) {
       case 'invoice': return 'TAX INVOICE';
+      case 'non_tax_invoice': return 'BILL OF SUPPLY';
       case 'proforma_invoice': return 'PROFORMA INVOICE';
       case 'quotation': return 'QUOTATION';
       case 'work_order': return 'WORK ORDER';
@@ -381,7 +385,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               </div>
               <div>
                 <strong style={{ color: '#475569' }}>
-                  {document.document_type === 'invoice' ? 'Invoice No' : document.document_type === 'proforma_invoice' ? 'Invoice No' : document.document_type === 'quotation' ? 'Quotation No' : 'Order No'}
+                  {document.document_type === 'invoice' || document.document_type === 'non_tax_invoice' ? 'Invoice No' : document.document_type === 'proforma_invoice' ? 'Invoice No' : document.document_type === 'quotation' ? 'Quotation No' : 'Order No'}
                 </strong> : &nbsp;
                 <span style={{ fontWeight: 600 }} className="mono">{document.document_number}</span>
               </div>
@@ -577,7 +581,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           </div>
 
           {/* Terms info box if present (hidden for Tax Invoices) */}
-          {document.document_type !== 'invoice' && (document.terms || activeProfile.default_terms) && (
+          {document.document_type !== 'invoice' && document.document_type !== 'non_tax_invoice' && (document.terms || activeProfile.default_terms) && (
             <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '0.75rem', paddingBottom: '1.5rem', fontSize: '0.75rem', color: '#334155' }}>
               <strong>TERMS & CONDITIONS:</strong>
               <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', lineHeight: '1.4' }}>

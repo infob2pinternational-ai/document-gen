@@ -48,10 +48,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     
     // Revenue: sum of all invoices
     const paidRevenue = companyDocs
-      .filter(d => d.document_type === 'invoice')
+      .filter(d => d.document_type === 'invoice' || d.document_type === 'non_tax_invoice')
       .reduce((sum, d) => sum + Number(d.total), 0);
 
-    const invoices = companyDocs.filter(d => d.document_type === 'invoice').length;
+    const invoices = companyDocs.filter(d => d.document_type === 'invoice' || d.document_type === 'non_tax_invoice').length;
     const quotes = companyDocs.filter(d => d.document_type === 'quotation').length;
     const workOrders = companyDocs.filter(d => d.document_type === 'work_order').length;
 
@@ -83,7 +83,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const profileCoverages = profiles.map(prof => {
     const pDocs = documents.filter(d => d.company_id === prof.id);
     const pRevenue = pDocs
-      .filter(d => d.document_type === 'invoice')
+      .filter(d => d.document_type === 'invoice' || d.document_type === 'non_tax_invoice')
       .reduce((sum, d) => sum + Number(d.total), 0);
     return {
       profile: prof,

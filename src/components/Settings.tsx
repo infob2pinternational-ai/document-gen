@@ -68,6 +68,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [quotationStart, setQuotationStart] = useState<number>(1001);
   const [workOrderPrefix, setWorkOrderPrefix] = useState('WO/');
   const [workOrderStart, setWorkOrderStart] = useState<number>(1001);
+  const [nonTaxPrefix, setNonTaxPrefix] = useState('NT/');
+  const [nonTaxStart, setNonTaxStart] = useState<number>(1001);
 
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -116,6 +118,8 @@ export const Settings: React.FC<SettingsProps> = ({
       setQuotationStart(activeProfile.quotation_start_number || 1001);
       setWorkOrderPrefix(activeProfile.work_order_prefix || 'WO/');
       setWorkOrderStart(activeProfile.work_order_start_number || 1001);
+      setNonTaxPrefix(activeProfile.non_tax_prefix || 'NT/');
+      setNonTaxStart(activeProfile.non_tax_start_number || 1001);
       setGoogleSheetsUrl(activeProfile.google_sheets_url || '');
     }
   }, [activeProfile]);
@@ -207,7 +211,9 @@ export const Settings: React.FC<SettingsProps> = ({
         quotation_prefix: quotationPrefix,
         quotation_start_number: Number(quotationStart),
         work_order_prefix: workOrderPrefix,
-        work_order_start_number: Number(workOrderStart)
+        work_order_start_number: Number(workOrderStart),
+        non_tax_prefix: nonTaxPrefix,
+        non_tax_start_number: Number(nonTaxStart)
       };
 
       await dbService.saveProfile(updated);
@@ -677,6 +683,17 @@ export const Settings: React.FC<SettingsProps> = ({
                   <div className="form-group">
                     <label className="form-label">Work Order Start Number</label>
                     <input type="number" value={workOrderStart} onChange={(e) => setWorkOrderStart(Number(e.target.value))} />
+                  </div>
+                </div>
+
+                <div className="grid-2">
+                  <div className="form-group">
+                    <label className="form-label">Non-Tax Invoice Prefix</label>
+                    <input type="text" value={nonTaxPrefix} onChange={(e) => setNonTaxPrefix(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Non-Tax Invoice Start Number</label>
+                    <input type="number" value={nonTaxStart} onChange={(e) => setNonTaxStart(Number(e.target.value))} />
                   </div>
                 </div>
               </div>

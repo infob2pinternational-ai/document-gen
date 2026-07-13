@@ -1,4 +1,4 @@
-export type DocumentType = 'invoice' | 'proforma_invoice' | 'quotation' | 'work_order';
+export type DocumentType = 'invoice' | 'proforma_invoice' | 'quotation' | 'work_order' | 'non_tax_invoice';
 
 export interface CompanyProfile {
   id: string;
@@ -43,6 +43,8 @@ export interface CompanyProfile {
   quotation_start_number: number;
   work_order_prefix: string;
   work_order_start_number: number;
+  non_tax_prefix?: string;
+  non_tax_start_number?: number;
 }
 
 export interface Customer {
