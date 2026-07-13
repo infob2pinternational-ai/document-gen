@@ -431,11 +431,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     try {
       const docId = documentToEdit?.id || crypto.randomUUID();
 
-      // Check if this is a new customer and auto-save to CRM list if it doesn't exist
+      // Check if this is a new customer and auto-save to CRM list if it doesn't exist (match by name or phone)
       let finalCustomerId = selectedCustomerId;
       if (customerName.trim()) {
-        const customerExists = customers.some(c => c.name.trim().toLowerCase() === customerName.trim().toLowerCase());
-        if (!customerExists) {
+        const trimmedPhone = customerPhone.trim();
+        const existingCust = customers.find(c => {
+          const nameMatch = c.name.trim().toLowerCase() === customerName.trim().toLowerCase();
+          const phoneMatch = trimmedPhone && c.phone && c.phone.trim() === trimmedPhone;
+          return nameMatch || phoneMatch;
+        });
+
+        if (existingCust) {
+          finalCustomerId = existingCust.id;
+        } else {
           const newCustId = crypto.randomUUID();
           const newCust: Customer = {
             id: newCustId,
