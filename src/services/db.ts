@@ -149,54 +149,43 @@ ALTER TABLE services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE document_items ENABLE ROW LEVEL SECURITY;
 
--- profiles: owner has full write access; anyone may read (needed so a
--- public document-view page can show the issuing company's name/logo)
+-- Profiles: any authenticated team member can write; anyone can read (required for public guest shared view)
 CREATE POLICY profiles_select_public ON profiles
   FOR SELECT USING (true);
-CREATE POLICY profiles_owner_insert ON profiles
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY profiles_owner_update ON profiles
-  FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY profiles_owner_delete ON profiles
-  FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY profiles_auth_insert ON profiles
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY profiles_auth_update ON profiles
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY profiles_auth_delete ON profiles
+  FOR DELETE USING (auth.role() = 'authenticated');
 
--- customers: private to the owning user only (never public)
-CREATE POLICY customers_owner_all ON customers
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+-- Customers: shared access among all authenticated team members
+CREATE POLICY customers_auth_all ON customers
+  FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
--- services: private to the owning user only
-CREATE POLICY services_owner_all ON services
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+-- Services: shared access among all authenticated team members
+CREATE POLICY services_auth_all ON services
+  FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
--- documents: public read (for shareable /doc/:id and /q/:number links),
--- writes restricted to the owner
+-- Documents: public guest read (for share links); write access shared among all authenticated team members
 CREATE POLICY documents_select_public ON documents
   FOR SELECT USING (true);
-CREATE POLICY documents_owner_insert ON documents
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY documents_owner_update ON documents
-  FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY documents_owner_delete ON documents
-  FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY documents_auth_insert ON documents
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY documents_auth_update ON documents
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY documents_auth_delete ON documents
+  FOR DELETE USING (auth.role() = 'authenticated');
 
--- document_items: public read (line items shown on the public doc view),
--- writes restricted to whoever owns the parent document
+-- Document Items: public guest read (for share links); write access shared among all authenticated team members
 CREATE POLICY document_items_select_public ON document_items
   FOR SELECT USING (true);
-CREATE POLICY document_items_owner_insert ON document_items
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
-  );
-CREATE POLICY document_items_owner_update ON document_items
-  FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
-  ) WITH CHECK (
-    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
-  );
-CREATE POLICY document_items_owner_delete ON document_items
-  FOR DELETE USING (
-    EXISTS (SELECT 1 FROM documents d WHERE d.id = document_id AND d.user_id = auth.uid())
-  );`;
+CREATE POLICY document_items_auth_insert ON document_items
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY document_items_auth_update ON document_items
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY document_items_auth_delete ON document_items
+  FOR DELETE USING (auth.role() = 'authenticated');`;
 
 // Helper to check if we should write to local storage or supabase
 const useCloud = (): boolean => {
