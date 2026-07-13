@@ -531,8 +531,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       onRefreshDocs();
       onClose();
     } catch (err) {
-      console.error('Error saving document:', err);
-      alert('Failed to save document.');
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert(`Failed to save document: ${errorMsg}\n\n(Please ensure you have executed the SQL migration scripts in your Supabase SQL Editor under "SQL Editor")`);
     } finally {
       setLoading(false);
     }
