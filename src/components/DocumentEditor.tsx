@@ -237,7 +237,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     if (!activeProfile) return;
     try {
       const allDocs = await dbService.getDocuments(activeProfile.id);
-      const matchingDocs = allDocs.filter(d => d.document_type === type);
       
       let nextSeq = 1001;
       let prefix = 'INV/';
@@ -256,13 +255,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         nextSeq = Number(activeProfile.work_order_start_number) || 1001;
       }
 
-      if (matchingDocs.length > 0) {
-        // Find highest sequence number
-        const maxSeq = Math.max(...matchingDocs.map(d => d.sequence_number), 0);
-        if (maxSeq >= nextSeq) {
-          nextSeq = maxSeq + 1;
-        }
+      // Find the first unused sequence number starting from nextSeq
+      let checkedSeq = nextSeq;
+      while (allDocs.some(d => d.document_type === type && d.document_number === `${prefix}${checkedSeq}`)) {
+        checkedSeq++;
       }
+      nextSeq = checkedSeq;
 
       setSequenceNumber(nextSeq);
       setDocNumber(`${prefix}${nextSeq}`);
