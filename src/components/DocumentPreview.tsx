@@ -138,26 +138,49 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       cleanPhone = '91' + cleanPhone;
     }
 
-    const docTypeLabel = getDocTitle(document.document_type) === 'TAX INVOICE' ? 'Tax Invoice' : getDocTitle(document.document_type) === 'PROFORMA INVOICE' ? 'Proforma Invoice' : getDocTitle(document.document_type) === 'QUOTATION' ? 'Quotation' : 'Work Order';
     const docDate = document.date ? document.date.split('-').reverse().join('/') : '';
     const formattedTotal = Number(document.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
     const shareLink = baseUrl + '/doc/' + document.id;
     
-    const message = `Dear *${document.customer_name}*,\n\n` +
-      `Thank you for considering *${activeProfile?.name}*.\n\n` +
-      `Please find attached your *${docTypeLabel}* (*#${document.document_number}*) dated *${docDate}*.\n\n` +
-      `*View / Download PDF:* ${shareLink}\n\n` +
-      `*Total Amount:* ₹${formattedTotal}\n\n` +
-      `We appreciate your consideration and look forward to working with you. Please let us know if you need any additional information or revisions.\n\n` +
-      `Best regards,\n` +
-      `*${activeProfile?.name}*\n\n` +
-      `---\n` +
-      `📲 *Follow us on Social Media:*\n` +
-      `Instagram: https://instagram.com/b2pinternational\n` +
-      `Facebook: https://facebook.com/b2pinternational\n\n` +
-      `⭐ *We value your feedback!*\n` +
-      `Please leave us a review on Google: https://g.page/r/CcC1J3PCvB_BEBM/review`;
+    const companyName = activeProfile?.name || 'B2P International';
+    
+    let docTypeLabel = 'Document';
+    let docNoLabel = 'Doc';
+    if (document.document_type === 'invoice') {
+      docTypeLabel = 'Tax Invoice';
+      docNoLabel = 'Invoice';
+    } else if (document.document_type === 'proforma_invoice') {
+      docTypeLabel = 'Proforma Invoice';
+      docNoLabel = 'Invoice';
+    } else if (document.document_type === 'quotation') {
+      docTypeLabel = 'Quotation';
+      docNoLabel = 'Quotation';
+    } else if (document.document_type === 'work_order') {
+      docTypeLabel = 'Work Order';
+      docNoLabel = 'Work Order';
+    }
+
+    const message = `*Dear ${document.customer_name}*,\n\n` +
+      `Greetings from ${companyName}.\n\n` +
+      `Thank you for choosing us. Please find your ${docTypeLabel}.\n\n` +
+      `📄 ${docNoLabel} No.: ${document.document_number}\n` +
+      `📅 Date: ${docDate}\n` +
+      `💰 Amount: ₹${formattedTotal}\n\n` +
+      `🔗 *View / Download ${docNoLabel}*\n` +
+      `${shareLink}\n\n` +
+      `Should you require any clarification or revisions, please feel free to contact us.\n\n` +
+      `Thank you for your trust in ${companyName}.\n\n` +
+      `Warm Regards,\n` +
+      `${companyName}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `📲 *Follow Us*\n` +
+      `Instagram\n` +
+      `https://www.instagram.com/b2p_international/\n\n` +
+      `Facebook\n` +
+      `https://facebook.com/b2pinternational\n\n` +
+      `⭐ *Share Your Experience*\n` +
+      `https://g.page/r/CcC1J3PCvB_BEBM/review`;
 
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, 'whatsapp_window');

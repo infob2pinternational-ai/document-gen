@@ -130,25 +130,50 @@ export const Documents: React.FC<DocumentsProps> = ({
                                   if (!doc.customer_phone) return;
                                   let cleanPhone = doc.customer_phone.replace(/\D/g, '');
                                   if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
-                                  const docTitle = doc.document_type === 'invoice' ? 'Tax Invoice' : doc.document_type === 'proforma_invoice' ? 'Proforma Invoice' : doc.document_type === 'quotation' ? 'Quotation' : 'Work Order';
                                   const docDate = doc.date ? doc.date.split('-').reverse().join('/') : '';
                                   const formattedTotal = Number(doc.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                   const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
                                   const shareLink = baseUrl + '/doc/' + doc.id;
-                                  const msg = `Dear *${doc.customer_name}*,\n\n` +
-                                    `Thank you for considering *${activeProfile?.name}*.\n\n` +
-                                    `Please find attached your *${docTitle}* (*#${doc.document_number}*) dated *${docDate}*.\n\n` +
-                                    `*View / Download PDF:* ${shareLink}\n\n` +
-                                    `*Total Amount:* ₹${formattedTotal}\n\n` +
-                                    `We appreciate your consideration and look forward to working with you. Please let us know if you need any additional information or revisions.\n\n` +
-                                    `Best regards,\n` +
-                                    `*${activeProfile?.name}*\n\n` +
-                                    `---\n` +
-                                    `📲 *Follow us on Social Media:*\n` +
-                                    `Instagram: https://instagram.com/b2pinternational\n` +
-                                    `Facebook: https://facebook.com/b2pinternational\n\n` +
-                                    `⭐ *We value your feedback!*\n` +
-                                    `Please leave us a review on Google: https://g.page/r/CcC1J3PCvB_BEBM/review`;
+                                  
+                                  const companyName = activeProfile?.name || 'B2P International';
+                                  
+                                  let docTypeLabel = 'Document';
+                                  let docNoLabel = 'Doc';
+                                  if (doc.document_type === 'invoice') {
+                                    docTypeLabel = 'Tax Invoice';
+                                    docNoLabel = 'Invoice';
+                                  } else if (doc.document_type === 'proforma_invoice') {
+                                    docTypeLabel = 'Proforma Invoice';
+                                    docNoLabel = 'Invoice';
+                                  } else if (doc.document_type === 'quotation') {
+                                    docTypeLabel = 'Quotation';
+                                    docNoLabel = 'Quotation';
+                                  } else if (doc.document_type === 'work_order') {
+                                    docTypeLabel = 'Work Order';
+                                    docNoLabel = 'Work Order';
+                                  }
+
+                                  const msg = `*Dear ${doc.customer_name}*,\n\n` +
+                                    `Greetings from ${companyName}.\n\n` +
+                                    `Thank you for choosing us. Please find your ${docTypeLabel}.\n\n` +
+                                    `📄 ${docNoLabel} No.: ${doc.document_number}\n` +
+                                    `📅 Date: ${docDate}\n` +
+                                    `💰 Amount: ₹${formattedTotal}\n\n` +
+                                    `🔗 *View / Download ${docNoLabel}*\n` +
+                                    `${shareLink}\n\n` +
+                                    `Should you require any clarification or revisions, please feel free to contact us.\n\n` +
+                                    `Thank you for your trust in ${companyName}.\n\n` +
+                                    `Warm Regards,\n` +
+                                    `${companyName}\n\n` +
+                                    `━━━━━━━━━━━━━━━━━━\n\n` +
+                                    `📲 *Follow Us*\n` +
+                                    `Instagram\n` +
+                                    `https://www.instagram.com/b2p_international/\n\n` +
+                                    `Facebook\n` +
+                                    `https://facebook.com/b2pinternational\n\n` +
+                                    `⭐ *Share Your Experience*\n` +
+                                    `https://g.page/r/CcC1J3PCvB_BEBM/review`;
+
                                   window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
                                 }}
                                 className="btn-secondary"
