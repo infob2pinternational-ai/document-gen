@@ -553,8 +553,8 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             </div>
           </div>
 
-          {/* Terms info box if present */}
-          {(document.terms || activeProfile.default_terms) && (
+          {/* Terms info box if present (hidden for Tax Invoices) */}
+          {document.document_type !== 'invoice' && (document.terms || activeProfile.default_terms) && (
             <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '0.75rem', paddingBottom: '1.5rem', fontSize: '0.75rem', color: '#334155' }}>
               <strong>TERMS & CONDITIONS:</strong>
               <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', lineHeight: '1.4' }}>
