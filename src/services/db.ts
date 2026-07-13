@@ -485,9 +485,15 @@ export const dbService = {
   async saveDocument(doc: Document, items: DocumentItem[]): Promise<Document> {
     if (useCloud() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
-      const userId = userStr ? JSON.parse(userStr).id : null;
+      const user = userStr ? JSON.parse(userStr) : null;
+      const userId = user ? user.id : null;
+      const userEmail = user ? user.email : null;
       
-      const docPayload = { ...doc, user_id: userId };
+      const docPayload = { 
+        ...doc, 
+        user_id: userId,
+        created_by_email: doc.created_by_email || userEmail || null
+      };
       
       // Save doc
       const { data: existingDoc } = await supabase.from('documents').select('id').eq('id', doc.id).single();

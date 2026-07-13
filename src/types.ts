@@ -94,6 +94,7 @@ export interface Document {
   total: number;
   notes?: string;
   terms?: string;
+  created_by_email?: string;
 }
 
 export interface DocumentItem {

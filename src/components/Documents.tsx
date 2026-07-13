@@ -101,6 +101,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <th>Customer Name</th>
                     <th>Document Type</th>
                     <th>Total Amount</th>
+                    <th>Created By</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -117,6 +118,9 @@ export const Documents: React.FC<DocumentsProps> = ({
                         <td className="mono" data-label="Total Amount" style={{ fontWeight: 600 }}>
                           {activeProfile.currency === 'INR' ? '₹' : '$'}
                           {doc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td data-label="Created By" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {doc.created_by_email ? doc.created_by_email.split('@')[0] : '-'}
                         </td>
                         <td data-label="Actions">
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>

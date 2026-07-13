@@ -238,6 +238,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <th>Customer</th>
                     <th>Type</th>
                     <th>Total</th>
+                    <th>Created By</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -252,6 +253,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </td>
                         <td className="mono" data-label="Total" style={{ fontWeight: 600 }}>
                           {formatCurrency(doc.total, activeProfile?.currency || 'INR')}
+                        </td>
+                        <td data-label="Created By" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {doc.created_by_email ? doc.created_by_email.split('@')[0] : '-'}
                         </td>
                         <td data-label="Actions">
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
