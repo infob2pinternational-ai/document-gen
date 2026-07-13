@@ -1,8 +1,9 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { CompanyProfile, Customer, Service, Document, DocumentItem } from '../types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const globalProcess = (globalThis as any).process;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || globalProcess?.env?.SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || globalProcess?.env?.SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = (): boolean => {
   return !!(supabaseUrl && supabaseAnonKey);
