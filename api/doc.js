@@ -1,5 +1,5 @@
-const { readFileSync } = require('fs');
-const { join } = require('path');
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 // Escape untrusted strings before they are interpolated into HTML
 // (company/customer names, document numbers, etc. can contain
@@ -18,7 +18,7 @@ function escapeHtml(value) {
 // Validate the shape of the ID before using it in a query.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // Security headers for every response this function returns.
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
