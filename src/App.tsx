@@ -772,6 +772,7 @@ function App() {
                 onEditDocument={handleEditDocument}
                 onViewDocument={handleViewDocument}
                 onDeleteDocument={handleDeleteDocument}
+                onRefreshDocs={() => loadData(activeProfile?.id)}
               />
             )}
 

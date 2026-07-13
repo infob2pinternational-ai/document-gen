@@ -95,6 +95,8 @@ export interface Document {
   notes?: string;
   terms?: string;
   created_by_email?: string;
+  whatsapp_sent_by_email?: string;
+  whatsapp_sent_at?: string;
 }
 
 export interface DocumentItem {

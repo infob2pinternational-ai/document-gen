@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../types';
 import { Search, Plus, Eye, Edit, Trash2, ShieldAlert } from 'lucide-react';
+import { dbService } from '../services/db';
 
 interface DocumentsProps {
   role: string;
@@ -10,6 +11,7 @@ interface DocumentsProps {
   onEditDocument: (doc: Document) => void;
   onViewDocument: (doc: Document) => void;
   onDeleteDocument: (id: string) => void;
+  onRefreshDocs?: () => void;
 }
 
 export const Documents: React.FC<DocumentsProps> = ({
@@ -19,7 +21,8 @@ export const Documents: React.FC<DocumentsProps> = ({
   onAddDocument,
   onEditDocument,
   onViewDocument,
-  onDeleteDocument
+  onDeleteDocument,
+  onRefreshDocs
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -102,6 +105,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <th>Document Type</th>
                     <th>Total Amount</th>
                     <th>Created By</th>
+                    <th>WA Sent By</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -121,6 +125,13 @@ export const Documents: React.FC<DocumentsProps> = ({
                         </td>
                         <td data-label="Created By" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                           {doc.created_by_email ? doc.created_by_email.split('@')[0] : '-'}
+                        </td>
+                        <td data-label="WA Sent By" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {doc.whatsapp_sent_by_email ? (
+                            <span style={{ color: '#10b981', fontWeight: 500 }}>
+                              {doc.whatsapp_sent_by_email.split('@')[0]}
+                            </span>
+                          ) : '-'}
                         </td>
                         <td data-label="Actions">
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -173,6 +184,15 @@ export const Documents: React.FC<DocumentsProps> = ({
                                     `https://facebook.com/b2pinternational\n\n` +
                                     `⭐ *Share Your Experience*\n` +
                                     `https://g.page/r/CcC1J3PCvB_BEBM/review`;
+
+                                  const userStr = localStorage.getItem('supabase_user');
+                                  const user = userStr ? JSON.parse(userStr) : null;
+                                  const userEmail = user ? user.email : '';
+                                  if (userEmail) {
+                                    dbService.logWhatsAppSend(doc.id, userEmail).then(() => {
+                                      if (onRefreshDocs) onRefreshDocs();
+                                    }).catch(err => console.error(err));
+                                  }
 
                                   window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
                                 }}

@@ -563,5 +563,23 @@ export const dbService = {
       const items = getLocal<DocumentItem[]>('document_items', []);
       setLocal('document_items', items.filter(it => it.document_id !== id));
     }
+  },
+
+  async logWhatsAppSend(docId: string, email: string): Promise<void> {
+    if (useCloud() && supabase) {
+      const { error } = await supabase.from('documents').update({
+        whatsapp_sent_by_email: email,
+        whatsapp_sent_at: new Date().toISOString()
+      }).eq('id', docId);
+      if (error) throw error;
+    } else {
+      const docs = getLocal<Document[]>('documents', []);
+      const idx = docs.findIndex(d => d.id === docId);
+      if (idx >= 0) {
+        docs[idx].whatsapp_sent_by_email = email;
+        docs[idx].whatsapp_sent_at = new Date().toISOString();
+        setLocal('documents', docs);
+      }
+    }
   }
 };
