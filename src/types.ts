@@ -97,6 +97,9 @@ export interface Document {
   created_by_email?: string;
   whatsapp_sent_by_email?: string;
   whatsapp_sent_at?: string;
+  status?: 'pending_approval' | 'approved';
+  approved_by_email?: string;
+  approved_at?: string;
 }
 
 export interface DocumentItem {

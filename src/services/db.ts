@@ -493,7 +493,8 @@ export const dbService = {
       const docPayload = { 
         ...doc, 
         user_id: userId,
-        created_by_email: doc.created_by_email || userEmail || null
+        created_by_email: doc.created_by_email || userEmail || null,
+        status: doc.status || 'pending_approval'
       };
       
       // Save doc
@@ -578,6 +579,26 @@ export const dbService = {
       if (idx >= 0) {
         docs[idx].whatsapp_sent_by_email = email;
         docs[idx].whatsapp_sent_at = new Date().toISOString();
+        setLocal('documents', docs);
+      }
+    }
+  },
+
+  async approveDocument(docId: string, email: string): Promise<void> {
+    if (useCloud() && supabase) {
+      const { error } = await supabase.from('documents').update({
+        status: 'approved',
+        approved_by_email: email,
+        approved_at: new Date().toISOString()
+      }).eq('id', docId);
+      if (error) throw error;
+    } else {
+      const docs = getLocal<Document[]>('documents', []);
+      const idx = docs.findIndex(d => d.id === docId);
+      if (idx >= 0) {
+        docs[idx].status = 'approved';
+        docs[idx].approved_by_email = email;
+        docs[idx].approved_at = new Date().toISOString();
         setLocal('documents', docs);
       }
     }
