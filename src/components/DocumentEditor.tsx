@@ -301,10 +301,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       id: crypto.randomUUID(),
       document_id: documentToEdit?.id || '',
       description: '',
-      quantity: 1,
-      days: 1,
-      rate: 0,
-      unit: 'nos',
+      quantity: undefined as any,
+      days: undefined as any,
+      rate: undefined as any,
+      unit: '',
       gst_percentage: 0,
       amount: 0,
       sort_order: items.length
@@ -336,9 +336,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
 
     // Recalculate item amount using Qty * Days * Rate
-    const q = field === 'quantity' ? Number(value) : item.quantity;
-    const d = field === 'days' ? Number(value) : (item.days || 1);
-    const r = field === 'rate' ? Number(value) : item.rate;
+    const q = Number(field === 'quantity' ? value : item.quantity) || 0;
+    const d = Number(field === 'days' ? value : item.days) || 1;
+    const r = Number(field === 'rate' ? value : item.rate) || 0;
     item.amount = q * d * r;
 
     updated[index] = item;
@@ -732,8 +732,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       <input 
                         type="number" 
                         placeholder="Qty" 
-                        value={item.quantity} 
-                        onChange={(e) => handleItemChange(idx, 'quantity', Number(e.target.value))}
+                        value={item.quantity === undefined ? '' : item.quantity} 
+                        onChange={(e) => handleItemChange(idx, 'quantity', e.target.value === '' ? undefined : Number(e.target.value))}
                         style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
                       />
                     </div>
@@ -743,8 +743,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       <input 
                         type="number" 
                         placeholder="Days" 
-                        value={item.days || 1} 
-                        onChange={(e) => handleItemChange(idx, 'days', Number(e.target.value))}
+                        value={item.days === undefined ? '' : item.days} 
+                        onChange={(e) => handleItemChange(idx, 'days', e.target.value === '' ? undefined : Number(e.target.value))}
                         style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
                       />
                     </div>
@@ -754,7 +754,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       <input 
                         type="text" 
                         placeholder="Unit" 
-                        value={item.unit} 
+                        value={item.unit || ''} 
                         onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
                         style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
                       />
@@ -765,8 +765,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       <input 
                         type="number" 
                         placeholder="Rate" 
-                        value={item.rate} 
-                        onChange={(e) => handleItemChange(idx, 'rate', Number(e.target.value))}
+                        value={item.rate === undefined ? '' : item.rate} 
+                        onChange={(e) => handleItemChange(idx, 'rate', e.target.value === '' ? undefined : Number(e.target.value))}
                         style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'right' }}
                       />
                     </div>
