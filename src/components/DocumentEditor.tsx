@@ -605,7 +605,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
                   <option value="invoice">Tax Invoice</option>
-                  <option value="non_tax_invoice">Non-Tax Invoice</option>
+                  <option value="non_tax_invoice">Invoice</option>
                   <option value="proforma_invoice">Proforma Invoice</option>
                   <option value="quotation">Quotation</option>
                   <option value="work_order">Work Order</option>

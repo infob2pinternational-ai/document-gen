@@ -151,7 +151,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       docTypeLabel = 'Tax Invoice';
       docNoLabel = 'Invoice';
     } else if (document.document_type === 'non_tax_invoice') {
-      docTypeLabel = 'Non-Tax Invoice';
+      docTypeLabel = 'Invoice';
       docNoLabel = 'Invoice';
     } else if (document.document_type === 'proforma_invoice') {
       docTypeLabel = 'Proforma Invoice';
@@ -192,7 +192,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   const getDocTitle = (type: string) => {
     switch (type) {
       case 'invoice': return 'TAX INVOICE';
-      case 'non_tax_invoice': return 'BILL OF SUPPLY';
+      case 'non_tax_invoice': return 'INVOICE';
       case 'proforma_invoice': return 'PROFORMA INVOICE';
       case 'quotation': return 'QUOTATION';
       case 'work_order': return 'WORK ORDER';

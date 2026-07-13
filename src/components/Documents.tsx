@@ -118,7 +118,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                         <td data-label="Date">{doc.date ? doc.date.split('-').reverse().join('/') : ''}</td>
                         <td data-label="Customer Name">{doc.customer_name}</td>
                         <td data-label="Document Type" style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
-                          {doc.document_type.replace('_', ' ')}
+                          {doc.document_type === 'non_tax_invoice' ? 'Invoice' : doc.document_type === 'invoice' ? 'Tax Invoice' : doc.document_type.replace('_', ' ')}
                         </td>
                         <td className="mono" data-label="Total Amount" style={{ fontWeight: 600 }}>
                           {activeProfile.currency === 'INR' ? '₹' : '$'}
@@ -188,7 +188,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                     docTypeLabel = 'Tax Invoice';
                                     docNoLabel = 'Invoice';
                                   } else if (doc.document_type === 'non_tax_invoice') {
-                                    docTypeLabel = 'Non-Tax Invoice';
+                                    docTypeLabel = 'Invoice';
                                     docNoLabel = 'Invoice';
                                   } else if (doc.document_type === 'proforma_invoice') {
                                     docTypeLabel = 'Proforma Invoice';
