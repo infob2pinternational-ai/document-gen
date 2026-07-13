@@ -12,6 +12,45 @@ import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
 import { Building, Menu, Moon, Sun } from 'lucide-react';
 
+const playNotificationSound = () => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    
+    // First chime note
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    gain1.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start();
+    osc1.stop(ctx.currentTime + 0.4);
+    
+    // Second chime note (slightly delayed)
+    setTimeout(() => {
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(880, ctx.currentTime); // A5
+      gain2.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start();
+      osc2.stop(ctx.currentTime + 0.6);
+    }, 120);
+  } catch (err) {
+    console.error('Audio chime failed:', err);
+  }
+};
+
 function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -45,6 +84,7 @@ function App() {
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' } | null>(null);
 
   // Public View States
   const [publicViewDocId, setPublicViewDocId] = useState<string | null>(null);
@@ -183,6 +223,63 @@ function App() {
       activityEvents.forEach(evt => window.removeEventListener(evt, resetIdleTimer));
     };
   }, [user]);
+
+  // Real-time listener for document approvals
+  useEffect(() => {
+    if (!supabase || !activeProfile || !user) return;
+    
+    const channel = supabase
+      .channel('document-approval-alerts')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT and UPDATE
+          schema: 'public',
+          table: 'documents',
+          filter: `company_id=eq.${activeProfile.id}`
+        },
+        (payload) => {
+          const newDoc = payload.new as any;
+          const oldDoc = payload.old as any;
+          
+          const isNewPending = payload.eventType === 'INSERT' && newDoc.status === 'pending_approval';
+          const isUpdatedPending = payload.eventType === 'UPDATE' && 
+                                   newDoc.status === 'pending_approval' && 
+                                   (!oldDoc || oldDoc.status !== 'pending_approval');
+                                   
+          if (isNewPending || isUpdatedPending) {
+            const currentEmail = (user.email || '').toLowerCase();
+            const allowedToApprove = 
+              !activeProfile.approver_email || 
+              currentEmail === activeProfile.approver_email.toLowerCase();
+              
+            if (allowedToApprove) {
+              playNotificationSound();
+              setToast({
+                message: `Document ${newDoc.document_number} ${isUpdatedPending ? 'amended and ' : ''}needs approval.`,
+                type: 'info'
+              });
+              dbService.getDocuments(activeProfile.id).then(setDocuments).catch(err => console.error(err));
+            }
+          }
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase?.removeChannel(channel);
+    };
+  }, [supabase, activeProfile, user]);
+
+  // Auto-clear toast alert after 10 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -618,6 +715,52 @@ function App() {
 
   return (
     <div className="app-container">
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateY(100px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          backgroundColor: 'var(--bg-card)',
+          border: '1px solid var(--border-color)',
+          borderLeft: '4px solid var(--accent-orange, #f97316)',
+          color: 'var(--text-primary)',
+          padding: '1rem',
+          borderRadius: 'var(--radius-md, 8px)',
+          boxShadow: 'var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.3))',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          animation: 'slideIn 0.3s ease forwards',
+          maxWidth: '350px'
+        }}>
+          <span style={{ fontSize: '1.25rem' }}>🔔</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Awaiting Approval</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem', lineHeight: '1.3' }}>{toast.message}</div>
+          </div>
+          <button 
+            onClick={() => setToast(null)} 
+            style={{ 
+              background: 'transparent', 
+              border: 'none', 
+              color: 'var(--text-secondary)', 
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              padding: '0.2rem'
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       
       {/* Mobile top-bar header */}
       <header className="mobile-header">
