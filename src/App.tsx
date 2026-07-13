@@ -224,7 +224,7 @@ function App() {
     };
   }, [user]);
 
-  // Real-time listener for document approvals
+  // Real-time listener for document approvals and state sync
   useEffect(() => {
     if (!supabase || !activeProfile || !user) return;
     
@@ -233,15 +233,23 @@ function App() {
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to INSERT and UPDATE
+          event: '*', // Listen to INSERT, UPDATE, DELETE
           schema: 'public',
           table: 'documents',
           filter: `company_id=eq.${activeProfile.id}`
         },
         (payload) => {
+          // Immediately sync local documents state with the database on any change
+          dbService.getDocuments(activeProfile.id)
+            .then(setDocuments)
+            .catch(err => console.error('Real-time sync error:', err));
+
           const newDoc = payload.new as any;
           const oldDoc = payload.old as any;
           
+          if (!newDoc) return; // For DELETE event, newDoc is null
+          
+          // 1. Alert for approval request
           const isNewPending = payload.eventType === 'INSERT' && newDoc.status === 'pending_approval';
           const isUpdatedPending = payload.eventType === 'UPDATE' && 
                                    newDoc.status === 'pending_approval' && 
@@ -259,8 +267,20 @@ function App() {
                 message: `Document ${newDoc.document_number} ${isUpdatedPending ? 'amended and ' : ''}needs approval.`,
                 type: 'info'
               });
-              dbService.getDocuments(activeProfile.id).then(setDocuments).catch(err => console.error(err));
             }
+          }
+
+          // 2. Alert for document approval
+          const isApproved = payload.eventType === 'UPDATE' && 
+                             newDoc.status === 'approved' && 
+                             (!oldDoc || oldDoc.status !== 'approved');
+
+          if (isApproved) {
+            playNotificationSound();
+            setToast({
+              message: `Document ${newDoc.document_number} has been approved!`,
+              type: 'success'
+            });
           }
         }
       )
@@ -729,7 +749,7 @@ function App() {
           right: '20px',
           backgroundColor: 'var(--bg-card)',
           border: '1px solid var(--border-color)',
-          borderLeft: '4px solid var(--accent-orange, #f97316)',
+          borderLeft: toast.type === 'success' ? '4px solid #22c55e' : '4px solid var(--accent-orange, #f97316)',
           color: 'var(--text-primary)',
           padding: '1rem',
           borderRadius: 'var(--radius-md, 8px)',
@@ -741,9 +761,11 @@ function App() {
           animation: 'slideIn 0.3s ease forwards',
           maxWidth: '350px'
         }}>
-          <span style={{ fontSize: '1.25rem' }}>🔔</span>
+          <span style={{ fontSize: '1.25rem' }}>{toast.type === 'success' ? '🎉' : '🔔'}</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Awaiting Approval</div>
+            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+              {toast.type === 'success' ? 'Document Approved' : 'Awaiting Approval'}
+            </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem', lineHeight: '1.3' }}>{toast.message}</div>
           </div>
           <button 
