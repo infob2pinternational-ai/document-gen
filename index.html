@@ -8,6 +8,12 @@
     <meta name="description" content="View and download your digital invoices, quotations, and work orders from B2P International." />
     <meta name="robots" content="noindex, nofollow" />
     
+    <link rel="manifest" href="/billing/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="B2P Portal" />
+    <link rel="apple-touch-icon" href="/billing/logo_b2p.png" />
+    
     <!-- Open Graph (WhatsApp & Social Link Previews) -->
     <meta property="og:title" content="B2P International - Document Portal" />
     <meta property="og:description" content="View and download your digital invoices, quotations, and work orders from B2P International." />
@@ -20,6 +26,15 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/billing/sw.js')
+            .then(reg => console.log('ServiceWorker registered successfully:', reg.scope))
+            .catch(err => console.log('ServiceWorker registration failed:', err));
+        });
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

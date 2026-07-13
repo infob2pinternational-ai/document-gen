@@ -1,0 +1,17 @@
+{
+  "short_name": "B2P Portal",
+  "name": "B2P Billing Portal",
+  "icons": [
+    {
+      "src": "/billing/logo_b2p.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/billing/",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait"
+}
