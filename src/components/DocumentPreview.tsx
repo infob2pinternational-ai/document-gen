@@ -131,25 +131,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   }, [document.document_number]);
 
   const handlePrint = () => {
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
-    if (isStandalone) {
-      const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
-      const shareLink = baseUrl + '/doc/' + document.id;
-      
-      navigator.clipboard.writeText(shareLink).then(() => {
-        alert(
-          "Exporting PDF directly is not supported inside the installed Mobile App window.\n\n" +
-          "We have copied the document link to your clipboard! Please open Chrome or Safari, paste the link, and print/export from there."
-        );
-      }).catch(() => {
-        alert(
-          "Exporting PDF directly is not supported inside the installed Mobile App window.\n\n" +
-          `Please open this link in Chrome or Safari to print/export as PDF:\n\n${shareLink}`
-        );
-      });
-    } else {
-      window.print();
-    }
+    window.print();
   };
 
   const handleWhatsAppSend = () => {
