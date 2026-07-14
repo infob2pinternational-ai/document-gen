@@ -41,7 +41,7 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   return permission === 'granted';
 };
 
-export const getFCMToken = async (): Promise<string | null> => {
+export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegistration): Promise<string | null> => {
   if (!messaging) {
     console.warn('FCM is not initialized or not supported.');
     return null;
@@ -58,7 +58,16 @@ export const getFCMToken = async (): Promise<string | null> => {
       return null;
     }
     
-    const token = await getToken(messaging, { vapidKey });
+    // Resolve the active service worker registration dynamically
+    let swReg = serviceWorkerRegistration;
+    if (!swReg && 'serviceWorker' in navigator) {
+      swReg = await navigator.serviceWorker.ready;
+    }
+    
+    const token = await getToken(messaging, { 
+      vapidKey,
+      serviceWorkerRegistration: swReg
+    });
     return token;
   } catch (err) {
     console.error('Error retrieving FCM token:', err);
