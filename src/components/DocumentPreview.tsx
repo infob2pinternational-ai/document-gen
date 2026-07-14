@@ -347,7 +347,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               ) : null}
               {activeProfile.phone && <p style={{ margin: '0 0 2px 0' }}>Phone: {activeProfile.phone}</p>}
               {activeProfile.email && <p style={{ margin: '0 0 2px 0' }}>Email: {activeProfile.email}</p>}
-              {activeProfile.website && <p style={{ margin: 0 }}>Web: {activeProfile.website}</p>}
+              {activeProfile.website && <p style={{ margin: '0 0 2px 0' }}>Web: {activeProfile.website}</p>}
+              {activeProfile.gstin && (
+                <p style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#0f172a' }}>
+                  GSTIN: <span className="mono">{activeProfile.gstin}</span>
+                </p>
+              )}
             </div>
           </div>
 
