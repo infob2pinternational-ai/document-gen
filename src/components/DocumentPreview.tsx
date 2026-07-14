@@ -22,6 +22,13 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(propProfile);
   const [scale, setScale] = useState(1);
 
+  // Sync local activeProfile state if propProfile updates from settings/parent
+  useEffect(() => {
+    if (propProfile) {
+      setActiveProfile(propProfile);
+    }
+  }, [propProfile]);
+
   const getAddressLines = (address: string) => {
     if (!address) return [];
     if (address.includes('\n')) {
