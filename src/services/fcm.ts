@@ -61,7 +61,19 @@ export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegis
     // Resolve the active service worker registration dynamically
     let swReg = serviceWorkerRegistration;
     if (!swReg && 'serviceWorker' in navigator) {
-      swReg = await navigator.serviceWorker.ready;
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        swReg = regs.find(r => r.active || r.waiting || r.installing) || regs[0];
+      } catch (err) {
+        console.warn('Failed to get registrations:', err);
+      }
+      
+      if (!swReg) {
+        swReg = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<any>((resolve) => setTimeout(() => resolve(null), 3000))
+        ]);
+      }
     }
     
     const token = await getToken(messaging, { 
