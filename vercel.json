@@ -26,9 +26,6 @@
   "functions": {
     "api/doc.js": {
       "includeFiles": "dist/billing/index.html"
-    },
-    "api/send-push.js": {
-      "maxDuration": 15
     }
   }
 }
