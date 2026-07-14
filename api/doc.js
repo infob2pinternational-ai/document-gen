@@ -12,7 +12,14 @@ function signJwt(payload, privateKey) {
   
   const sign = crypto.createSign('RSA-SHA256');
   sign.update(toSign);
-  const formattedKey = privateKey.replace(/\\n/g, '\n');
+  let formattedKey = privateKey.trim();
+  if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
+    formattedKey = formattedKey.slice(1, -1);
+  }
+  if (formattedKey.startsWith("'") && formattedKey.endsWith("'")) {
+    formattedKey = formattedKey.slice(1, -1);
+  }
+  formattedKey = formattedKey.replace(/\\n/g, '\n');
   const signature = sign.sign(formattedKey, 'base64url');
   
   return `${toSign}.${signature}`;
