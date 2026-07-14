@@ -138,6 +138,12 @@ export default async function handler(req, res) {
       });
     }
 
+    res.setHeader('X-Key-Length', String(privateKey.length));
+    res.setHeader('X-Key-Start', privateKey.substring(0, 30).replace(/\n/g, '\\n'));
+    res.setHeader('X-Key-End', privateKey.substring(privateKey.length - 30).replace(/\n/g, '\\n'));
+    res.setHeader('X-Key-Escaped-Newlines', String((privateKey.match(/\\n/g) || []).length));
+    res.setHeader('X-Key-Real-Newlines', String((privateKey.match(/\n/g) || []).length));
+
     let attempt = 0;
     const maxRetry = 3;
     let delay = 1000;
