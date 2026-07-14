@@ -1,10 +1,11 @@
 {
   "rewrites": [
+    { "source": "/send-push", "destination": "/api/send-push" },
     { "source": "/doc/:id", "destination": "/api/doc?id=:id" },
     { "source": "/doc/:id/:path*", "destination": "/api/doc?id=:id" },
     { "source": "/billing/assets/:path*", "destination": "/billing/assets/:path*" },
     { "source": "/billing/:path*", "destination": "/billing/index.html" },
-    { "source": "/((?!api|doc|billing/assets).*)" , "destination": "/billing/index.html" }
+    { "source": "/((?!api|doc|billing/assets|send-push).*)" , "destination": "/billing/index.html" }
   ],
   "headers": [
     {

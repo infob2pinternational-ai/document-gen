@@ -97,7 +97,7 @@ export const sendGenericNotification = async (
 async function sendPushRequest(companyId: string, payload: PushPayload): Promise<boolean> {
   try {
     console.log('[Push Service] Dispatching push request to API endpoint...');
-    const response = await fetch('/api/send-push', {
+    const response = await fetch('/send-push', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
