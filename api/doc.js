@@ -19,7 +19,7 @@ function signJwt(payload, privateKey) {
   if (formattedKey.startsWith("'") && formattedKey.endsWith("'")) {
     formattedKey = formattedKey.slice(1, -1);
   }
-  formattedKey = formattedKey.replace(/\\n/g, '\n');
+  formattedKey = formattedKey.replace(/\r/g, '').replace(/\\n/g, '\n');
   const signature = sign.sign(formattedKey, 'base64url');
   
   return `${toSign}.${signature}`;
