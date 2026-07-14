@@ -141,6 +141,8 @@ export default async function handler(req, res) {
       });
     }
 
+    const cryptoHash = crypto.createHash('sha256').update(privateKey.trim()).digest('hex');
+    res.setHeader('X-Key-Hash', cryptoHash);
     res.setHeader('X-Key-Length', String(privateKey.length));
     res.setHeader('X-Key-Start', privateKey.substring(0, 30).replace(/\n/g, '\\n'));
     res.setHeader('X-Key-End', privateKey.substring(privateKey.length - 30).replace(/\n/g, '\\n'));
