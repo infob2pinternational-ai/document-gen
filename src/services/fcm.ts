@@ -41,21 +41,18 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   return permission === 'granted';
 };
 
-export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegistration): Promise<string | null> => {
+export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegistration): Promise<{ token: string | null; error?: string }> => {
   if (!messaging) {
-    console.warn('FCM is not initialized or not supported.');
-    return null;
+    return { token: null, error: 'FCM is not initialized or not supported.' };
   }
   try {
     const permissionGranted = await requestNotificationPermission();
     if (!permissionGranted) {
-      console.warn('Notification permission was not granted.');
-      return null;
+      return { token: null, error: 'Notification permission was denied.' };
     }
     
     if (!vapidKey) {
-      console.warn('VITE_FIREBASE_VAPID_KEY is missing from environment variables.');
-      return null;
+      return { token: null, error: 'VITE_FIREBASE_VAPID_KEY is missing.' };
     }
     
     // Resolve the active service worker registration dynamically
@@ -78,12 +75,12 @@ export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegis
     
     const token = await getToken(messaging, { 
       vapidKey,
-      serviceWorkerRegistration: swReg
+      serviceWorkerRegistration: swReg || undefined
     });
-    return token;
+    return { token };
   } catch (err) {
     console.error('Error retrieving FCM token:', err);
-    return null;
+    return { token: null, error: err instanceof Error ? err.message : String(err) };
   }
 };
 

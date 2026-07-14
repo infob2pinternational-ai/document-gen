@@ -1075,9 +1075,9 @@ export const Settings: React.FC<SettingsProps> = ({
                             if (window.confirm('Are you sure you want to replace the registered device with this browser?')) {
                               setLoadingDevice(true);
                               try {
-                                const token = await getFCMToken();
+                                const { token, error } = await getFCMToken();
                                 if (!token) {
-                                  alert('Could not retrieve token. Please enable notification permissions in your browser.');
+                                  alert('Could not retrieve token: ' + (error || 'Unknown error. Please check notification permissions.'));
                                   return;
                                 }
                                 const userAgent = navigator.userAgent;
@@ -1188,9 +1188,9 @@ export const Settings: React.FC<SettingsProps> = ({
                         onClick={async () => {
                           setLoadingDevice(true);
                           try {
-                            const token = await getFCMToken();
+                            const { token, error } = await getFCMToken();
                             if (!token) {
-                              alert('Could not retrieve token. Please enable notification permissions in your browser.');
+                              alert('Could not retrieve token: ' + (error || 'Unknown error. Please check notification permissions.'));
                               return;
                             }
                             const userAgent = navigator.userAgent;
