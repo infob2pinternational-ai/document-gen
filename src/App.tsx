@@ -232,20 +232,29 @@ function App() {
   useEffect(() => {
     if (!supabase || !activeProfile || !user) return;
     
-    console.log('[Realtime] Subscription created');
+    const channelName = `company-alerts-${activeProfile.id}`;
+    console.log(`[Realtime] Subscription created for channel: ${channelName}`);
     let isInitialConnection = true;
 
     const channel = supabase
-      .channel('document-approval-alerts')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
           event: '*', // Listen to INSERT, UPDATE, DELETE
           schema: 'public',
-          table: 'documents',
-          filter: `company_id=eq.${activeProfile.id}`
+          table: 'documents'
         },
         (payload) => {
+          const newDoc = payload.new as any;
+          const oldDoc = payload.old as any;
+          const targetDoc = newDoc || oldDoc;
+
+          if (!targetDoc || targetDoc.company_id !== activeProfile.id) {
+            // Event is for a different company profile, ignore
+            return;
+          }
+
           if (payload.eventType === 'INSERT') {
             console.log('[Realtime] INSERT event');
           } else if (payload.eventType === 'UPDATE') {
@@ -262,9 +271,6 @@ function App() {
             })
             .catch(err => console.error('[Realtime] Reload error:', err));
 
-          const newDoc = payload.new as any;
-          const oldDoc = payload.old as any;
-          
           if (!newDoc) return; // For DELETE event, newDoc is null
           
           // Get the previous version of this document from our current React state
