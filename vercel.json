@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/send-push", "destination": "/api/send-push.js" },
+    { "source": "/send-push", "destination": "/api/doc?action=send-push" },
     { "source": "/doc/:id", "destination": "/api/doc?id=:id" },
     { "source": "/doc/:id/:path*", "destination": "/api/doc?id=:id" },
     { "source": "/billing/assets/:path*", "destination": "/billing/assets/:path*" },
