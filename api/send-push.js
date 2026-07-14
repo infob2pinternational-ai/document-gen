@@ -1,4 +1,36 @@
 import crypto from 'crypto';
+import https from 'https';
+
+// Helper to make HTTPS requests using Node's native module
+function httpsRequest(url, options, bodyContent) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          json: () => {
+            try {
+              return JSON.parse(data);
+            } catch (e) {
+              return { error: 'Failed to parse JSON response', raw: data };
+            }
+          },
+          text: () => data
+        });
+      });
+    });
+
+    req.on('error', (err) => reject(err));
+
+    if (bodyContent) {
+      req.write(bodyContent);
+    }
+    req.end();
+  });
+}
 
 // Helper to sign JWT using RS256 with Node's native crypto module
 function signJwt(payload, privateKey) {
@@ -9,7 +41,6 @@ function signJwt(payload, privateKey) {
   
   const sign = crypto.createSign('RSA-SHA256');
   sign.update(toSign);
-  // Ensure private key has actual newlines
   const formattedKey = privateKey.replace(/\\n/g, '\n');
   const signature = sign.sign(formattedKey, 'base64url');
   
@@ -31,20 +62,19 @@ async function getAccessToken(clientEmail, privateKey) {
   
   const assertion = signJwt(jwtPayload, privateKey);
   
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await httpsRequest('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${assertion}`
-  });
+    }
+  }, `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${assertion}`);
   
   if (!response.ok) {
-    const errText = await response.text();
+    const errText = response.text();
     throw new Error(`Failed to obtain Google access token: ${response.status} - ${errText}`);
   }
   
-  const data = await response.json();
+  const data = response.json();
   return data.access_token;
 }
 
@@ -102,16 +132,15 @@ export default async function handler(req, res) {
         }
       };
 
-      const fcmResponse = await fetch(fcmUrl, {
+      const fcmResponse = await httpsRequest(fcmUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(fcmPayload)
-      });
+        }
+      }, JSON.stringify(fcmPayload));
 
-      const fcmResult = await fcmResponse.json();
+      const fcmResult = fcmResponse.json();
 
       if (fcmResponse.ok) {
         console.log('[Push API] FCM message sent successfully:', fcmResult);
@@ -137,7 +166,7 @@ export default async function handler(req, res) {
     } catch (err) {
       console.error(`[Push API] Attempt ${attempt} failed:`, err.message);
       
-      const isTransient = err.message.includes('Transient') || err.message.includes('fetch');
+      const isTransient = err.message.includes('Transient') || err.message.includes('fetch') || err.message.includes('ECONNRESET');
       if (isTransient && attempt < maxRetry) {
         console.log(`[Push API] Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
