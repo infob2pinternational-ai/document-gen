@@ -60,6 +60,30 @@ export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegis
     if (!swReg && 'serviceWorker' in navigator) {
       try {
         swReg = await navigator.serviceWorker.register('/billing/sw.js');
+        
+        // Wait for the Service Worker to become active if it isn't already
+        if (swReg && !swReg.active) {
+          console.log('[FCM] ServiceWorker is registering but not active yet. Waiting for activation...');
+          const activeReg = swReg;
+          await new Promise<void>((resolve) => {
+            const worker = activeReg.installing || activeReg.waiting;
+            if (!worker) {
+              resolve();
+              return;
+            }
+            
+            const stateChangeHandler = () => {
+              if (worker.state === 'activated') {
+                worker.removeEventListener('statechange', stateChangeHandler);
+                resolve();
+              }
+            };
+            worker.addEventListener('statechange', stateChangeHandler);
+            
+            // Safety timeout after 5 seconds to prevent hanging the UI
+            setTimeout(resolve, 5000);
+          });
+        }
       } catch (err) {
         console.warn('[FCM] Explicit ServiceWorker registration failed, searching fallbacks:', err);
         try {
