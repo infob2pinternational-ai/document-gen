@@ -62,6 +62,10 @@ function App() {
   
   // Data States (Preloaded to prevent tab switching lag)
   const [documents, setDocuments] = useState<Document[]>([]);
+  const documentsRef = React.useRef<Document[]>([]);
+  useEffect(() => {
+    documentsRef.current = documents;
+  }, [documents]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   
@@ -228,6 +232,9 @@ function App() {
   useEffect(() => {
     if (!supabase || !activeProfile || !user) return;
     
+    console.log('[Realtime] Subscription created');
+    let isInitialConnection = true;
+
     const channel = supabase
       .channel('document-approval-alerts')
       .on(
@@ -239,21 +246,36 @@ function App() {
           filter: `company_id=eq.${activeProfile.id}`
         },
         (payload) => {
+          if (payload.eventType === 'INSERT') {
+            console.log('[Realtime] INSERT event');
+          } else if (payload.eventType === 'UPDATE') {
+            console.log('[Realtime] UPDATE event');
+          } else if (payload.eventType === 'DELETE') {
+            console.log('[Realtime] DELETE event');
+          }
+
           // Immediately sync local documents state with the database on any change
           dbService.getDocuments(activeProfile.id)
-            .then(setDocuments)
-            .catch(err => console.error('Real-time sync error:', err));
+            .then((docs) => {
+              setDocuments(docs);
+              console.log('[Realtime] Documents reloaded');
+            })
+            .catch(err => console.error('[Realtime] Reload error:', err));
 
           const newDoc = payload.new as any;
           const oldDoc = payload.old as any;
           
           if (!newDoc) return; // For DELETE event, newDoc is null
           
+          // Get the previous version of this document from our current React state
+          const prevDoc = documentsRef.current.find(d => d.id === newDoc.id);
+          const prevStatus = prevDoc ? prevDoc.status : (oldDoc ? oldDoc.status : undefined);
+
           // 1. Alert for approval request
           const isNewPending = payload.eventType === 'INSERT' && newDoc.status === 'pending_approval';
           const isUpdatedPending = payload.eventType === 'UPDATE' && 
                                    newDoc.status === 'pending_approval' && 
-                                   (!oldDoc || oldDoc.status !== 'pending_approval');
+                                   prevStatus !== 'pending_approval';
                                    
           if (isNewPending || isUpdatedPending) {
             const currentEmail = (user.email || '').toLowerCase();
@@ -262,6 +284,7 @@ function App() {
               currentEmail === activeProfile.approver_email.toLowerCase();
               
             if (allowedToApprove) {
+              console.log('[Realtime] Notification triggered');
               playNotificationSound();
               setToast({
                 message: `Document ${newDoc.document_number} ${isUpdatedPending ? 'amended and ' : ''}needs approval.`,
@@ -273,9 +296,10 @@ function App() {
           // 2. Alert for document approval
           const isApproved = payload.eventType === 'UPDATE' && 
                              newDoc.status === 'approved' && 
-                             (!oldDoc || oldDoc.status !== 'approved');
+                             prevStatus !== 'approved';
 
           if (isApproved) {
+            console.log('[Realtime] Approval notification triggered');
             playNotificationSound();
             setToast({
               message: `Document ${newDoc.document_number} has been approved!`,
@@ -284,10 +308,28 @@ function App() {
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log(`[Realtime] Channel status: ${status}`);
+        if (err) {
+          console.error('[Realtime] WebSocket error:', err);
+        }
+        
+        if (status === 'SUBSCRIBED') {
+          if (isInitialConnection) {
+            console.log('[Realtime] Subscription connected');
+            isInitialConnection = false;
+          } else {
+            console.log('[Realtime] Reconnect attempt');
+            console.log('[Realtime] Subscription connected');
+          }
+        } else if (status === 'CLOSED') {
+          console.log('[Realtime] Subscription disconnected');
+        }
+      });
       
     return () => {
       supabase?.removeChannel(channel);
+      console.log('[Realtime] Subscription disconnected');
     };
   }, [supabase, activeProfile, user]);
 
