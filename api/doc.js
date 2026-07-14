@@ -101,6 +101,8 @@ export default async function handler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Debug-Action', String(req.query?.action || 'undefined'));
+  res.setHeader('X-Debug-Url', String(req.url || 'undefined'));
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
