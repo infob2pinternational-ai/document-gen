@@ -55,21 +55,19 @@ export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegis
       return { token: null, error: 'VITE_FIREBASE_VAPID_KEY is missing.' };
     }
     
-    // Resolve the active service worker registration dynamically
+    // Resolve or register the service worker explicitly to ensure Firebase maps it correctly
     let swReg = serviceWorkerRegistration;
     if (!swReg && 'serviceWorker' in navigator) {
       try {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        swReg = regs.find(r => r.active || r.waiting || r.installing) || regs[0];
+        swReg = await navigator.serviceWorker.register('/billing/sw.js');
       } catch (err) {
-        console.warn('Failed to get registrations:', err);
-      }
-      
-      if (!swReg) {
-        swReg = await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise<any>((resolve) => setTimeout(() => resolve(null), 3000))
-        ]);
+        console.warn('[FCM] Explicit ServiceWorker registration failed, searching fallbacks:', err);
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          swReg = regs.find(r => r.scope.includes('/billing')) || regs[0];
+        } catch (e) {
+          console.warn('Failed to get registrations:', e);
+        }
       }
     }
     
