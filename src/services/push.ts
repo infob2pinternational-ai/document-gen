@@ -80,7 +80,10 @@ export const sendGenericNotification = async (
       token: device.token,
       title,
       body,
-      data: extraData || {}
+      data: {
+        ...(extraData || {}),
+        documentId: extraData?.documentId || '00000000-0000-0000-0000-000000000000'
+      }
     };
 
     return await sendPushRequest(companyId, payload);
@@ -96,8 +99,9 @@ export const sendGenericNotification = async (
  */
 async function sendPushRequest(companyId: string, payload: PushPayload): Promise<boolean> {
   try {
-    console.log('[Push Service] Dispatching push request to API endpoint...');
-    const response = await fetch('/send-push', {
+    const docId = payload.data?.documentId || '00000000-0000-0000-0000-000000000000';
+    console.log(`[Push Service] Dispatching push request to /doc/${docId}/send-push...`);
+    const response = await fetch(`/doc/${docId}/send-push`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
