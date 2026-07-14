@@ -100,7 +100,7 @@ export interface Document {
   created_by_email?: string;
   whatsapp_sent_by_email?: string;
   whatsapp_sent_at?: string;
-  status?: 'pending_approval' | 'approved';
+  status?: 'pending_approval' | 'approved' | 'rejected';
   approved_by_email?: string;
   approved_at?: string;
 }

@@ -186,7 +186,21 @@ CREATE POLICY document_items_auth_insert ON document_items
 CREATE POLICY document_items_auth_update ON document_items
   FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY document_items_auth_delete ON document_items
-  FOR DELETE USING (auth.role() = 'authenticated');`;
+  FOR DELETE USING (auth.role() = 'authenticated');
+
+-- Approver Devices: token registrations for push notifications
+CREATE TABLE IF NOT EXISTS approver_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
+  token TEXT NOT NULL,
+  device_name TEXT,
+  last_active TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+ALTER TABLE approver_devices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY approver_devices_auth_all ON approver_devices
+  FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');`;
 
 // Helper to check if we should write to local storage or supabase
 const useCloud = (): boolean => {
@@ -601,6 +615,89 @@ export const dbService = {
         docs[idx].approved_at = new Date().toISOString();
         setLocal('documents', docs);
       }
+    }
+  },
+
+  async rejectDocument(docId: string, email: string): Promise<void> {
+    if (useCloud() && supabase) {
+      const { error } = await supabase.from('documents').update({
+        status: 'rejected',
+        approved_by_email: email,
+        approved_at: new Date().toISOString()
+      }).eq('id', docId);
+      if (error) throw error;
+    } else {
+      const docs = getLocal<Document[]>('documents', []);
+      const idx = docs.findIndex(d => d.id === docId);
+      if (idx >= 0) {
+        docs[idx].status = 'rejected';
+        docs[idx].approved_by_email = email;
+        docs[idx].approved_at = new Date().toISOString();
+        setLocal('documents', docs);
+      }
+    }
+  },
+
+  async getApproverDevice(companyId: string): Promise<any | null> {
+    if (useCloud() && supabase) {
+      const { data, error } = await supabase
+        .from('approver_devices')
+        .select('*')
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    }
+    return getLocal<any>('approver_device_' + companyId, null);
+  },
+
+  async registerApproverDevice(companyId: string, token: string, deviceName: string): Promise<any> {
+    const payload = {
+      company_id: companyId,
+      token,
+      device_name: deviceName,
+      last_active: new Date().toISOString()
+    };
+    if (useCloud() && supabase) {
+      const { data: existing } = await supabase
+        .from('approver_devices')
+        .select('id')
+        .eq('company_id', companyId)
+        .maybeSingle();
+      
+      if (existing) {
+        const { data, error } = await supabase
+          .from('approver_devices')
+          .update(payload)
+          .eq('company_id', companyId)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      } else {
+        const { data, error } = await supabase
+          .from('approver_devices')
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      }
+    } else {
+      setLocal('approver_device_' + companyId, payload);
+      return payload;
+    }
+  },
+
+  async removeApproverDevice(companyId: string): Promise<void> {
+    if (useCloud() && supabase) {
+      const { error } = await supabase
+        .from('approver_devices')
+        .delete()
+        .eq('company_id', companyId);
+      if (error) throw error;
+    } else {
+      localStorage.removeItem(`docgen_approver_device_${companyId}`);
     }
   }
 };

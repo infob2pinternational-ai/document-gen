@@ -307,9 +307,31 @@ function App() {
           if (isApproved) {
             console.log('[Realtime] Approval notification triggered');
             playNotificationSound();
+            const docTypeStr = newDoc.document_type === 'quotation' ? 'Quotation' :
+                               newDoc.document_type === 'invoice' ? 'Invoice' :
+                               newDoc.document_type === 'work_order' ? 'Work Order' :
+                               newDoc.document_type === 'proforma_invoice' ? 'Proforma Invoice' : 'Document';
             setToast({
-              message: `Document ${newDoc.document_number} has been approved!`,
+              message: `${docTypeStr} ${newDoc.document_number} approved.`,
               type: 'success'
+            });
+          }
+
+          // 3. Alert for document rejection
+          const isRejected = payload.eventType === 'UPDATE' && 
+                             newDoc.status === 'rejected' && 
+                             prevStatus !== 'rejected';
+
+          if (isRejected) {
+            console.log('[Realtime] Rejection notification triggered');
+            playNotificationSound();
+            const docTypeStr = newDoc.document_type === 'quotation' ? 'Quotation' :
+                               newDoc.document_type === 'invoice' ? 'Invoice' :
+                               newDoc.document_type === 'work_order' ? 'Work Order' :
+                               newDoc.document_type === 'proforma_invoice' ? 'Proforma Invoice' : 'Document';
+            setToast({
+              message: `${docTypeStr} ${newDoc.document_number} rejected.`,
+              type: 'info'
             });
           }
         }
@@ -479,6 +501,19 @@ function App() {
         setDocuments(docs);
         setCustomers(custs);
         setServices(servs);
+
+        // Handle deep-linking from push notifications (previewDocId)
+        const params = new URLSearchParams(window.location.search);
+        const previewId = params.get('previewDocId');
+        if (previewId) {
+          const docToPreview = docs.find(d => d.id === previewId);
+          if (docToPreview) {
+            setDocumentToPreview(docToPreview);
+            setPreviewOpen(true);
+            // Clean up the URL parameter
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }
       });
     }
   }, [activeProfile]);

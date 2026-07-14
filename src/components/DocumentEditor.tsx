@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Customer, Service, Document, DocumentItem, DocumentType } from '../types';
 import { dbService } from '../services/db';
+import { sendApprovalNotification } from '../services/push';
 import { ArrowLeft, Plus, Trash2, GripVertical, Save, Calculator } from 'lucide-react';
 
 interface DocumentEditorProps {
@@ -499,6 +500,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       }));
 
       await dbService.saveDocument(docPayload, itemsPayload);
+
+      // Trigger FCM push notification to the registered approver
+      try {
+        await sendApprovalNotification(activeProfile, docPayload);
+      } catch (pushErr) {
+        console.error('Failed to trigger push notification:', pushErr);
+      }
 
       // Trigger Google Sheets Auto-Save
       if (activeProfile.google_sheets_url) {

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile } from '../types';
 import { dbService, SQL_SCHEMA, isSupabaseConfigured } from '../services/db';
+import { getFCMToken, isFirebaseConfigured } from '../services/fcm';
+import { sendGenericNotification } from '../services/push';
 import { 
   Building, 
   Upload, 
@@ -8,7 +10,10 @@ import {
   Trash2, 
   AlertCircle, 
   Database,
-  Info
+  Info,
+  Smartphone,
+  Bell,
+  RefreshCw
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -26,8 +31,9 @@ export const Settings: React.FC<SettingsProps> = ({
   onRefreshProfiles,
   user
 }) => {
-  // Tabs: 'profile', 'sheets', 'database'
-  const [activeTab, setActiveTab] = useState<'profile' | 'sheets' | 'database'>('profile');
+  // Tabs: 'profile', 'sheets', 'database', 'notifications'
+  const [activeTab, setActiveTab] = useState<'profile' | 'sheets' | 'database' | 'notifications'>('profile');
+  const isCloudConnected = isSupabaseConfigured() && !!user;
   
   // Active Profile Form States
   const [name, setName] = useState('');
@@ -77,9 +83,33 @@ export const Settings: React.FC<SettingsProps> = ({
   const [testingConnection, setTestingConnection] = useState(false);
   const [approverEmail, setApproverEmail] = useState('');
 
-  // Connection active state
-  const isCloudConnected = isSupabaseConfigured() && !!user;
+  // Approver Device Management States
+  const [registeredDevice, setRegisteredDevice] = useState<any>(null);
+  const [loadingDevice, setLoadingDevice] = useState(false);
+  const [permissionState, setPermissionState] = useState<NotificationPermission>('default');
+  const [testingPush, setTestingPush] = useState(false);
 
+  const loadApproverDevice = async () => {
+    if (!activeProfile) return;
+    setLoadingDevice(true);
+    try {
+      const dev = await dbService.getApproverDevice(activeProfile.id);
+      setRegisteredDevice(dev);
+    } catch (err) {
+      console.error('Error loading approver device:', err);
+    } finally {
+      setLoadingDevice(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeProfile && isCloudConnected) {
+      loadApproverDevice();
+    }
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPermissionState(Notification.permission);
+    }
+  }, [activeProfile, isCloudConnected]);
   // Load active profile data
   useEffect(() => {
     if (activeProfile) {
@@ -340,6 +370,24 @@ export const Settings: React.FC<SettingsProps> = ({
         >
           Google Sheets Auto-Save
         </button>
+
+        {isCloudConnected && (
+          <button
+            onClick={() => setActiveTab('notifications')}
+            style={{
+              padding: '0.75rem 1rem',
+              border: 'none',
+              background: 'none',
+              color: activeTab === 'notifications' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'notifications' ? '2px solid var(--accent-primary)' : 'none',
+              fontWeight: 600,
+              borderRadius: 0,
+              cursor: 'pointer'
+            }}
+          >
+            Approver Device
+          </button>
+        )}
 
         {!isCloudConnected && (
           <button
@@ -897,6 +945,284 @@ export const Settings: React.FC<SettingsProps> = ({
                   <strong>Tip:</strong> Once you execute this script in Supabase, and enter your <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> env variables, this setup tab will be hidden and database records will sync online.
                 </span>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'notifications' && (
+            <div className="card animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  background: 'rgba(99,102,241,0.1)',
+                  color: 'var(--accent-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Smartphone size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Approver Mobile Device</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                    Configure the single registered device allowed to receive push notifications for document approvals.
+                  </p>
+                </div>
+              </div>
+
+              {!isFirebaseConfigured() ? (
+                <div style={{
+                  padding: '1.25rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(239, 68, 68, 0.05)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  display: 'flex',
+                  gap: '0.75rem'
+                }}>
+                  <AlertCircle size={20} style={{ color: '#ef4444', flexShrink: 0 }} />
+                  <div>
+                    <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '0.9rem', color: 'var(--text-primary)' }}>Firebase Configuration Missing</h4>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                      Firebase Cloud Messaging is not fully configured in your environment variables. Please ensure the following variables are configured in your Vercel project and <code>.env</code> file:
+                      <code style={{ display: 'block', marginTop: '0.5rem', background: 'var(--bg-canvas)', padding: '0.5rem', borderRadius: '4px', fontSize: '0.75rem' }}>
+                        VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_MESSAGING_SENDER_ID, VITE_FIREBASE_APP_ID, VITE_FIREBASE_VAPID_KEY
+                      </code>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '1rem',
+                    background: 'var(--bg-canvas)',
+                    padding: '1.25rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Notification Status</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+                        <div style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          background: permissionState === 'granted' ? '#10b981' : permissionState === 'denied' ? '#ef4444' : '#f59e0b'
+                        }} />
+                        {permissionState === 'granted' ? 'Permissions Granted' : permissionState === 'denied' ? 'Permissions Blocked' : 'Permissions Default (Ask)'}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>FCM SDK Support</div>
+                      <div style={{ fontWeight: 600 }}>
+                        {'serviceWorker' in navigator ? 'Supported ✅' : 'Not Supported ❌'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {loadingDevice ? (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                      <RefreshCw className="animate-spin" size={24} style={{ margin: '0 auto 0.5rem auto' }} />
+                      <span>Loading device registration...</span>
+                    </div>
+                  ) : registeredDevice ? (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1rem',
+                      padding: '1.25rem',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'rgba(99, 102, 241, 0.05)',
+                      border: '1px solid rgba(99, 102, 241, 0.15)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                          <Smartphone size={24} style={{ color: 'var(--accent-primary)', marginTop: '2px' }} />
+                          <div>
+                            <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem' }}>{registeredDevice.device_name}</h4>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              Registered: {new Date(registeredDevice.created_at).toLocaleDateString()} at {new Date(registeredDevice.created_at).toLocaleTimeString()}
+                            </p>
+                            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              Last Active: {new Date(registeredDevice.last_active).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{
+                          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                          color: '#10b981',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '9999px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600
+                        }}>
+                          Active
+                        </span>
+                      </div>
+
+                      <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '1rem' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>FCM Token (Truncated)</div>
+                        <code style={{ fontSize: '0.75rem', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'var(--bg-canvas)', padding: '0.5rem', borderRadius: '4px' }}>
+                          {registeredDevice.token}
+                        </code>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm('Are you sure you want to replace the registered device with this browser?')) {
+                              setLoadingDevice(true);
+                              try {
+                                const token = await getFCMToken();
+                                if (!token) {
+                                  alert('Could not retrieve token. Please enable notification permissions in your browser.');
+                                  return;
+                                }
+                                const userAgent = navigator.userAgent;
+                                let deviceLabel = 'Mobile Browser';
+                                if (userAgent.includes('Firefox')) deviceLabel = 'Firefox Browser';
+                                else if (userAgent.includes('Chrome')) deviceLabel = 'Chrome Browser';
+                                else if (userAgent.includes('Safari')) deviceLabel = 'Safari Browser';
+                                
+                                const label = window.prompt('Enter a name for this device:', `${deviceLabel} on ${navigator.platform}`);
+                                if (label !== null) {
+                                  await dbService.registerApproverDevice(activeProfile.id, token, label || 'Approver Phone');
+                                  await loadApproverDevice();
+                                  setPermissionState(Notification.permission);
+                                  alert('Device replaced successfully!');
+                                }
+                              } catch (err) {
+                                console.error(err);
+                                alert('Failed to register device.');
+                              } finally {
+                                setLoadingDevice(false);
+                              }
+                            }
+                          }}
+                          className="btn-secondary"
+                          style={{ flex: 1 }}
+                        >
+                          Replace Device
+                        </button>
+
+                        <button
+                          onClick={async () => {
+                            if (window.confirm('Are you sure you want to remove the registered device? This device will stop receiving push notifications.')) {
+                              setLoadingDevice(true);
+                              try {
+                                await dbService.removeApproverDevice(activeProfile.id);
+                                setRegisteredDevice(null);
+                                alert('Device removed successfully.');
+                              } catch (err) {
+                                console.error(err);
+                                alert('Failed to remove device.');
+                              } finally {
+                                setLoadingDevice(false);
+                              }
+                            }
+                          }}
+                          className="btn-danger"
+                          style={{
+                            flex: 1,
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid #ef4444',
+                            color: '#ef4444',
+                            padding: '0.5rem 1rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Remove Device
+                        </button>
+                      </div>
+
+                      <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.9rem' }}>Verify Push Channel</h4>
+                        <button
+                          onClick={async () => {
+                            setTestingPush(true);
+                            try {
+                              const ok = await sendGenericNotification(
+                                activeProfile.id,
+                                'Test Notification',
+                                'This is a sample push notification verifying your device registration is working correctly.',
+                                { type: 'test' }
+                              );
+                              if (ok) {
+                                alert('Test notification sent successfully! Please check your registered device.');
+                              } else {
+                                alert('Failed to deliver test notification. Check if the app is closed/backgrounded or permission is granted.');
+                              }
+                            } catch (err) {
+                              console.error(err);
+                              alert('Error sending test notification.');
+                            } finally {
+                              setTestingPush(false);
+                            }
+                          }}
+                          disabled={testingPush}
+                          className="btn-primary"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', width: 'fit-content' }}
+                        >
+                          <Bell size={16} />
+                          {testingPush ? 'Sending...' : 'Send Test Notification'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '3rem 1.5rem',
+                      border: '2px dashed var(--border-color)',
+                      borderRadius: 'var(--radius-sm)'
+                    }}>
+                      <Smartphone size={40} style={{ color: 'var(--text-secondary)', margin: '0 auto 1rem auto', opacity: 0.5 }} />
+                      <h4 style={{ margin: '0 0 0.5rem 0' }}>No Registered Device</h4>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', maxWidth: '400px', margin: '0 auto 1.5rem auto', lineHeight: '1.4' }}>
+                        To receive push notifications instantly when office staff submit quotations, invoices, or work orders, register the manager's mobile device.
+                      </p>
+                      
+                      <button
+                        onClick={async () => {
+                          setLoadingDevice(true);
+                          try {
+                            const token = await getFCMToken();
+                            if (!token) {
+                              alert('Could not retrieve token. Please enable notification permissions in your browser.');
+                              return;
+                            }
+                            const userAgent = navigator.userAgent;
+                            let deviceLabel = 'Mobile Device';
+                            if (userAgent.includes('Firefox')) deviceLabel = 'Firefox Browser';
+                            else if (userAgent.includes('Chrome')) deviceLabel = 'Chrome Browser';
+                            else if (userAgent.includes('Safari')) deviceLabel = 'Safari Browser';
+
+                            const label = window.prompt('Enter a name for this device:', `${deviceLabel} on ${navigator.platform}`);
+                            if (label !== null) {
+                              await dbService.registerApproverDevice(activeProfile.id, token, label || 'Approver Phone');
+                              await loadApproverDevice();
+                              setPermissionState(Notification.permission);
+                              alert('Device registered successfully!');
+                            }
+                          } catch (err) {
+                            console.error(err);
+                            alert('Failed to register device.');
+                          } finally {
+                            setLoadingDevice(false);
+                          }
+                        }}
+                        className="btn-primary"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                      >
+                        <Smartphone size={16} />
+                        Register This Device
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </>

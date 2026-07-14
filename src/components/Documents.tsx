@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../types';
-import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check } from 'lucide-react';
+import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X } from 'lucide-react';
 import { dbService } from '../services/db';
 
 interface DocumentsProps {
@@ -142,6 +142,19 @@ export const Documents: React.FC<DocumentsProps> = ({
                             }}>
                               Approved
                             </span>
+                          ) : doc.status === 'rejected' ? (
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+                              color: '#ef4444', 
+                              padding: '0.25rem 0.5rem', 
+                              borderRadius: '9999px', 
+                              fontSize: '0.7rem', 
+                              fontWeight: 600 
+                            }}>
+                              Rejected
+                            </span>
                           ) : (
                             <span style={{ 
                               display: 'inline-flex', 
@@ -249,33 +262,56 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 </svg>
                               </button>
                             )}
-                            {doc.status !== 'approved' && (() => {
+                            {doc.status !== 'approved' && doc.status !== 'rejected' && (() => {
                               const userStr = localStorage.getItem('supabase_user');
                               const user = userStr ? JSON.parse(userStr) : null;
                               const userEmail = (user ? user.email : '').toLowerCase();
                               return !activeProfile?.approver_email || userEmail === activeProfile.approver_email.toLowerCase();
                             })() && (
-                              <button
-                                onClick={async () => {
-                                  const userStr = localStorage.getItem('supabase_user');
-                                  const user = userStr ? JSON.parse(userStr) : null;
-                                  const userEmail = user ? user.email : 'System';
-                                  if (window.confirm(`Are you sure you want to approve document ${doc.document_number}?`)) {
-                                    try {
-                                      await dbService.approveDocument(doc.id, userEmail);
-                                      if (onRefreshDocs) onRefreshDocs();
-                                    } catch (err) {
-                                      console.error(err);
-                                      alert('Failed to approve document.');
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    const userStr = localStorage.getItem('supabase_user');
+                                    const user = userStr ? JSON.parse(userStr) : null;
+                                    const userEmail = user ? user.email : 'System';
+                                    if (window.confirm(`Are you sure you want to approve document ${doc.document_number}?`)) {
+                                      try {
+                                        await dbService.approveDocument(doc.id, userEmail);
+                                        if (onRefreshDocs) onRefreshDocs();
+                                      } catch (err) {
+                                        console.error(err);
+                                        alert('Failed to approve document.');
+                                      }
                                     }
-                                  }
-                                }}
-                                className="btn-secondary"
-                                style={{ padding: '0.35rem', borderRadius: '4px', color: '#10b981' }}
-                                title="Approve Document"
-                              >
-                                <Check size={14} />
-                              </button>
+                                  }}
+                                  className="btn-secondary"
+                                  style={{ padding: '0.35rem', borderRadius: '4px', color: '#10b981', marginRight: '0.25rem' }}
+                                  title="Approve Document"
+                                >
+                                  <Check size={14} />
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    const userStr = localStorage.getItem('supabase_user');
+                                    const user = userStr ? JSON.parse(userStr) : null;
+                                    const userEmail = user ? user.email : 'System';
+                                    if (window.confirm(`Are you sure you want to reject document ${doc.document_number}?`)) {
+                                      try {
+                                        await dbService.rejectDocument(doc.id, userEmail);
+                                        if (onRefreshDocs) onRefreshDocs();
+                                      } catch (err) {
+                                        console.error(err);
+                                        alert('Failed to reject document.');
+                                      }
+                                    }
+                                  }}
+                                  className="btn-secondary"
+                                  style={{ padding: '0.35rem', borderRadius: '4px', color: '#ef4444', marginRight: '0.25rem' }}
+                                  title="Reject Document"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </>
                             )}
                             <button
                               onClick={() => onViewDocument(doc)}
