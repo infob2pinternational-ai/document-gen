@@ -377,6 +377,11 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', color: '#334155', lineHeight: '1.4' }}>
                 {document.customer_address}
               </div>
+              {document.customer_gstin && (
+                <div style={{ marginTop: '0.35rem', color: '#334155', fontWeight: 500 }}>
+                  GSTIN: <span style={{ fontWeight: 600 }} className="mono">{document.customer_gstin}</span>
+                </div>
+              )}
             </div>
             <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <div>
