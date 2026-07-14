@@ -5,7 +5,7 @@
     { "source": "/doc/:id/:path*", "destination": "/api/doc?id=:id" },
     { "source": "/billing/assets/:path*", "destination": "/billing/assets/:path*" },
     { "source": "/billing/:path*", "destination": "/billing/index.html" },
-    { "source": "/((?!api|doc|billing/assets|send-push).*)" , "destination": "/billing/index.html" }
+    { "source": "/", "destination": "/billing/index.html" }
   ],
   "headers": [
     {
