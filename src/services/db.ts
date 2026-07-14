@@ -651,6 +651,19 @@ export const dbService = {
     return getLocal<any>('approver_device_' + companyId, null);
   },
 
+  async getApproverDevices(companyId: string): Promise<any[]> {
+    if (useCloud() && supabase) {
+      const { data, error } = await supabase
+        .from('approver_devices')
+        .select('*')
+        .eq('company_id', companyId);
+      if (error) throw error;
+      return data || [];
+    }
+    const single = getLocal<any>('approver_device_' + companyId, null);
+    return single ? [single] : [];
+  },
+
   async registerApproverDevice(companyId: string, token: string, deviceName: string): Promise<any> {
     const payload = {
       company_id: companyId,

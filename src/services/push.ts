@@ -28,30 +28,49 @@ export const sendApprovalNotification = async (
   doc: Document
 ): Promise<boolean> => {
   try {
-    console.log(`[Push Service] Resolving approver device for company profile: ${profile.name}`);
-    const device = await dbService.getApproverDevice(profile.id);
+    console.log(`[Push Service] Resolving approver devices for company profile: ${profile.name}`);
+    const devices = await dbService.getApproverDevices(profile.id);
 
-    if (!device || !device.token) {
-      console.log('[Push Service] No approver device registered for this profile. Skipping push.');
+    if (!devices || devices.length === 0) {
+      console.log('[Push Service] No approver devices registered for this profile. Skipping push.');
       return false;
     }
 
-    const title = `${profile.name} Portal`;
+    const title = '📄 Document Requires Approval';
     const docTypeStr = formatDocType(doc.document_type);
-    const body = `New ${docTypeStr} ${doc.document_number} waiting for your approval. Tap to open.`;
     
-    const payload: PushPayload = {
-      token: device.token,
-      title,
-      body,
-      data: {
-        documentId: doc.id,
-        documentNumber: doc.document_number,
-        type: 'approval_request'
-      }
-    };
+    // Extract creator/staff name or email
+    const staffName = doc.created_by_email || 'Office Staff';
+    
+    const body = `A document has been submitted for approval.\nType: ${docTypeStr}\nDocument No: ${doc.document_number}\nCustomer: ${doc.customer_name}\nCreated By: ${staffName}`;
+    
+    console.log('[Push Service] Notification payload formatted:', { title, body });
+    console.log('[Push Service] Database save successful. Triggering Push API call...');
 
-    return await sendPushRequest(profile.id, payload);
+    const promises = devices.map(async (device, index) => {
+      if (!device.token) return false;
+      const payload: PushPayload = {
+        token: device.token,
+        title,
+        body,
+        data: {
+          documentId: doc.id,
+          documentNumber: doc.document_number,
+          type: 'approval_request'
+        }
+      };
+      console.log(`[Push Service] Dispatching to device ${index + 1} (${device.device_name || 'Unnamed'})...`);
+      const success = await sendPushRequest(profile.id, payload);
+      if (success) {
+        console.log(`[Push Service] Notification delivered successfully to device ${index + 1}.`);
+      } else {
+        console.warn(`[Push Service] Failed to deliver to device ${index + 1}.`);
+      }
+      return success;
+    });
+
+    const results = await Promise.all(promises);
+    return results.some(r => r === true);
   } catch (err) {
     console.error('[Push Service] Error in sendApprovalNotification:', err);
     return false;
@@ -59,7 +78,7 @@ export const sendApprovalNotification = async (
 };
 
 /**
- * Sends a generic push notification to the registered approver device.
+ * Sends a generic push notification to all registered approver devices.
  * Used for approvals, rejections, and test notifications.
  */
 export const sendGenericNotification = async (
@@ -69,24 +88,38 @@ export const sendGenericNotification = async (
   extraData?: Record<string, string>
 ): Promise<boolean> => {
   try {
-    const device = await dbService.getApproverDevice(companyId);
+    const devices = await dbService.getApproverDevices(companyId);
 
-    if (!device || !device.token) {
-      console.log('[Push Service] No registered device found. Skipping push.');
+    if (!devices || devices.length === 0) {
+      console.log('[Push Service] No registered devices found. Skipping push.');
       return false;
     }
 
-    const payload: PushPayload = {
-      token: device.token,
-      title,
-      body,
-      data: {
-        ...(extraData || {}),
-        documentId: extraData?.documentId || '00000000-0000-0000-0000-000000000000'
-      }
-    };
+    console.log(`[Push Service] Dispatching generic push to ${devices.length} registered devices...`);
 
-    return await sendPushRequest(companyId, payload);
+    const promises = devices.map(async (device, index) => {
+      if (!device.token) return false;
+      const payload: PushPayload = {
+        token: device.token,
+        title,
+        body,
+        data: {
+          ...(extraData || {}),
+          documentId: extraData?.documentId || '00000000-0000-0000-0000-000000000000'
+        }
+      };
+      console.log(`[Push Service] Dispatching to device ${index + 1} (${device.device_name || 'Unnamed'})...`);
+      const success = await sendPushRequest(companyId, payload);
+      if (success) {
+        console.log(`[Push Service] Notification delivered successfully to device ${index + 1}.`);
+      } else {
+        console.warn(`[Push Service] Failed to deliver to device ${index + 1}.`);
+      }
+      return success;
+    });
+
+    const results = await Promise.all(promises);
+    return results.some(r => r === true);
   } catch (err) {
     console.error('[Push Service] Error in sendGenericNotification:', err);
     return false;
