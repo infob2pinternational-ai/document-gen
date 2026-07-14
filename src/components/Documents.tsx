@@ -87,6 +87,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             >
               <option value="all">All Documents</option>
               <option value="invoice">Tax Invoices</option>
+              <option value="non_tax_invoice">Invoices</option>
               <option value="proforma_invoice">Proforma Invoices</option>
               <option value="quotation">Quotations</option>
               <option value="work_order">Work Orders</option>

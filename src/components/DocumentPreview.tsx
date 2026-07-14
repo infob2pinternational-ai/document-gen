@@ -268,14 +268,17 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       </div>
 
       {/* Scaling Wrapper for Mobile Responsiveness */}
-      <div style={{
-        width: scale < 1 ? `${800 * scale}px` : '100%',
-        overflow: 'hidden',
-        display: 'flex',
-        justifyContent: 'flex-start',
-        height: scale < 1 ? `${canvasHeight * scale}px` : 'auto',
-        margin: '0 auto'
-      }}>
+      <div 
+        className="document-canvas-wrapper"
+        style={{
+          width: scale < 1 ? `${800 * scale}px` : '100%',
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'flex-start',
+          height: scale < 1 ? `${canvasHeight * scale}px` : 'auto',
+          margin: '0 auto'
+        }}
+      >
         {/* Printable Sheet Canvas */}
         <div ref={canvasRef} className="document-canvas" style={{ 
           position: 'relative', 
@@ -364,7 +367,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           </div>
 
           {/* Right Column: Document Type Title */}
-          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', maxWidth: '38%', flexShrink: 0 }}>
             <h1 style={{ 
               fontSize: '2.25rem', 
               fontWeight: 800, 
