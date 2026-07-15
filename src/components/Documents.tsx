@@ -8,6 +8,7 @@ interface DocumentsProps {
   activeProfile: CompanyProfile | null;
   documents: Document[];
   onAddDocument: () => void;
+  onAddComparison: () => void;
   onEditDocument: (doc: Document) => void;
   onViewDocument: (doc: Document) => void;
   onDeleteDocument: (id: string) => void;
@@ -19,6 +20,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   activeProfile,
   documents,
   onAddDocument,
+  onAddComparison,
   onEditDocument,
   onViewDocument,
   onDeleteDocument,
@@ -47,14 +49,31 @@ export const Documents: React.FC<DocumentsProps> = ({
             Browse, manage, and print invoices, quotations, and work orders.
           </p>
         </div>
-        <button 
-          onClick={onAddDocument} 
-          className="btn-primary"
-          disabled={!activeProfile}
-        >
-          <Plus size={16} />
-          <span>Create Document</span>
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button 
+            onClick={onAddDocument} 
+            className="btn-secondary"
+            disabled={!activeProfile}
+          >
+            <Plus size={16} />
+            <span>Create Standard Document</span>
+          </button>
+          
+          <button 
+            onClick={onAddComparison} 
+            className="btn-primary"
+            disabled={!activeProfile}
+            style={{
+              background: 'linear-gradient(135deg, var(--accent-primary) 0%, #d97706 100%)',
+              border: 'none',
+              color: '#fff',
+              fontWeight: 600
+            }}
+          >
+            <Plus size={16} />
+            <span>Create Comparison Quotation</span>
+          </button>
+        </div>
       </div>
 
       {!activeProfile ? (
@@ -119,7 +138,24 @@ export const Documents: React.FC<DocumentsProps> = ({
                         <td data-label="Date">{doc.date ? doc.date.split('-').reverse().join('/') : ''}</td>
                         <td data-label="Customer Name">{doc.customer_name}</td>
                         <td data-label="Document Type" style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
-                          {doc.document_type === 'non_tax_invoice' ? 'Invoice' : doc.document_type === 'invoice' ? 'Tax Invoice' : doc.document_type.replace('_', ' ')}
+                          {doc.document_type === 'non_tax_invoice' ? 'Invoice' : 
+                           doc.document_type === 'invoice' ? 'Tax Invoice' : 
+                           doc.document_type === 'comparison_quotation' ? (
+                             <span style={{
+                               display: 'inline-flex',
+                               alignItems: 'center',
+                               background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.15) 100%)',
+                               color: '#d97706',
+                               padding: '0.15rem 0.45rem',
+                               borderRadius: '4px',
+                               fontWeight: 600,
+                               fontSize: '0.65rem',
+                               textTransform: 'uppercase'
+                             }}>
+                               Comparison
+                             </span>
+                           ) : 
+                           doc.document_type.replace('_', ' ')}
                         </td>
                         <td className="mono" data-label="Total Amount" style={{ fontWeight: 600 }}>
                           {activeProfile.currency === 'INR' ? '₹' : '$'}

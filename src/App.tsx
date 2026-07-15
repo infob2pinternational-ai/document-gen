@@ -10,6 +10,8 @@ import { Settings } from './components/Settings';
 import { DocumentEditor } from './components/DocumentEditor';
 import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
+import { ComparisonEditor } from './components/comparison/ComparisonEditor';
+import { ComparisonPreview } from './components/comparison/ComparisonPreview';
 import { Building, Menu, Moon, Sun } from 'lucide-react';
 
 const playNotificationSound = () => {
@@ -73,6 +75,7 @@ function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [documentToEdit, setDocumentToEdit] = useState<Document | null>(null);
+  const [comparisonEditorActive, setComparisonEditorActive] = useState(false);
   const [documentToPreview, setDocumentToPreview] = useState<Document | null>(null);
   const [hasDraft, setHasDraft] = useState(false);
   const [draftToRestore, setDraftToRestore] = useState<any>(null);
@@ -483,6 +486,7 @@ function App() {
 
   const handleCloseEditor = () => {
     setEditorOpen(false);
+    setComparisonEditorActive(false);
     setDraftToRestore(null);
     setTimeout(() => {
       localStorage.removeItem('docgen_draft_document');
@@ -527,6 +531,13 @@ function App() {
 
   const handleCreateDocument = () => {
     setDocumentToEdit(null);
+    setCurrentTab('documents');
+    setEditorOpen(true);
+  };
+
+  const handleCreateComparison = () => {
+    setDocumentToEdit(null);
+    setComparisonEditorActive(true);
     setCurrentTab('documents');
     setEditorOpen(true);
   };
@@ -975,12 +986,19 @@ function App() {
         )}
 
         {previewOpen && documentToPreview ? (
-          /* Preview Screen view (Global Overlay) */
-          <DocumentPreview 
-            activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
-            document={documentToPreview}
-            onClose={() => setPreviewOpen(false)}
-          />
+          documentToPreview.document_type === 'comparison_quotation' ? (
+            <ComparisonPreview
+              activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
+              document={documentToPreview}
+              onClose={() => setPreviewOpen(false)}
+            />
+          ) : (
+            <DocumentPreview 
+              activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
+              document={documentToPreview}
+              onClose={() => setPreviewOpen(false)}
+            />
+          )
         ) : (
           /* Normal Tab routing rendering */
           <>
@@ -999,15 +1017,31 @@ function App() {
             
             {editorOpen && (
               <div style={{ display: currentTab === 'documents' ? 'block' : 'none' }}>
-                <DocumentEditor 
-                  activeProfile={activeProfile}
-                  documentToEdit={documentToEdit}
-                  onClose={handleCloseEditor}
-                  onRefreshDocs={() => {
-                    if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
-                  }}
-                  draftToRestore={draftToRestore}
-                />
+                {documentToEdit?.document_type === 'comparison_quotation' || comparisonEditorActive ? (
+                  <ComparisonEditor
+                    activeProfile={activeProfile!}
+                    customers={customers}
+                    documents={documents}
+                    documentToEdit={documentToEdit}
+                    onClose={handleCloseEditor}
+                    onSaveSuccess={() => {
+                      handleCloseEditor();
+                      if (activeProfile) {
+                        dbService.getDocuments(activeProfile.id).then(setDocuments);
+                      }
+                    }}
+                  />
+                ) : (
+                  <DocumentEditor 
+                    activeProfile={activeProfile}
+                    documentToEdit={documentToEdit}
+                    onClose={handleCloseEditor}
+                    onRefreshDocs={() => {
+                      if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
+                    }}
+                    draftToRestore={draftToRestore}
+                  />
+                )}
               </div>
             )}
 
@@ -1017,6 +1051,7 @@ function App() {
                 activeProfile={activeProfile}
                 documents={documents}
                 onAddDocument={handleCreateDocument}
+                onAddComparison={handleCreateComparison}
                 onEditDocument={handleEditDocument}
                 onViewDocument={handleViewDocument}
                 onDeleteDocument={handleDeleteDocument}

@@ -577,6 +577,8 @@ export const dbService = {
       
       const items = getLocal<DocumentItem[]>('document_items', []);
       setLocal('document_items', items.filter(it => it.document_id !== id));
+      
+      localStorage.removeItem(`docgen_comparison_doc_${id}`);
     }
   },
 

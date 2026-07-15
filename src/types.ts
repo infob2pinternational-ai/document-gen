@@ -1,4 +1,4 @@
-export type DocumentType = 'invoice' | 'proforma_invoice' | 'quotation' | 'work_order' | 'non_tax_invoice';
+export type DocumentType = 'invoice' | 'proforma_invoice' | 'quotation' | 'work_order' | 'non_tax_invoice' | 'comparison_quotation';
 
 export interface CompanyProfile {
   id: string;
