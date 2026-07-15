@@ -3,6 +3,10 @@ import { join } from 'path';
 import crypto from 'crypto';
 import https from 'https';
 
+// Warm instance caching for FCM OAuth Access Tokens to avoid repeated fetch latency
+let cachedAccessToken = null;
+let cachedTokenExpiry = 0;
+
 // Helper to sign JWT using RS256 with Node's native crypto module
 function signJwt(payload, privateKey) {
   const header = { alg: 'RS256', typ: 'JWT' };
@@ -57,6 +61,20 @@ function httpsRequest(url, options, bodyContent) {
     }
     req.end();
   });
+}
+
+// Fetch Google OAuth 2.0 Access Token with in-memory caching
+async function getAccessTokenCached(clientEmail, privateKey) {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedAccessToken && cachedTokenExpiry > now + 300) {
+    console.log('[FCM OAuth] Reusing warm cached access token.');
+    return cachedAccessToken;
+  }
+  console.log('[FCM OAuth] Fetching new access token from Google...');
+  const token = await getAccessToken(clientEmail, privateKey);
+  cachedAccessToken = token;
+  cachedTokenExpiry = Math.floor(Date.now() / 1000) + 3600;
+  return token;
 }
 
 // Fetch Google OAuth 2.0 Access Token for FCM scope
@@ -158,7 +176,7 @@ export default async function handler(req, res) {
         attempt++;
         console.log(`[Push API] Sending notification attempt ${attempt}...`);
         
-        const accessToken = await getAccessToken(clientEmail, privateKey);
+        const accessToken = await getAccessTokenCached(clientEmail, privateKey);
         
         // Call Firebase HTTP v1 API
         const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;

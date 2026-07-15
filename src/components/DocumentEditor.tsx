@@ -501,12 +501,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
       await dbService.saveDocument(docPayload, itemsPayload);
 
-      // Trigger FCM push notification to the registered approver
-      try {
-        await sendApprovalNotification(activeProfile, docPayload);
-      } catch (pushErr) {
-        console.error('Failed to trigger push notification:', pushErr);
-      }
+      // Trigger FCM push notification asynchronously in the background (fire-and-forget)
+      // to prevent blocking the UI save action
+      sendApprovalNotification(activeProfile, docPayload).catch(pushErr => {
+        console.error('[Push Trigger] Failed to send approval notification:', pushErr);
+      });
 
       // Trigger Google Sheets Auto-Save
       if (activeProfile.google_sheets_url) {
