@@ -27,6 +27,18 @@
   <body>
     <div id="root"></div>
     <script>
+      // Automatically detect chunk load failures (common during new deployments) and reload the page
+      window.addEventListener('error', (e) => {
+        const isChunkError = e.message && (
+          e.message.indexOf('Failed to fetch dynamically imported module') !== -1 ||
+          e.message.indexOf('Importing a module script failed') !== -1
+        );
+        if (isChunkError) {
+          console.warn('Chunk load failure detected, reloading to fetch fresh bundle...');
+          window.location.reload();
+        }
+      }, true);
+
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/billing/sw.js')

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'b2p-portal-cache-v1';
+const CACHE_NAME = 'b2p-portal-cache-v2';
 const urlsToCache = [
   '/billing/',
   '/billing/index.html',
@@ -6,9 +6,25 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
+  self.skipWaiting(); // Force the waiting service worker to become active immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
+  );
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('[Service Worker] Cleaning up old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => self.clients.claim()) // Force immediate page take-control
   );
 });
 
