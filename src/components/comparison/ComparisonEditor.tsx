@@ -206,6 +206,21 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
 
   const activeOption = options.find(o => o.id === selectedOptionTabId) || options[0];
 
+  if (!activeOption) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px', gap: '1rem' }}>
+        <div className="spinner" style={{ border: '4px solid var(--border-color)', borderTop: '4px solid var(--accent-primary)', borderRadius: '50%', width: '36px', height: '36px', animation: 'spin 1s linear infinite' }}></div>
+        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Initializing Comparison Editor...</span>
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        ` }} />
+      </div>
+    );
+  }
+
   // Customer selection helper
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomerId(customerId);
