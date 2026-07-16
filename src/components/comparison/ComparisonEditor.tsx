@@ -37,6 +37,7 @@ interface ComparisonEditorProps {
   customers: Customer[];
   documents: Document[];
   documentToEdit: Document | null;
+  documentType: 'comparison_quotation' | 'comparison_invoice';
   onClose: () => void;
   onSaveSuccess: () => void;
 }
@@ -53,6 +54,7 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
   customers,
   documents,
   documentToEdit,
+  documentType,
   onClose,
   onSaveSuccess
 }) => {
@@ -117,15 +119,24 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
           createDefaultOption();
         });
     } else {
-      // Create mode: Auto generate quotation number
-      const prefix = activeProfile.quotation_prefix || 'QTN/';
-      const compDocs = documents.filter(d => d.company_id === activeProfile.id && d.document_type === 'comparison_quotation');
+      // Create mode: Auto generate number based on documentType
+      const isInvoice = documentType === 'comparison_invoice';
+      const prefix = isInvoice 
+        ? (activeProfile.invoice_prefix || 'INV/') 
+        : (activeProfile.quotation_prefix || 'QTN/');
+
+      const compDocs = documents.filter(d => d.company_id === activeProfile.id && d.document_type === documentType);
       const maxSeq = compDocs.reduce((max, d) => Math.max(max, d.sequence_number || 0), 0);
-      const nextNum = (activeProfile.quotation_start_number || 1001) + maxSeq;
+
+      const startNum = isInvoice 
+        ? (activeProfile.invoice_start_number || 1001) 
+        : (activeProfile.quotation_start_number || 1001);
+
+      const nextNum = startNum + maxSeq;
       setDocNumber(`${prefix}${String(nextNum).padStart(4, '0')}`);
       createDefaultOption();
     }
-  }, [documentToEdit, activeProfile]);
+  }, [documentToEdit, activeProfile, documentType]);
 
   const createDefaultOption = () => {
     const optId = 'opt_' + Math.random().toString(36).substring(2, 9);
@@ -419,7 +430,7 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
       const documentPayload: Document = {
         id: documentToEdit ? documentToEdit.id : crypto.randomUUID(),
         company_id: activeProfile.id,
-        document_type: 'comparison_quotation',
+        document_type: documentType,
         document_number: docNumber,
         sequence_number: documentToEdit ? documentToEdit.sequence_number : documents.length + 1,
         customer_id: selectedCustomerId || undefined,
@@ -466,11 +477,11 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         console.error('[Push Trigger] Failed to send approval notification:', pushErr);
       });
 
-      alert('Comparison Quotation saved successfully!');
+      alert(`${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Manual Quote'} saved successfully!`);
       onSaveSuccess();
     } catch (err: any) {
       console.error(err);
-      alert('Failed to save Comparison Quotation: ' + err.message);
+      alert(`Failed to save ${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Manual Quote'}: ` + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -487,10 +498,12 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
           </button>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-              {documentToEdit ? 'Edit Comparison Quotation' : 'Create Comparison Quotation'}
+              {documentToEdit 
+                ? (documentType === 'comparison_invoice' ? 'Edit Manual Invoice' : 'Edit Manual Quote') 
+                : (documentType === 'comparison_invoice' ? 'Create Manual Invoice' : 'Create Manual Quote')}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>
-              Compare multiple packaging, packages, or services in a single dynamic table quotation.
+              Compare multiple options, packages, or deliverables in a single dynamic layout document.
             </p>
           </div>
         </div>

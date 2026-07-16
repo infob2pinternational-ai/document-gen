@@ -8,7 +8,7 @@ interface DocumentsProps {
   activeProfile: CompanyProfile | null;
   documents: Document[];
   onAddDocument: () => void;
-  onAddComparison: () => void;
+  onAddComparison: (type: 'comparison_quotation' | 'comparison_invoice') => void;
   onEditDocument: (doc: Document) => void;
   onViewDocument: (doc: Document) => void;
   onDeleteDocument: (id: string) => void;
@@ -105,7 +105,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           </button>
           
           <button 
-            onClick={onAddComparison} 
+            onClick={() => onAddComparison('comparison_quotation')} 
             className="btn-primary"
             disabled={!activeProfile}
             style={{
@@ -116,7 +116,22 @@ export const Documents: React.FC<DocumentsProps> = ({
             }}
           >
             <Plus size={16} />
-            <span>Create Comparison Quotation</span>
+            <span>Create Manual Quote</span>
+          </button>
+
+          <button 
+            onClick={() => onAddComparison('comparison_invoice')} 
+            className="btn-primary"
+            disabled={!activeProfile}
+            style={{
+              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+              border: 'none',
+              color: '#fff',
+              fontWeight: 600
+            }}
+          >
+            <Plus size={16} />
+            <span>Create Manual Invoice</span>
           </button>
         </div>
       </div>
@@ -246,7 +261,22 @@ export const Documents: React.FC<DocumentsProps> = ({
                                fontSize: '0.65rem',
                                textTransform: 'uppercase'
                              }}>
-                               Comparison
+                               Manual Quote
+                             </span>
+                           ) : 
+                           doc.document_type === 'comparison_invoice' ? (
+                             <span style={{
+                               display: 'inline-flex',
+                               alignItems: 'center',
+                               background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(29, 78, 216, 0.15) 100%)',
+                               color: '#1d4ed8',
+                               padding: '0.15rem 0.45rem',
+                               borderRadius: '4px',
+                               fontWeight: 600,
+                               fontSize: '0.65rem',
+                               textTransform: 'uppercase'
+                             }}>
+                               Manual Invoice
                              </span>
                            ) : 
                            doc.document_type.replace('_', ' ')}

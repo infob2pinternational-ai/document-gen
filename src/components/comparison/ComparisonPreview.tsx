@@ -105,7 +105,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
           
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: themeColor, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Comparison Quotation
+              {document.document_type === 'comparison_invoice' ? 'Manual Invoice' : 'Manual Quote'}
             </h2>
             <div style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
               No: {document.document_number}
@@ -155,7 +155,6 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
                 key={opt.id} 
                 className="comparison-option-card"
                 style={{
-                  flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
                   border: opt.isRecommended ? `2.5px solid ${themeColor}` : '1px solid #e2e8f0',
@@ -164,6 +163,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
                   position: 'relative',
                   background: opt.isRecommended ? 'rgba(37, 99, 235, 0.005)' : '#fff',
                   boxShadow: opt.isRecommended ? '0 10px 15px -3px rgba(37, 99, 235, 0.04)' : 'none',
+                  flex: layout === 'side-by-side' ? '1 1 0px' : '1 1 auto',
                   minWidth: layout === 'side-by-side' ? '300px' : 'auto'
                 }}
               >
@@ -230,7 +230,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
                                   padding: '0.5rem', 
                                   color: '#334155',
                                   textAlign: isNumeric ? 'right' : 'left',
-                                  fontFamily: isNumeric ? 'monospace' : 'inherit'
+                                  fontVariantNumeric: isNumeric ? 'tabular-nums' : 'normal'
                                 }}
                               >
                                 {col.type === 'currency' || (col.type === 'formula' && col.formulaConfig?.operator === 'multiply') ? (

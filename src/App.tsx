@@ -535,8 +535,11 @@ function App() {
     setEditorOpen(true);
   };
 
-  const handleCreateComparison = () => {
+  const [comparisonEditorType, setComparisonEditorType] = useState<'comparison_quotation' | 'comparison_invoice'>('comparison_quotation');
+
+  const handleCreateComparison = (type: 'comparison_quotation' | 'comparison_invoice') => {
     setDocumentToEdit(null);
+    setComparisonEditorType(type);
     setComparisonEditorActive(true);
     setCurrentTab('documents');
     setEditorOpen(true);
@@ -986,7 +989,7 @@ function App() {
         )}
 
         {previewOpen && documentToPreview ? (
-          documentToPreview.document_type === 'comparison_quotation' ? (
+          documentToPreview.document_type === 'comparison_quotation' || documentToPreview.document_type === 'comparison_invoice' ? (
             <ComparisonPreview
               activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
               document={documentToPreview}
@@ -1017,12 +1020,13 @@ function App() {
             
             {editorOpen && (
               <div style={{ display: currentTab === 'documents' ? 'block' : 'none' }}>
-                {documentToEdit?.document_type === 'comparison_quotation' || comparisonEditorActive ? (
+                {documentToEdit?.document_type === 'comparison_quotation' || documentToEdit?.document_type === 'comparison_invoice' || comparisonEditorActive ? (
                   <ComparisonEditor
                     activeProfile={activeProfile!}
                     customers={customers}
                     documents={documents}
                     documentToEdit={documentToEdit}
+                    documentType={documentToEdit ? (documentToEdit.document_type as any) : comparisonEditorType}
                     onClose={handleCloseEditor}
                     onSaveSuccess={() => {
                       handleCloseEditor();
