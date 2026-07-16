@@ -28,14 +28,59 @@ export const Documents: React.FC<DocumentsProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
+  const [filterDateRange, setFilterDateRange] = useState<string>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   const filteredDocs = documents
     .filter(d => !activeProfile || d.company_id === activeProfile.id)
     .filter(d => {
+      // 1. Search text filter
       const matchSearch = d.document_number.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           d.customer_name.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      // 2. Document type filter
       const matchType = filterType === 'all' || d.document_type === filterType;
-      return matchSearch && matchType;
+      
+      // 3. Date wise filter
+      let matchDate = true;
+      if (d.date) {
+        const docDateObj = new Date(d.date);
+        docDateObj.setHours(0, 0, 0, 0); // Normalize to start of day
+
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        if (filterDateRange === 'today') {
+          matchDate = docDateObj.getTime() === startOfToday.getTime();
+        } else if (filterDateRange === 'yesterday') {
+          const startOfYesterday = new Date(startOfToday);
+          startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+          matchDate = docDateObj.getTime() === startOfYesterday.getTime();
+        } else if (filterDateRange === 'this_week') {
+          const startOfWeek = new Date(startOfToday);
+          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+          matchDate = docDateObj >= startOfWeek && docDateObj <= startOfToday;
+        } else if (filterDateRange === 'this_month') {
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          matchDate = docDateObj >= startOfMonth && docDateObj <= startOfToday;
+        } else if (filterDateRange === 'custom') {
+          const start = startDate ? new Date(startDate) : null;
+          const end = endDate ? new Date(endDate) : null;
+          if (start) start.setHours(0, 0, 0, 0);
+          if (end) end.setHours(23, 59, 59, 999);
+
+          if (start && end) {
+            matchDate = docDateObj >= start && docDateObj <= end;
+          } else if (start) {
+            matchDate = docDateObj >= start;
+          } else if (end) {
+            matchDate = docDateObj <= end;
+          }
+        }
+      }
+
+      return matchSearch && matchType && matchDate;
     });
 
   return (
@@ -85,9 +130,9 @@ export const Documents: React.FC<DocumentsProps> = ({
       ) : (
         <>
           {/* Filters Area */}
-          <div className="filters-row">
+          <div className="filters-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
             {/* Search */}
-            <div className="search-box" style={{ maxWidth: '320px' }}>
+            <div className="search-box" style={{ maxWidth: '320px', flex: '1 1 250px' }}>
               <Search size={18} />
               <input
                 type="text"
@@ -102,15 +147,64 @@ export const Documents: React.FC<DocumentsProps> = ({
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
               className="filter-select"
-              style={{ width: '200px' }}
+              style={{ width: '180px' }}
             >
               <option value="all">All Documents</option>
               <option value="invoice">Tax Invoices</option>
               <option value="non_tax_invoice">Invoices</option>
               <option value="proforma_invoice">Proforma Invoices</option>
               <option value="quotation">Quotations</option>
+              <option value="comparison_quotation">Comparison Quotations</option>
               <option value="work_order">Work Orders</option>
             </select>
+
+            {/* Date range selection */}
+            <select
+              value={filterDateRange}
+              onChange={(e) => setFilterDateRange(e.target.value)}
+              className="filter-select"
+              style={{ width: '180px' }}
+            >
+              <option value="all">All Dates</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="this_week">This Week</option>
+              <option value="this_month">This Month</option>
+              <option value="custom">Custom Date Range...</option>
+            </select>
+
+            {/* Custom Date Range Picker Fields */}
+            {filterDateRange === 'custom' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="filter-select"
+                  style={{ padding: '0.45rem 0.75rem', width: '140px' }}
+                  title="Start Date"
+                />
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="filter-select"
+                  style={{ padding: '0.45rem 0.75rem', width: '140px' }}
+                  title="End Date"
+                />
+                {(startDate || endDate) && (
+                  <button 
+                    onClick={() => { setStartDate(''); setEndDate(''); }} 
+                    className="btn-secondary" 
+                    style={{ padding: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    title="Clear dates"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Table repository */}
