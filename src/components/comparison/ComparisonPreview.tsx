@@ -149,6 +149,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
         }}>
           {options.map(opt => {
             const visibleCols = opt.columns.filter(c => c.visible);
+            const totalColsWidth = visibleCols.reduce((sum, col) => sum + (col.width || 120), 0);
             
             return (
               <div 
@@ -206,14 +207,26 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
 
                 {/* Option Table */}
                 <div style={{ overflowX: 'auto', flex: 1, marginBottom: '1.5rem' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '0.85rem' }}>
                     <thead>
-                      <tr style={{ borderBottom: `2px solid ${themeColor}`, background: '#f8fafc' }}>
-                        {visibleCols.map(col => (
-                          <th key={col.id} style={{ padding: '0.5rem', fontWeight: 700, color: '#475569', textAlign: col.type === 'number' || col.type === 'currency' ? 'right' : 'left' }}>
-                            {col.name}
-                          </th>
-                        ))}
+                      <tr style={{ background: themeColor }}>
+                        {visibleCols.map(col => {
+                          const pctWidth = totalColsWidth > 0 ? (((col.width || 120) / totalColsWidth) * 100).toFixed(2) + '%' : 'auto';
+                          return (
+                            <th 
+                              key={col.id} 
+                              style={{ 
+                                padding: '0.65rem 0.5rem', 
+                                fontWeight: 700, 
+                                color: '#ffffff', 
+                                textAlign: col.type === 'number' || col.type === 'currency' ? 'right' : 'left',
+                                width: pctWidth
+                              }}
+                            >
+                              {col.name}
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
@@ -222,15 +235,19 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
                           {visibleCols.map(col => {
                             const val = row[col.id];
                             const isNumeric = col.type === 'number' || col.type === 'currency' || col.type === 'formula';
+                            const pctWidth = totalColsWidth > 0 ? (((col.width || 120) / totalColsWidth) * 100).toFixed(2) + '%' : 'auto';
                             
                             return (
                               <td 
                                 key={col.id} 
                                 style={{ 
-                                  padding: '0.5rem', 
+                                  padding: '0.65rem 0.5rem', 
                                   color: '#334155',
                                   textAlign: isNumeric ? 'right' : 'left',
-                                  fontVariantNumeric: isNumeric ? 'tabular-nums' : 'normal'
+                                  fontVariantNumeric: isNumeric ? 'tabular-nums' : 'normal',
+                                  width: pctWidth,
+                                  whiteSpace: isNumeric || col.type === 'date' ? 'nowrap' : 'normal',
+                                  wordBreak: 'break-word'
                                 }}
                               >
                                 {col.type === 'currency' || (col.type === 'formula' && col.formulaConfig?.operator === 'multiply') ? (
