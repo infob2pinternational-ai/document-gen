@@ -212,6 +212,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
                       <tr style={{ background: themeColor }}>
                         {visibleCols.map(col => {
                           const pctWidth = totalColsWidth > 0 ? (((col.width || 120) / totalColsWidth) * 100).toFixed(2) + '%' : 'auto';
+                          const isNumeric = col.type === 'number' || col.type === 'currency' || col.type === 'formula';
                           return (
                             <th 
                               key={col.id} 
@@ -219,7 +220,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
                                 padding: '0.65rem 0.5rem', 
                                 fontWeight: 700, 
                                 color: '#ffffff', 
-                                textAlign: col.type === 'number' || col.type === 'currency' ? 'right' : 'left',
+                                textAlign: isNumeric ? 'right' : 'left',
                                 width: pctWidth
                               }}
                             >
