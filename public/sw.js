@@ -1,4 +1,4 @@
-const CACHE_NAME = 'b2p-portal-cache-v2';
+const CACHE_NAME = 'b2p-portal-cache-v3';
 const urlsToCache = [
   '/billing/',
   '/billing/index.html',
@@ -29,6 +29,28 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+  // Use Network-First strategy for HTML document requests to avoid serving stale assets
+  const isHtmlNavigate = event.request.mode === 'navigate' || 
+                         event.request.url.endsWith('/billing/') || 
+                         event.request.url.endsWith('/index.html');
+                         
+  if (isHtmlNavigate) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // Cache the fresh copy of index.html for offline fallback
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseClone);
+          });
+          return response;
+        })
+        .catch(() => caches.match(event.request)) // Fallback to cache if offline
+    );
+    return;
+  }
+
+  // Cache-First strategy for images, fonts, and standard static assets
   event.respondWith(
     caches.match(event.request)
       .then(response => response || fetch(event.request))

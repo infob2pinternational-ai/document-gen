@@ -27,17 +27,53 @@
   <body>
     <div id="root"></div>
     <script>
-      // Automatically detect chunk load failures (common during new deployments) and reload the page
-      window.addEventListener('error', (e) => {
-        const isChunkError = e.message && (
-          e.message.indexOf('Failed to fetch dynamically imported module') !== -1 ||
-          e.message.indexOf('Importing a module script failed') !== -1
-        );
-        if (isChunkError) {
-          console.warn('Chunk load failure detected, reloading to fetch fresh bundle...');
-          window.location.reload();
+      // Bulletproof chunk/bundle reload system
+      (function() {
+        // Prevent infinite loops if offline
+        function reloadPage() {
+          var now = Date.now();
+          var lastReload = sessionStorage.getItem('last_chunk_reload');
+          if (!lastReload || (now - parseInt(lastReload, 10) > 10000)) {
+            sessionStorage.setItem('last_chunk_reload', now.toString());
+            console.warn('Chunk/script load error detected. Reloading to fetch fresh files...');
+            window.location.reload();
+          } else {
+            console.error('Chunk reload loop prevented. Device might be offline.');
+          }
         }
-      }, true);
+
+        // 1. Capture global resource load errors (scripts, stylesheets, dynamic chunks)
+        window.addEventListener('error', function(e) {
+          if (!e) return;
+          var target = e.target || e.srcElement;
+          var isScriptOrLink = target && (target.localName === 'script' || target.localName === 'link');
+          var isChunkMessage = e.message && (
+            e.message.indexOf('dynamically imported module') !== -1 ||
+            e.message.indexOf('Importing a module script failed') !== -1 ||
+            e.message.indexOf('Load failed') !== -1 ||
+            e.message.indexOf('TypeError') !== -1
+          );
+          if (isScriptOrLink || isChunkMessage) {
+            reloadPage();
+          }
+        }, true);
+
+        // 2. Capture promise rejections (failed dynamic import() calls)
+        window.addEventListener('unhandledrejection', function(e) {
+          if (!e) return;
+          var reason = e.reason || '';
+          var reasonStr = typeof reason === 'string' ? reason : (reason.message || '');
+          var isChunkRejection = reasonStr && (
+            reasonStr.indexOf('dynamically imported module') !== -1 ||
+            reasonStr.indexOf('Importing a module script failed') !== -1 ||
+            reasonStr.indexOf('Load failed') !== -1 ||
+            reasonStr.indexOf('Failed to fetch') !== -1
+          );
+          if (isChunkRejection) {
+            reloadPage();
+          }
+        });
+      })();
 
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
