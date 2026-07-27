@@ -15,7 +15,8 @@ import {
   Bell,
   RefreshCw,
   Download,
-  CheckCircle
+  CheckCircle,
+  Cloud
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -42,6 +43,7 @@ export const Settings: React.FC<SettingsProps> = ({
   // Local Backup States & Handlers
   const [backupStats, setBackupStats] = useState({ docs: 0, items: 0, custs: 0, comps: 0 });
   const [restoring, setRestoring] = useState(false);
+  const [syncingDrive, setSyncingDrive] = useState(false);
   const restoreFileRef = React.useRef<HTMLInputElement>(null);
 
   const refreshBackupStats = async () => {
@@ -1406,6 +1408,39 @@ export const Settings: React.FC<SettingsProps> = ({
                   </button>
                 </div>
 
+                {/* Google Drive Card */}
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <h4 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Cloud size={18} style={{ color: '#10b981' }} />
+                    <span>Google Drive Cloud Backup</span>
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                    {activeProfile?.google_sheets_url 
+                      ? "Automatically backs up all documents and full JSON archives directly to a 'B2P Document Backups' folder in your Google Drive."
+                      : "Configure Google Sheets / Drive Auto-Save in the 'Google Sheets Auto-Save' tab to enable automatic cloud backups."}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!activeProfile?.google_sheets_url || syncingDrive}
+                    onClick={async () => {
+                      if (!activeProfile?.google_sheets_url) return;
+                      setSyncingDrive(true);
+                      const res = await dbService.syncBackupToGoogleDrive(activeProfile.google_sheets_url);
+                      setSyncingDrive(false);
+                      if (res.success) {
+                        alert('Full system backup successfully synced to your Google Drive ("B2P Document Backups" folder)!');
+                      } else {
+                        alert('Failed to sync to Google Drive: ' + (res.error || 'Unknown error.'));
+                      }
+                    }}
+                    className="btn-primary"
+                    style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <Cloud size={16} />
+                    <span>{syncingDrive ? 'Syncing Drive...' : 'Sync Backup to Google Drive'}</span>
+                  </button>
+                </div>
+
               </div>
             </div>
           )}
@@ -1418,16 +1453,41 @@ export const Settings: React.FC<SettingsProps> = ({
 const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+    
+    // --- 1. AUTOMATIC GOOGLE DRIVE FOLDER & BACKUP FILE CREATION ---
+    try {
+      var folderName = "B2P Document Backups";
+      var folders = DriveApp.getFoldersByName(folderName);
+      var backupFolder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+      
+      if (data.action === "full_backup") {
+        var backupFileName = "b2p_full_backup_" + new Date().toISOString().split("T")[0] + ".json";
+        backupFolder.createFile(backupFileName, JSON.stringify(data.payload, null, 2), MimeType.PLAIN_TEXT);
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", action: "full_backup" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } else if (data.document_number) {
+        var docFileName = data.document_number.replace(/[^a-zA-Z0-9_-]/g, "_") + ".json";
+        var existingFiles = backupFolder.getFilesByName(docFileName);
+        while (existingFiles.hasNext()) {
+          existingFiles.next().setTrashed(true);
+        }
+        if (data.action !== "delete") {
+          backupFolder.createFile(docFileName, JSON.stringify(data, null, 2), MimeType.PLAIN_TEXT);
+        }
+      }
+    } catch (driveErr) {
+      Logger.log("Google Drive Backup warning: " + driveErr.message);
+    }
+    
+    // --- 2. GOOGLE SHEETS AUTO-SAVE ---
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     
-    // Check if this is a deletion request
     if (data.action === "delete") {
       var docNum = data.document_number;
       var lastRow = sheet.getLastRow();
       if (lastRow > 1) {
-        var range = sheet.getRange(1, 3, lastRow, 1); // Column 3 (C) is Document Number
+        var range = sheet.getRange(1, 3, lastRow, 1);
         var values = range.getValues();
-        // Search and delete rows matching document number (iterate backwards)
         for (var i = lastRow - 1; i >= 0; i--) {
           if (values[i][0] === docNum) {
             sheet.deleteRow(i + 1);
@@ -1438,7 +1498,6 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     
-    // Setup headers if empty sheet
     if (sheet.getLastRow() === 0) {
       sheet.appendRow([
         "Timestamp", 
@@ -1456,7 +1515,6 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
       ]);
     }
     
-    // Check if the document already exists in the sheet to prevent duplicates on edit/update
     var docNum = data.document_number;
     var lastRow = sheet.getLastRow();
     var foundRowIndex = -1;
@@ -1471,8 +1529,8 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
       }
     }
     
-    var itemsSummary = data.items.map(function(it) {
-      return it.qty + " " + it.unit + " x " + it.description + " (@" + it.rate + ")";
+    var itemsSummary = (data.items || []).map(function(it) {
+      return (it.qty || it.quantity || 1) + " " + (it.unit || "") + " x " + it.description + " (@" + (it.rate || 0) + ")";
     }).join("; ");
     
     var rowData = [
@@ -1491,10 +1549,8 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
     ];
     
     if (foundRowIndex > -1) {
-      // Update existing row
       sheet.getRange(foundRowIndex, 1, 1, rowData.length).setValues([rowData]);
     } else {
-      // Append new row
       sheet.appendRow(rowData);
     }
     

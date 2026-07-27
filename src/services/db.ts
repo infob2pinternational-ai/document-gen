@@ -954,5 +954,31 @@ Go to Settings > Local Backup & Data Recovery in your portal and select this .zi
       console.error('Failed to restore backup:', err);
       return { success: false, count: 0, error: err.message };
     }
+  },
+
+  async syncBackupToGoogleDrive(googleSheetsUrl: string): Promise<{ success: boolean; error?: string }> {
+    if (!googleSheetsUrl) {
+      return { success: false, error: 'Google Sheets / Drive Web App URL is not configured in Settings.' };
+    }
+
+    try {
+      const fullBackup = await this.generateFullBackup();
+      const payload = {
+        action: 'full_backup',
+        timestamp: new Date().toISOString(),
+        payload: fullBackup
+      };
+
+      await fetch(googleSheetsUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Failed to sync backup to Google Drive:', err);
+      return { success: false, error: err.message };
+    }
   }
 };
