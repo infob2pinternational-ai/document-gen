@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../types';
-import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X } from 'lucide-react';
+import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X, Download } from 'lucide-react';
 import { dbService } from '../services/db';
 
 interface DocumentsProps {
@@ -132,6 +132,16 @@ export const Documents: React.FC<DocumentsProps> = ({
           >
             <Plus size={16} />
             <span>Create Manual Invoice</span>
+          </button>
+
+          <button 
+            onClick={() => dbService.downloadFullBackupFile()} 
+            className="btn-secondary"
+            title="Download full backup file (.json) to local computer"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+          >
+            <Download size={16} />
+            <span>Export Backup</span>
           </button>
         </div>
       </div>

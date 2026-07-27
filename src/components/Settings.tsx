@@ -13,7 +13,9 @@ import {
   Info,
   Smartphone,
   Bell,
-  RefreshCw
+  RefreshCw,
+  Download,
+  CheckCircle
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -31,9 +33,61 @@ export const Settings: React.FC<SettingsProps> = ({
   onRefreshProfiles,
   user
 }) => {
-  // Tabs: 'profile', 'sheets', 'database', 'notifications'
-  const [activeTab, setActiveTab] = useState<'profile' | 'sheets' | 'database' | 'notifications'>('profile');
+  // Tabs: 'profile', 'sheets', 'database', 'notifications', 'backup'
+  const [activeTab, setActiveTab] = useState<'profile' | 'sheets' | 'database' | 'notifications' | 'backup'>('profile');
   const isCloudConnected = isSupabaseConfigured() && !!user;
+
+  // Local Backup States & Handlers
+  const [backupStats, setBackupStats] = useState({ docs: 0, items: 0, custs: 0, comps: 0 });
+  const [restoring, setRestoring] = useState(false);
+  const restoreFileRef = React.useRef<HTMLInputElement>(null);
+
+  const refreshBackupStats = async () => {
+    try {
+      const full = await dbService.generateFullBackup();
+      setBackupStats({
+        docs: full.documents?.length || 0,
+        items: full.document_items?.length || 0,
+        custs: full.customers?.length || 0,
+        comps: Object.keys(full.comparison_data || {}).length
+      });
+    } catch (e) {
+      console.warn('Backup stats fetch failed:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'backup') {
+      refreshBackupStats();
+    }
+  }, [activeTab]);
+
+  const handleFileRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        setRestoring(true);
+        const jsonContent = JSON.parse(event.target?.result as string);
+        const result = await dbService.restoreFullBackup(jsonContent);
+        if (result.success) {
+          alert(`Backup restored successfully! ${result.count} document(s) and metadata recovered.`);
+          onRefreshProfiles(activeProfile?.id);
+          refreshBackupStats();
+        } else {
+          alert('Failed to restore backup: ' + (result.error || 'Unknown error.'));
+        }
+      } catch (err: any) {
+        alert('Invalid JSON backup file: ' + err.message);
+      } finally {
+        setRestoring(false);
+        if (restoreFileRef.current) restoreFileRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
   
   // Active Profile Form States
   const [name, setName] = useState('');
@@ -408,6 +462,22 @@ export const Settings: React.FC<SettingsProps> = ({
             Cloud Setup (SQL)
           </button>
         )}
+
+        <button
+          onClick={() => setActiveTab('backup')}
+          style={{
+            padding: '0.75rem 1rem',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'backup' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+            borderBottom: activeTab === 'backup' ? '2px solid var(--accent-primary)' : 'none',
+            fontWeight: 600,
+            borderRadius: 0,
+            cursor: 'pointer'
+          }}
+        >
+          Local Backup & Data Recovery
+        </button>
       </div>
 
       {!activeProfile ? (
@@ -1227,6 +1297,107 @@ export const Settings: React.FC<SettingsProps> = ({
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {activeTab === 'backup' && (
+            <div className="card animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Download size={20} style={{ color: 'var(--accent-primary)' }} />
+                  <span>Automatic Local System Backup & Data Recovery</span>
+                </h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                  All documents, line items, comparison data, templates, and customers are automatically mirrored to your local system storage to prevent data loss. You can also export or restore full JSON backups anytime.
+                </p>
+              </div>
+
+              {/* Live Local Backup Status Card */}
+              <div style={{
+                padding: '1.25rem',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-success)', fontWeight: 700 }}>
+                  <CheckCircle size={18} />
+                  <span>Automatic Real-Time Local Storage Mirror Active</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+                  <div style={{ background: 'var(--bg-card)', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>TOTAL DOCUMENTS</span>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }} className="mono">{backupStats.docs}</span>
+                  </div>
+                  <div style={{ background: 'var(--bg-card)', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>LINE ITEMS</span>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }} className="mono">{backupStats.items}</span>
+                  </div>
+                  <div style={{ background: 'var(--bg-card)', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>CUSTOMERS</span>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }} className="mono">{backupStats.custs}</span>
+                  </div>
+                  <div style={{ background: 'var(--bg-card)', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>COMPARISON DATA</span>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }} className="mono">{backupStats.comps}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Export & Restore Actions */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginTop: '0.5rem' }}>
+                
+                {/* Export Card */}
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <h4 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Download size={18} style={{ color: 'var(--accent-primary)' }} />
+                    <span>Export Local Backup (.json)</span>
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                    Download a complete `.json` file containing all documents, items, comparison packages, customers, services, and company settings to your computer disk.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => dbService.downloadFullBackupFile()}
+                    className="btn-primary"
+                    style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <Download size={16} />
+                    <span>Download Backup File</span>
+                  </button>
+                </div>
+
+                {/* Restore Card */}
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <h4 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Upload size={18} style={{ color: '#d97706' }} />
+                    <span>Restore Backup from Computer</span>
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                    Upload a previously saved `.json` backup file from your computer to restore lost documents, line items, customers, and settings.
+                  </p>
+                  <input 
+                    type="file"
+                    ref={restoreFileRef}
+                    accept=".json"
+                    style={{ display: 'none' }}
+                    onChange={handleFileRestore}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => restoreFileRef.current?.click()}
+                    className="btn-secondary"
+                    disabled={restoring}
+                    style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <Upload size={16} />
+                    <span>{restoring ? 'Restoring Data...' : 'Select Backup File (.json)'}</span>
+                  </button>
+                </div>
+
+              </div>
             </div>
           )}
         </>

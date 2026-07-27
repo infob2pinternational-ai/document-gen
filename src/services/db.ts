@@ -509,6 +509,20 @@ export const dbService = {
   },
 
   async saveDocument(doc: Document, items: DocumentItem[]): Promise<Document> {
+    // Always mirror to LocalStorage as automatic local system backup
+    const docs = getLocal<Document[]>('documents', []);
+    const docIdx = docs.findIndex(d => d.id === doc.id);
+    if (docIdx >= 0) {
+      docs[docIdx] = doc;
+    } else {
+      docs.push(doc);
+    }
+    setLocal('documents', docs);
+
+    const localItems = getLocal<DocumentItem[]>('document_items', []);
+    const itemsWithoutThisDoc = localItems.filter(it => it.document_id !== doc.id);
+    setLocal('document_items', [...itemsWithoutThisDoc, ...items]);
+
     if (useCloud() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const user = userStr ? JSON.parse(userStr) : null;
@@ -558,38 +572,23 @@ export const dbService = {
       
       return doc;
     } else {
-      // LocalStorage save
-      const docs = getLocal<Document[]>('documents', []);
-      const docIdx = docs.findIndex(d => d.id === doc.id);
-      if (docIdx >= 0) {
-        docs[docIdx] = doc;
-      } else {
-        docs.push(doc);
-      }
-      setLocal('documents', docs);
-      
-      // Save items
-      const localItems = getLocal<DocumentItem[]>('document_items', []);
-      const itemsWithoutThisDoc = localItems.filter(it => it.document_id !== doc.id);
-      const updatedItems = [...itemsWithoutThisDoc, ...items];
-      setLocal('document_items', updatedItems);
-      
       return doc;
     }
   },
 
   async deleteDocument(id: string): Promise<void> {
+    // Always mirror deletion to local storage
+    const docs = getLocal<Document[]>('documents', []);
+    setLocal('documents', docs.filter(d => d.id !== id));
+    
+    const items = getLocal<DocumentItem[]>('document_items', []);
+    setLocal('document_items', items.filter(it => it.document_id !== id));
+    
+    localStorage.removeItem(`docgen_comparison_doc_${id}`);
+
     if (useCloud() && supabase) {
       const { error } = await supabase.from('documents').delete().eq('id', id);
       if (error) throw error;
-    } else {
-      const docs = getLocal<Document[]>('documents', []);
-      setLocal('documents', docs.filter(d => d.id !== id));
-      
-      const items = getLocal<DocumentItem[]>('document_items', []);
-      setLocal('document_items', items.filter(it => it.document_id !== id));
-      
-      localStorage.removeItem(`docgen_comparison_doc_${id}`);
     }
   },
 
@@ -724,6 +723,123 @@ export const dbService = {
       if (error) throw error;
     } else {
       localStorage.removeItem(`docgen_approver_device_${companyId}`);
+    }
+  },
+
+  // Complete Automatic Local System Backup & Recovery Engine
+  async generateFullBackup(): Promise<any> {
+    let docs = getLocal<Document[]>('documents', []);
+    let items = getLocal<DocumentItem[]>('document_items', []);
+    let custs = getLocal<Customer[]>('customers', []);
+    let servs = getLocal<Service[]>('services', []);
+    let profs = getLocal<CompanyProfile[]>('profiles', []);
+
+    if (useCloud() && supabase) {
+      try {
+        const [d, it, c, s, p] = await Promise.all([
+          supabase.from('documents').select('*'),
+          supabase.from('document_items').select('*'),
+          supabase.from('customers').select('*'),
+          supabase.from('services').select('*'),
+          supabase.from('profiles').select('*')
+        ]);
+        if (d.data) docs = d.data;
+        if (it.data) items = it.data;
+        if (c.data) custs = c.data;
+        if (s.data) servs = s.data;
+        if (p.data) profs = p.data;
+      } catch (e) {
+        if (import.meta.env.DEV) console.warn('Supabase fetch failed during backup generation, using local cache:', e);
+      }
+    }
+
+    const comparisonData: Record<string, any> = {};
+    for (const doc of docs) {
+      const compData = getLocal<any>(`comparison_doc_${doc.id}`, null);
+      if (compData) {
+        comparisonData[doc.id] = compData;
+      } else if (useCloud() && supabase) {
+        try {
+          const { data } = await supabase.from('comparison_document_data').select('options_data').eq('document_id', doc.id).maybeSingle();
+          if (data?.options_data) {
+            comparisonData[doc.id] = data.options_data;
+          }
+        } catch (e) {}
+      }
+    }
+
+    return {
+      backup_version: '1.0',
+      system: 'B2P Document Portal',
+      exported_at: new Date().toISOString(),
+      documents: docs,
+      document_items: items,
+      customers: custs,
+      services: servs,
+      profiles: profs,
+      comparison_data: comparisonData
+    };
+  },
+
+  async downloadFullBackupFile(): Promise<void> {
+    const data = await this.generateFullBackup();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.href = url;
+    a.download = `b2p_documents_backup_${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  async restoreFullBackup(backupData: any): Promise<{ success: boolean; count: number; error?: string }> {
+    if (!backupData || typeof backupData !== 'object' || !Array.isArray(backupData.documents)) {
+      return { success: false, count: 0, error: 'Invalid backup file format.' };
+    }
+
+    try {
+      const docs: Document[] = backupData.documents || [];
+      const items: DocumentItem[] = backupData.document_items || [];
+      const custs: Customer[] = backupData.customers || [];
+      const servs: Service[] = backupData.services || [];
+      const profs: CompanyProfile[] = backupData.profiles || [];
+      const compData: Record<string, any> = backupData.comparison_data || {};
+
+      // Restore to LocalStorage
+      setLocal('documents', docs);
+      setLocal('document_items', items);
+      setLocal('customers', custs);
+      setLocal('services', servs);
+      setLocal('profiles', profs);
+
+      for (const [docId, cData] of Object.entries(compData)) {
+        setLocal(`comparison_doc_${docId}`, cData);
+      }
+
+      // If Cloud is active, restore to Supabase too
+      if (useCloud() && supabase) {
+        if (profs.length > 0) await supabase.from('profiles').upsert(profs);
+        if (custs.length > 0) await supabase.from('customers').upsert(custs);
+        if (servs.length > 0) await supabase.from('services').upsert(servs);
+        if (docs.length > 0) await supabase.from('documents').upsert(docs);
+        if (items.length > 0) await supabase.from('document_items').upsert(items);
+
+        for (const [docId, cData] of Object.entries(compData)) {
+          await supabase.from('comparison_document_data').upsert({
+            document_id: docId,
+            options_data: cData
+          });
+        }
+      }
+
+      return { success: true, count: docs.length };
+    } catch (err: any) {
+      console.error('Failed to restore backup:', err);
+      return { success: false, count: 0, error: err.message };
     }
   }
 };

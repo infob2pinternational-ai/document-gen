@@ -34,7 +34,11 @@ export const ComparisonService = {
         console.error('Error fetching comparison document data:', error);
         throw error;
       }
-      return data ? (data.options_data as ComparisonConfig) : null;
+      if (data?.options_data) {
+        setLocal(`comparison_doc_${documentId}`, data.options_data);
+        return data.options_data as ComparisonConfig;
+      }
+      return getLocal<ComparisonConfig | null>(`comparison_doc_${documentId}`, null);
     } else {
       return getLocal<ComparisonConfig | null>(`comparison_doc_${documentId}`, null);
     }
@@ -44,6 +48,9 @@ export const ComparisonService = {
    * Saves or updates the options data for a comparison quotation document.
    */
   async saveComparisonData(documentId: string, optionsData: ComparisonConfig): Promise<void> {
+    // Always mirror to local storage as automatic local system backup
+    setLocal(`comparison_doc_${documentId}`, optionsData);
+
     if (useCloud() && supabase) {
       // Check if data already exists for this document_id
       const { data: existing, error: checkError } = await supabase
@@ -77,8 +84,6 @@ export const ComparisonService = {
           throw error;
         }
       }
-    } else {
-      setLocal(`comparison_doc_${documentId}`, optionsData);
     }
   },
 
