@@ -355,7 +355,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div style={{ overflow: 'hidden' }}>
                     <h4 style={{ fontSize: '0.9rem', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{profile.name}</h4>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      GSTIN: {profile.gstin || 'Not Configured'}
+                      {profile.name.toLowerCase().includes('international') || !profile.gstin ? 'Non-GST Profile' : `GSTIN: ${profile.gstin}`}
                     </p>
                   </div>
                 </div>

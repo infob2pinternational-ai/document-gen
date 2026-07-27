@@ -113,11 +113,12 @@ export const Settings: React.FC<SettingsProps> = ({
   // Load active profile data
   useEffect(() => {
     if (activeProfile) {
+      const isIntl = activeProfile.name.toLowerCase().includes('international');
       setName(activeProfile.name);
       setLogo(activeProfile.logo_url || '');
       setSeal(activeProfile.seal_url || '');
-      setGstin(activeProfile.gstin || '');
-      setPan(activeProfile.pan || '');
+      setGstin(isIntl ? '' : (activeProfile.gstin || ''));
+      setPan(isIntl ? '' : (activeProfile.pan || ''));
       setEmail(activeProfile.email || '');
       setPhone(activeProfile.phone || '');
       setAddress(activeProfile.address || '');
@@ -206,13 +207,14 @@ export const Settings: React.FC<SettingsProps> = ({
 
     setSaving(true);
     try {
+      const isIntl = (activeProfile?.name || name).toLowerCase().includes('international');
       const updated: CompanyProfile = {
         ...activeProfile,
         name,
         logo_url: logo || undefined,
         seal_url: seal || undefined,
-        gstin: gstin || undefined,
-        pan: pan || undefined,
+        gstin: isIntl ? undefined : (gstin || undefined),
+        pan: isIntl ? undefined : (pan || undefined),
         email: email || undefined,
         phone: phone || undefined,
         address: address || undefined,
@@ -485,32 +487,34 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                 </div>
 
-                <div className="grid-2">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="settings-company-gstin">GSTIN (Optional)</label>
-                    <input 
-                      id="settings-company-gstin" 
-                      name="company_gstin" 
-                      type="text" 
-                      placeholder="e.g. 07AAAAA1111A1Z1" 
-                      value={gstin} 
-                      onChange={(e) => setGstin(e.target.value.toUpperCase())} 
-                      autoComplete="off"
-                    />
+                {!((name || activeProfile?.name || '').toLowerCase().includes('international')) && (
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="settings-company-gstin">GSTIN (Optional)</label>
+                      <input 
+                        id="settings-company-gstin" 
+                        name="company_gstin" 
+                        type="text" 
+                        placeholder="e.g. 07AAAAA1111A1Z1" 
+                        value={gstin} 
+                        onChange={(e) => setGstin(e.target.value.toUpperCase())} 
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="settings-company-pan">PAN Card Number (Optional)</label>
+                      <input 
+                        id="settings-company-pan" 
+                        name="company_pan" 
+                        type="text" 
+                        placeholder="e.g. ABCDE1234F" 
+                        value={pan} 
+                        onChange={(e) => setPan(e.target.value.toUpperCase())} 
+                        autoComplete="off"
+                      />
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="settings-company-pan">PAN Card Number (Optional)</label>
-                    <input 
-                      id="settings-company-pan" 
-                      name="company_pan" 
-                      type="text" 
-                      placeholder="e.g. ABCDE1234F" 
-                      value={pan} 
-                      onChange={(e) => setPan(e.target.value.toUpperCase())} 
-                      autoComplete="off"
-                    />
-                  </div>
-                </div>
+                )}
 
                 <div className="grid-3">
                   <div className="form-group">

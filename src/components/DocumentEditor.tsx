@@ -428,7 +428,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       alert('Please add at least one line item.');
       return;
     }
-    if (docType === 'invoice' && (!activeProfile.gstin || !activeProfile.gstin.trim())) {
+    const isB2PInternational = activeProfile.name.toLowerCase().includes('international');
+    if (docType === 'invoice' && !isB2PInternational && (!activeProfile.gstin || !activeProfile.gstin.trim())) {
       alert('To save a Tax Invoice, your Company GSTIN is mandatory. Please add your GSTIN in Settings > Company Profile.');
       return;
     }

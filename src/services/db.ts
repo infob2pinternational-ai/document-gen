@@ -233,11 +233,22 @@ export const dbService = {
   },
 
   async saveProfile(profile: CompanyProfile): Promise<CompanyProfile> {
+    const isIntl = profile.name.toLowerCase().includes('international');
+    const cleanProfile: CompanyProfile = {
+      ...profile,
+      gstin: isIntl ? undefined : profile.gstin,
+      pan: isIntl ? undefined : profile.pan
+    };
+
     if (useCloud() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const userId = userStr ? JSON.parse(userStr).id : null;
       
-      const payload = { ...profile, user_id: userId };
+      const payload: any = { ...cleanProfile, user_id: userId };
+      if (isIntl) {
+        payload.gstin = null;
+        payload.pan = null;
+      }
       
       // Check if it already exists in Supabase
       const { data: existing } = await supabase.from('profiles').select('id').eq('id', profile.id).single();
@@ -253,14 +264,14 @@ export const dbService = {
       }
     } else {
       const profiles = getLocal<CompanyProfile[]>('profiles', []);
-      const index = profiles.findIndex(p => p.id === profile.id);
+      const index = profiles.findIndex(p => p.id === cleanProfile.id);
       if (index >= 0) {
-        profiles[index] = profile;
+        profiles[index] = cleanProfile;
       } else {
-        profiles.push(profile);
+        profiles.push(cleanProfile);
       }
       setLocal('profiles', profiles);
-      return profile;
+      return cleanProfile;
     }
   },
 

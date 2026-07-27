@@ -399,14 +399,19 @@ function App() {
       const rawProfiles = await dbService.getProfiles();
       const profileList = rawProfiles.map(p => {
         const lowerName = p.name.toLowerCase();
+        let logo_url = p.logo_url;
         if (lowerName.includes('international')) {
-          return { ...p, logo_url: '/billing/logo_b2p_international.png?v=5' };
+          logo_url = '/billing/logo_b2p_international.png?v=5';
         } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
-          return { ...p, logo_url: '/billing/logo_b2p_intermedia.png?v=5' };
+          logo_url = '/billing/logo_b2p_intermedia.png?v=5';
         } else if (lowerName.includes('b2p')) {
-          return { ...p, logo_url: '/billing/logo_b2p_international.png?v=5' };
+          logo_url = '/billing/logo_b2p_international.png?v=5';
         }
-        return p;
+
+        if (lowerName.includes('international')) {
+          return { ...p, logo_url, gstin: undefined, pan: undefined };
+        }
+        return { ...p, logo_url };
       });
       setProfiles(profileList);
 
