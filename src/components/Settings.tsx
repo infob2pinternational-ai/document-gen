@@ -847,15 +847,30 @@ export const Settings: React.FC<SettingsProps> = ({
                   <Building size={20} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Google Sheets Auto-Save Integration</h3>
+                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Google Sheets & Drive Auto-Backup Integration</h3>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                    Automatically log invoices, quotations, and work orders to a Google Sheet on save.
+                    Automatically log invoices, quotations, and work orders to Google Sheets and Google Drive (<strong>info.b2pinternational@gmail.com</strong>).
                   </p>
                 </div>
               </div>
 
+              <div style={{
+                padding: '0.75rem 1rem',
+                borderRadius: '6px',
+                background: 'rgba(37, 99, 235, 0.08)',
+                border: '1px solid rgba(37, 99, 235, 0.2)',
+                fontSize: '0.8rem',
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <Info size={16} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                <span><strong>Designated Backup Account:</strong> <code>info.b2pinternational@gmail.com</code></span>
+              </div>
+
               <div className="form-group">
-                <label className="form-label">Google Apps Script Web App Webhook URL</label>
+                <label className="form-label">Google Apps Script Web App Webhook URL (info.b2pinternational@gmail.com)</label>
                 <input
                   type="url"
                   placeholder="https://script.google.com/macros/s/.../exec"
