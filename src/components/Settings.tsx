@@ -1469,50 +1469,40 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     
-    // --- 1. AUTOMATIC GOOGLE DRIVE FOLDER & BACKUP FILE CREATION ---
-    try {
-      var folderName = "B2P Document Backups";
-      var folders = DriveApp.getFoldersByName(folderName);
-      var backupFolder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-      
-      if (data.action === "full_backup") {
-        var backupFileName = "b2p_full_backup_" + new Date().toISOString().split("T")[0] + ".json";
-        backupFolder.createFile(backupFileName, JSON.stringify(data.payload, null, 2), MimeType.PLAIN_TEXT);
-        return ContentService.createTextOutput(JSON.stringify({ status: "success", action: "full_backup" }))
-          .setMimeType(ContentService.MimeType.JSON);
-      } else if (data.document_number) {
-        var docFileName = data.document_number.replace(/[^a-zA-Z0-9_-]/g, "_") + ".json";
-        var existingFiles = backupFolder.getFilesByName(docFileName);
-        while (existingFiles.hasNext()) {
-          existingFiles.next().setTrashed(true);
-        }
-        if (data.action !== "delete") {
-          backupFolder.createFile(docFileName, JSON.stringify(data, null, 2), MimeType.PLAIN_TEXT);
-        }
-      }
-    } catch (driveErr) {
-      Logger.log("Google Drive Backup warning: " + driveErr.message);
+    // --- 1. FULL BACKUP HANDLER FOR GOOGLE DRIVE ---
+    if (data.action === "full_backup") {
+      saveFullJsonBackup(data.payload);
+      return ContentService.createTextOutput(
+        JSON.stringify({ status: "success", action: "full_backup" })
+      ).setMimeType(ContentService.MimeType.JSON);
     }
     
-    // --- 2. GOOGLE SHEETS AUTO-SAVE ---
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     
+    // --- 2. DELETE DOCUMENT & BACKUP FILE ---
     if (data.action === "delete") {
       var docNum = data.document_number;
       var lastRow = sheet.getLastRow();
+      
       if (lastRow > 1) {
         var range = sheet.getRange(1, 3, lastRow, 1);
         var values = range.getValues();
+        
         for (var i = lastRow - 1; i >= 0; i--) {
           if (values[i][0] === docNum) {
             sheet.deleteRow(i + 1);
           }
         }
       }
-      return ContentService.createTextOutput(JSON.stringify({ status: "success", action: "delete" }))
-        .setMimeType(ContentService.MimeType.JSON);
+      
+      deleteBackupFile(docNum);
+      
+      return ContentService.createTextOutput(
+        JSON.stringify({ status: "success", action: "delete" })
+      ).setMimeType(ContentService.MimeType.JSON);
     }
     
+    // --- 3. CREATE HEADERS IF EMPTY SHEET ---
     if (sheet.getLastRow() === 0) {
       sheet.appendRow([
         "Timestamp", 
@@ -1530,9 +1520,11 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
       ]);
     }
     
+    // --- 4. UPDATE OR APPEND SHEET ROW ---
     var docNum = data.document_number;
     var lastRow = sheet.getLastRow();
     var foundRowIndex = -1;
+    
     if (lastRow > 1) {
       var range = sheet.getRange(1, 3, lastRow, 1);
       var values = range.getValues();
@@ -1569,14 +1561,65 @@ const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
       sheet.appendRow(rowData);
     }
     
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", action: "save" }))
-      .setMimeType(ContentService.MimeType.JSON);
+    // --- 5. SAVE INDIVIDUAL DOCUMENT BACKUP TO GOOGLE DRIVE ---
+    saveJsonBackup(data);
+    
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: "success", action: "save" })
+    ).setMimeType(ContentService.MimeType.JSON);
+    
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: "error", message: err.message })
+    ).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
 function doOptions(e) {
   return ContentService.createTextOutput("");
+}
+
+// --- HELPER FUNCTIONS FOR GOOGLE DRIVE BACKUPS ---
+
+function getBackupFolder() {
+  var folderName = "B2P Document Backups";
+  var folders = DriveApp.getFoldersByName(folderName);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+}
+
+function saveJsonBackup(data) {
+  if (!data || !data.document_number) return;
+  var folder = getBackupFolder();
+  var fileName = data.document_number.replace(/[^a-zA-Z0-9_-]/g, "_") + ".json";
+  
+  var files = folder.getFilesByName(fileName);
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
+  
+  folder.createFile(fileName, JSON.stringify(data, null, 2), MimeType.PLAIN_TEXT);
+}
+
+function saveFullJsonBackup(payload) {
+  var folder = getBackupFolder();
+  var dateStr = new Date().toISOString().split("T")[0];
+  var fileName = "b2p_full_backup_" + dateStr + ".json";
+  
+  var files = folder.getFilesByName(fileName);
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
+  
+  folder.createFile(fileName, JSON.stringify(payload, null, 2), MimeType.PLAIN_TEXT);
+}
+
+function deleteBackupFile(documentNumber) {
+  if (!documentNumber) return;
+  var folder = getBackupFolder();
+  var fileName = documentNumber.replace(/[^a-zA-Z0-9_-]/g, "_") + ".json";
+  var files = folder.getFilesByName(fileName);
+  
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
 }`;
