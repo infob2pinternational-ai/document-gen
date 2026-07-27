@@ -24,6 +24,7 @@ interface SettingsProps {
   activeProfile: CompanyProfile | null;
   onRefreshProfiles: (selectNewId?: string) => void;
   user: any;
+  onTestSaturdayReminder?: () => void;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -31,7 +32,8 @@ export const Settings: React.FC<SettingsProps> = ({
   profiles,
   activeProfile,
   onRefreshProfiles,
-  user
+  user,
+  onTestSaturdayReminder
 }) => {
   // Tabs: 'profile', 'sheets', 'database', 'notifications', 'backup'
   const [activeTab, setActiveTab] = useState<'profile' | 'sheets' | 'database' | 'notifications' | 'backup'>('profile');
@@ -1317,9 +1319,21 @@ export const Settings: React.FC<SettingsProps> = ({
                 flexDirection: 'column',
                 gap: '0.75rem'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-success)', fontWeight: 700 }}>
-                  <CheckCircle size={18} />
-                  <span>Automatic Real-Time Local Storage Mirror Active</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-success)', fontWeight: 700 }}>
+                    <CheckCircle size={18} />
+                    <span>Automatic Real-Time Local Storage Mirror Active</span>
+                  </div>
+                  {onTestSaturdayReminder && (
+                    <button
+                      type="button"
+                      onClick={onTestSaturdayReminder}
+                      className="btn-secondary"
+                      style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                    >
+                      📅 Test Saturday 5 PM Reminder Banner
+                    </button>
+                  )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
                   <div style={{ background: 'var(--bg-card)', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>

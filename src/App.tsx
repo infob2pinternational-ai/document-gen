@@ -12,7 +12,7 @@ import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
 import { ComparisonEditor } from './components/comparison/ComparisonEditor';
 import { ComparisonPreview } from './components/comparison/ComparisonPreview';
-import { Building, Menu, Moon, Sun } from 'lucide-react';
+import { Building, Menu, Moon, Sun, Download } from 'lucide-react';
 
 const playNotificationSound = () => {
   try {
@@ -97,6 +97,52 @@ function App() {
   const [publicViewDocId, setPublicViewDocId] = useState<string | null>(null);
   const [publicViewDoc, setPublicViewDoc] = useState<Document | null>(null);
   const [publicViewLoading, setPublicViewLoading] = useState(false);
+
+  // Saturday 5:00 PM Backup Reminder State & Checks
+  const [showSaturdayBackupReminder, setShowSaturdayBackupReminder] = useState(false);
+
+  const checkSaturdayBackupReminder = () => {
+    const now = new Date();
+    const day = now.getDay(); // 0 = Sun, 6 = Sat
+    const hours = now.getHours();
+
+    if (day === 6 && hours >= 17) {
+      const todayDateStr = now.toISOString().split('T')[0];
+      const dismissedDate = localStorage.getItem('docgen_saturday_backup_dismissed_date');
+      if (dismissedDate !== todayDateStr) {
+        setShowSaturdayBackupReminder(true);
+        
+        // Dispatch browser system notification if permitted
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const lastNotifDate = localStorage.getItem('docgen_saturday_notif_date');
+          if (lastNotifDate !== todayDateStr) {
+            try {
+              new Notification('B2P Portal - Saturday Backup Reminder', {
+                body: "It's Saturday 5:00 PM! Please download your weekly document backup (.zip) to protect all records.",
+                icon: '/billing/logo_b2p.png'
+              });
+              localStorage.setItem('docgen_saturday_notif_date', todayDateStr);
+            } catch (e) {}
+          }
+        }
+      }
+    } else {
+      setShowSaturdayBackupReminder(false);
+    }
+  };
+
+  useEffect(() => {
+    checkSaturdayBackupReminder();
+    const interval = setInterval(checkSaturdayBackupReminder, 30000); // Re-check every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleDismissSaturdayReminder = () => {
+    const now = new Date();
+    const todayDateStr = now.toISOString().split('T')[0];
+    localStorage.setItem('docgen_saturday_backup_dismissed_date', todayDateStr);
+    setShowSaturdayBackupReminder(false);
+  };
 
   // Initialize Theme
   useEffect(() => {
@@ -885,6 +931,103 @@ function App() {
           </button>
         </div>
       )}
+
+      {/* Saturday 5:00 PM Backup Reminder Banner */}
+      {showSaturdayBackupReminder && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 999999,
+          width: '90%',
+          maxWidth: '560px',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          border: '2px solid #2563eb',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(37, 99, 235, 0.3)',
+          color: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+          animation: 'slideIn 0.3s ease forwards'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+            <div style={{
+              background: 'rgba(37, 99, 235, 0.2)',
+              padding: '0.6rem',
+              borderRadius: '10px',
+              color: '#60a5fa',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <Download size={24} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>📅 Saturday Backup Reminder (5:00 PM)</span>
+              </div>
+              <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', color: '#cbd5e1', lineHeight: '1.4' }}>
+                It's Saturday 5:00 PM! Please download your weekly local system document backup (.zip) to protect all quotations, invoices, and records against data loss.
+              </p>
+            </div>
+            <button 
+              onClick={handleDismissSaturdayReminder}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: '0.2rem',
+                fontSize: '1.1rem',
+                lineHeight: 1
+              }}
+              title="Dismiss for today"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+            <button
+              onClick={handleDismissSaturdayReminder}
+              className="btn-secondary"
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.4rem 0.8rem',
+                background: 'rgba(255,255,255,0.1)',
+                color: '#e2e8f0',
+                border: '1px solid rgba(255,255,255,0.2)'
+              }}
+            >
+              Remind Me Later
+            </button>
+            <button
+              onClick={async () => {
+                await dbService.downloadFullBackupFile();
+                handleDismissSaturdayReminder();
+              }}
+              className="btn-primary"
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.4rem 1rem',
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                color: '#ffffff',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <Download size={14} />
+              <span>Download Backup Now (.zip)</span>
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Mobile top-bar header */}
       <header className="mobile-header">
@@ -1099,6 +1242,7 @@ function App() {
                 activeProfile={activeProfile}
                 onRefreshProfiles={loadData}
                 user={user}
+                onTestSaturdayReminder={() => setShowSaturdayBackupReminder(true)}
               />
             )}
           </>
