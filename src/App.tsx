@@ -12,7 +12,7 @@ import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
 import { ComparisonEditor } from './components/comparison/ComparisonEditor';
 import { ComparisonPreview } from './components/comparison/ComparisonPreview';
-import { Building, Menu, Moon, Sun, Download } from 'lucide-react';
+import { Building, Menu, Moon, Sun, Download, Cloud } from 'lucide-react';
 
 const playNotificationSound = () => {
   try {
@@ -941,7 +941,7 @@ function App() {
           transform: 'translateX(-50%)',
           zIndex: 999999,
           width: '90%',
-          maxWidth: '560px',
+          maxWidth: '580px',
           background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
           border: '2px solid #2563eb',
           borderRadius: '12px',
@@ -955,23 +955,23 @@ function App() {
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
             <div style={{
-              background: 'rgba(37, 99, 235, 0.2)',
+              background: 'rgba(16, 185, 129, 0.2)',
               padding: '0.6rem',
               borderRadius: '10px',
-              color: '#60a5fa',
+              color: '#34d399',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0
             }}>
-              <Download size={24} />
+              <Cloud size={24} />
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span>📅 Saturday Backup Reminder (5:00 PM)</span>
               </div>
               <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', color: '#cbd5e1', lineHeight: '1.4' }}>
-                It's Saturday 5:00 PM! Please download your weekly local system document backup (.zip) to protect all quotations, invoices, and records against data loss.
+                It's Saturday 5:00 PM! Back up your weekly documents to Google Drive (<strong>info.b2pinternational@gmail.com</strong>) or download a local ZIP file.
               </p>
             </div>
             <button 
@@ -991,13 +991,13 @@ function App() {
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '0.25rem' }}>
             <button
               onClick={handleDismissSaturdayReminder}
               className="btn-secondary"
               style={{
                 fontSize: '0.8rem',
-                padding: '0.4rem 0.8rem',
+                padding: '0.45rem 0.75rem',
                 background: 'rgba(255,255,255,0.1)',
                 color: '#e2e8f0',
                 border: '1px solid rgba(255,255,255,0.2)'
@@ -1005,25 +1005,59 @@ function App() {
             >
               Remind Me Later
             </button>
+
             <button
               onClick={async () => {
                 await dbService.downloadFullBackupFile();
                 handleDismissSaturdayReminder();
               }}
-              className="btn-primary"
+              className="btn-secondary"
               style={{
                 fontSize: '0.8rem',
-                padding: '0.4rem 1rem',
-                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                padding: '0.45rem 0.85rem',
+                background: 'rgba(255,255,255,0.15)',
                 color: '#ffffff',
-                fontWeight: 700,
+                border: '1px solid rgba(255,255,255,0.3)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.35rem'
               }}
             >
               <Download size={14} />
-              <span>Download Backup Now (.zip)</span>
+              <span>Download ZIP</span>
+            </button>
+
+            <button
+              onClick={async () => {
+                if (activeProfile?.google_sheets_url) {
+                  const res = await dbService.syncBackupToGoogleDrive(activeProfile.google_sheets_url);
+                  if (res.success) {
+                    alert('Weekly backup successfully saved to info.b2pinternational@gmail.com Google Drive ("B2P Document Backups" folder)!');
+                    handleDismissSaturdayReminder();
+                  } else {
+                    alert('Failed to sync to Google Drive: ' + (res.error || 'Unknown error.'));
+                  }
+                } else {
+                  alert('Google Drive / Sheets URL is not configured. Downloading local ZIP backup instead.');
+                  await dbService.downloadFullBackupFile();
+                  handleDismissSaturdayReminder();
+                }
+              }}
+              className="btn-primary"
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.45rem 1rem',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: '#ffffff',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                border: 'none'
+              }}
+            >
+              <Cloud size={14} />
+              <span>Backup to Google Drive</span>
             </button>
           </div>
         </div>
