@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { CompanyProfile, Customer, Service, Document, DocumentItem } from '../types';
+import JSZip from 'jszip';
 
 const globalProcess = (globalThis as any).process;
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || globalProcess?.env?.SUPABASE_URL || '';
@@ -781,19 +782,131 @@ export const dbService = {
     };
   },
 
-  async downloadFullBackupFile(): Promise<void> {
+  async generateZipBackupBlob(): Promise<{ blob: Blob; filename: string }> {
     const data = await this.generateFullBackup();
-    const jsonStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const dateStr = new Date().toISOString().split('T')[0];
+    const zip = new JSZip();
+
+    // 1. Primary manifest file for full system restore
+    zip.file('backup_manifest.json', JSON.stringify(data, null, 2));
+
+    // 2. CSV Summary file for viewing in Excel
+    let csvContent = 'Document Number,Type,Customer Name,Date,Total Amount,Status,Created At\n';
+    if (Array.isArray(data.documents)) {
+      data.documents.forEach((d: any) => {
+        const num = `"${(d.document_number || '').replace(/"/g, '""')}"`;
+        const type = `"${(d.document_type || '').replace(/"/g, '""')}"`;
+        const cust = `"${(d.customer_name || '').replace(/"/g, '""')}"`;
+        const date = `"${(d.date || '').replace(/"/g, '""')}"`;
+        const total = d.total_amount || 0;
+        const status = `"${(d.status || '').replace(/"/g, '""')}"`;
+        const created = `"${(d.created_at || '').replace(/"/g, '""')}"`;
+        csvContent += `${num},${type},${cust},${date},${total},${status},${created}\n`;
+      });
+    }
+    zip.file('documents_summary.csv', csvContent);
+
+    // 3. Folder with individual document JSONs
+    const docsFolder = zip.folder('documents');
+    if (docsFolder && Array.isArray(data.documents)) {
+      data.documents.forEach((d: any) => {
+        const cleanName = (d.document_number || d.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const docItems = Array.isArray(data.document_items) ? data.document_items.filter((it: any) => it.document_id === d.id) : [];
+        const compConfig = data.comparison_data ? data.comparison_data[d.id] : null;
+        
+        const docRecord = {
+          document: d,
+          items: docItems,
+          comparison_config: compConfig
+        };
+        docsFolder.file(`${cleanName}.json`, JSON.stringify(docRecord, null, 2));
+      });
+    }
+
+    // 4. README instructions inside zip
+    const readmeText = `B2P INTERNATIONAL DOCUMENT PORTAL - LOCAL SYSTEM BACKUP ARCHIVE
+===================================================================
+Exported At: ${new Date().toLocaleString()}
+Total Documents: ${data.documents?.length || 0}
+Total Items: ${data.document_items?.length || 0}
+Total Customers: ${data.customers?.length || 0}
+
+FILE STRUCTURE:
+- backup_manifest.json  : Complete system restore file.
+- documents_summary.csv : Excel spreadsheet summary of all documents.
+- documents/            : Individual JSON records for each document.
+
+HOW TO RESTORE:
+Go to Settings > Local Backup & Data Recovery in your portal and select this .zip archive or backup_manifest.json.
+`;
+    zip.file('README.txt', readmeText);
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const filename = `b2p_documents_backup_${dateStr}.zip`;
+    return { blob, filename };
+  },
+
+  async downloadFullBackupFile(): Promise<void> {
+    const { blob, filename } = await this.generateZipBackupBlob();
+
+    // Native path selection prompt (File System Access API in modern desktop browsers)
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: filename,
+          types: [{
+            description: 'ZIP Backup Archive (*.zip)',
+            accept: { 'application/zip': ['.zip'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          // User closed/cancelled the path save dialog
+          return;
+        }
+        console.warn('showSaveFilePicker failed, falling back to standard download:', err);
+      }
+    }
+
+    // Fallback standard download trigger
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0];
     a.href = url;
-    a.download = `b2p_documents_backup_${dateStr}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  },
+
+  async restoreBackupFromFile(file: File): Promise<{ success: boolean; count: number; error?: string }> {
+    if (file.name.toLowerCase().endsWith('.zip')) {
+      try {
+        const zip = new JSZip();
+        const unzipped = await zip.loadAsync(file);
+        const manifestFile = unzipped.file('backup_manifest.json');
+        if (!manifestFile) {
+          return { success: false, count: 0, error: 'backup_manifest.json not found in ZIP archive.' };
+        }
+        const jsonText = await manifestFile.async('string');
+        const jsonContent = JSON.parse(jsonText);
+        return await this.restoreFullBackup(jsonContent);
+      } catch (err: any) {
+        return { success: false, count: 0, error: 'Failed to extract ZIP backup: ' + err.message };
+      }
+    } else {
+      try {
+        const jsonText = await file.text();
+        const jsonContent = JSON.parse(jsonText);
+        return await this.restoreFullBackup(jsonContent);
+      } catch (err: any) {
+        return { success: false, count: 0, error: 'Failed to parse backup JSON: ' + err.message };
+      }
+    }
   },
 
   async restoreFullBackup(backupData: any): Promise<{ success: boolean; count: number; error?: string }> {

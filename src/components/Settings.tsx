@@ -62,31 +62,26 @@ export const Settings: React.FC<SettingsProps> = ({
     }
   }, [activeTab]);
 
-  const handleFileRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        setRestoring(true);
-        const jsonContent = JSON.parse(event.target?.result as string);
-        const result = await dbService.restoreFullBackup(jsonContent);
-        if (result.success) {
-          alert(`Backup restored successfully! ${result.count} document(s) and metadata recovered.`);
-          onRefreshProfiles(activeProfile?.id);
-          refreshBackupStats();
-        } else {
-          alert('Failed to restore backup: ' + (result.error || 'Unknown error.'));
-        }
-      } catch (err: any) {
-        alert('Invalid JSON backup file: ' + err.message);
-      } finally {
-        setRestoring(false);
-        if (restoreFileRef.current) restoreFileRef.current.value = '';
+    try {
+      setRestoring(true);
+      const result = await dbService.restoreBackupFromFile(file);
+      if (result.success) {
+        alert(`Backup restored successfully! ${result.count} document(s) and metadata recovered.`);
+        onRefreshProfiles(activeProfile?.id);
+        refreshBackupStats();
+      } else {
+        alert('Failed to restore backup: ' + (result.error || 'Unknown error.'));
       }
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      alert('Failed to restore backup file: ' + err.message);
+    } finally {
+      setRestoring(false);
+      if (restoreFileRef.current) restoreFileRef.current.value = '';
+    }
   };
   
   // Active Profile Form States
@@ -1353,10 +1348,10 @@ export const Settings: React.FC<SettingsProps> = ({
                 <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <h4 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Download size={18} style={{ color: 'var(--accent-primary)' }} />
-                    <span>Export Local Backup (.json)</span>
+                    <span>Export ZIP Backup Archive (.zip)</span>
                   </h4>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                    Download a complete `.json` file containing all documents, items, comparison packages, customers, services, and company settings to your computer disk.
+                    Download a full `.zip` file archive containing system restore data (`backup_manifest.json`), Excel summary (`documents_summary.csv`), and individual document files to your chosen folder path.
                   </p>
                   <button
                     type="button"
@@ -1365,7 +1360,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
                   >
                     <Download size={16} />
-                    <span>Download Backup File</span>
+                    <span>Export ZIP Archive (Select Path)</span>
                   </button>
                 </div>
 
@@ -1376,12 +1371,12 @@ export const Settings: React.FC<SettingsProps> = ({
                     <span>Restore Backup from Computer</span>
                   </h4>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                    Upload a previously saved `.json` backup file from your computer to restore lost documents, line items, customers, and settings.
+                    Upload a previously saved `.zip` archive or `.json` backup file from your computer to restore lost documents, line items, customers, and settings.
                   </p>
                   <input 
                     type="file"
                     ref={restoreFileRef}
-                    accept=".json"
+                    accept=".zip,.json"
                     style={{ display: 'none' }}
                     onChange={handleFileRestore}
                   />
@@ -1393,7 +1388,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
                   >
                     <Upload size={16} />
-                    <span>{restoring ? 'Restoring Data...' : 'Select Backup File (.json)'}</span>
+                    <span>{restoring ? 'Restoring Data...' : 'Select Backup File (.zip / .json)'}</span>
                   </button>
                 </div>
 
