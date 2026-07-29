@@ -4,6 +4,7 @@ import { dbService } from '../services/db';
 import { sendApprovalNotification } from '../services/push';
 import { ArrowLeft, Plus, Trash2, GripVertical, Save, Pencil, Copy } from 'lucide-react';
 import { LineItemModal } from './LineItemModal';
+import { calculateDocumentTotals } from '../utils/calculations';
 
 interface DocumentEditorProps {
   activeProfile: CompanyProfile | null;
@@ -345,29 +346,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     setItems(updated.map((item, idx) => ({ ...item, sort_order: idx })));
   };
 
-  // Totals calculations
-  const calculateTotals = () => {
-    let subtotal = 0;
-    let taxTotal = 0;
-
-    items.forEach(item => {
-      const amt = item.amount || 0;
-      const gstPercent = docType === 'non_tax_invoice' ? 0 : (item.gst_percentage || 0);
-      const gstAmt = amt * (gstPercent / 100);
-      subtotal += amt;
-      taxTotal += gstAmt;
-    });
-
-    const total = subtotal + taxTotal - (discountTotal || 0);
-
-    return {
-      subtotal,
-      taxTotal,
-      total
-    };
-  };
-
-  const { subtotal, taxTotal, total } = calculateTotals();
+  // Shared Document Totals calculations
+  const { subtotal, taxableAmount, taxTotal, total, effectiveGstRate } = calculateDocumentTotals(items, discountTotal, docType);
 
   // Save Document
   const handleSaveDoc = async () => {
@@ -866,20 +846,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               <span style={{ color: 'var(--text-secondary)' }}>Subtotal:</span>
               <span className="mono" style={{ fontWeight: 600 }}>
                 {activeProfile?.currency === 'INR' ? '₹' : '$'}
-                {subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Calculated Tax (GST):</span>
-              <span className="mono" style={{ fontWeight: 600 }}>
-                {activeProfile?.currency === 'INR' ? '₹' : '$'}
-                {taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                {subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
 
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Apply Discount ({activeProfile?.currency})</label>
+              <label className="form-label">Apply Discount ({activeProfile?.currency || '₹'})</label>
               <input 
                 type="number" 
                 value={discountTotal || ''} 
@@ -889,13 +861,33 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               />
             </div>
 
-            <hr style={{ border: 'none', borderBottom: '1px solid var(--border-color)' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Taxable Amount:</span>
+              <span className="mono" style={{ fontWeight: 600 }}>
+                {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                {taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+
+            {docType !== 'non_tax_invoice' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  GST {effectiveGstRate > 0 ? `(${effectiveGstRate.toFixed(0)}%)` : ''}:
+                </span>
+                <span className="mono" style={{ fontWeight: 600 }}>
+                  {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                  {taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            <hr style={{ border: 'none', borderBottom: '1px solid var(--border-color)', margin: '0.25rem 0' }} />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 600 }}>Grand Total:</span>
               <span className="mono" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent-primary)' }}>
                 {activeProfile?.currency === 'INR' ? '₹' : '$'}
-                {total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                {total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           </div>

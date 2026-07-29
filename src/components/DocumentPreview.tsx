@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { CompanyProfile, Document, DocumentItem } from '../types';
 import { dbService } from '../services/db';
 import { ArrowLeft, Printer, AlertTriangle, Download } from 'lucide-react';
+import { calculateDocumentTotals } from '../utils/calculations';
 
 interface DocumentPreviewProps {
   activeProfile: CompanyProfile | null;
@@ -232,6 +233,8 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       </div>
     );
   }
+
+  const totals = calculateDocumentTotals(items, document.discount_total, document.document_type);
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -477,21 +480,19 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               ))}
 
               {/* Subtotal Row */}
-              {(Number(document.discount_total) > 0 || Number(document.tax_total) > 0) && (
-                <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Subtotal</td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
-                    {Number(document.subtotal).toFixed(2)}
-                  </td>
-                </tr>
-              )}
+              <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Subtotal</td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                  {totals.subtotal.toFixed(2)}
+                </td>
+              </tr>
 
-              {/* Discount Row */}
-              {Number(document.discount_total) > 0 && (
+              {/* Discount Row (Always displayed whenever discount > 0) */}
+              {totals.discountTotal > 0 && (
                 <tr style={{ fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Discount</td>
@@ -499,21 +500,35 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
-                    -{Number(document.discount_total).toFixed(2)}
+                    -{totals.discountTotal.toFixed(2)}
                   </td>
                 </tr>
               )}
 
-              {/* Tax Row */}
-              {Number(document.tax_total) > 0 && (
+              {/* Taxable Amount Row */}
+              <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Taxable Amount</td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                  {totals.taxableAmount.toFixed(2)}
+                </td>
+              </tr>
+
+              {/* GST Row (Hidden for Non-Tax Invoices) */}
+              {document.document_type !== 'non_tax_invoice' && (
                 <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Calculated Tax (GST)</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                    GST {totals.effectiveGstRate > 0 ? `(${totals.effectiveGstRate.toFixed(0)}%)` : ''}
+                  </td>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
-                    {Number(document.tax_total).toFixed(2)}
+                    {totals.taxTotal.toFixed(2)}
                   </td>
                 </tr>
               )}
@@ -526,11 +541,17 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                 <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                 <td className="mono" style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.85rem' }}>
-                  {Number(document.total).toFixed(2)}
+                  {totals.total.toFixed(2)}
                 </td>
               </tr>
             </tbody>
           </table>
+
+          {/* Amount in Words */}
+          <div style={{ marginBottom: '1.25rem', fontSize: '0.8rem', color: '#0f172a' }}>
+            <strong>Amount in Words: </strong>
+            <span style={{ fontStyle: 'italic', fontWeight: 600, color: '#334155' }}>{totals.amountInWords}</span>
+          </div>
 
           {/* Bottom bank details and signature signatory box */}
           <div style={{
