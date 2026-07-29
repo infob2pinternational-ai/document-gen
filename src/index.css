@@ -1200,3 +1200,51 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb,
     font-size: 1.15rem !important;
   }
 }
+
+/* ============================================================
+   ERP Line Item Modal & Summary Table Animations
+   ============================================================ */
+@keyframes slideUpModal {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.erp-summary-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.85rem;
+}
+
+.erp-summary-table th {
+  background-color: var(--bg-canvas, #0f172a);
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+
+.erp-summary-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06));
+  color: var(--text-primary, #ffffff);
+  vertical-align: middle;
+}
+
+.erp-summary-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.erp-summary-table tr:last-child td {
+  border-bottom: none;
+}
+

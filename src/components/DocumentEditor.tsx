@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Customer, Service, Document, DocumentItem, DocumentType } from '../types';
 import { dbService } from '../services/db';
 import { sendApprovalNotification } from '../services/push';
-import { ArrowLeft, Plus, Trash2, GripVertical, Save, Calculator } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Save, Pencil, Copy } from 'lucide-react';
+import { LineItemModal } from './LineItemModal';
 
 interface DocumentEditorProps {
   activeProfile: CompanyProfile | null;
@@ -48,20 +49,47 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const [colRate, setColRate] = useState('Rate');
   const [colAmt, setColAmt] = useState('Amount');
 
-  // Document Items
+  // Document Items & Modal States
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [itemToEdit, setItemToEdit] = useState<DocumentItem | null>(null);
+
+  const handleOpenAddItemModal = () => {
+    setItemToEdit(null);
+    setIsItemModalOpen(true);
+  };
+
+  const handleOpenEditItemModal = (item: DocumentItem) => {
+    setItemToEdit(item);
+    setIsItemModalOpen(true);
+  };
+
+  const handleDuplicateItem = (index: number) => {
+    const target = items[index];
+    if (!target) return;
+    const cloned: DocumentItem = {
+      ...target,
+      id: crypto.randomUUID(),
+      description: target.description ? `${target.description} (Copy)` : 'Copy',
+      sort_order: items.length
+    };
+    setItems([...items, cloned]);
+  };
+
+  const handleSaveItemFromModal = (savedItem: DocumentItem) => {
+    const existingIdx = items.findIndex(i => i.id === savedItem.id);
+    if (existingIdx > -1) {
+      const updated = [...items];
+      updated[existingIdx] = savedItem;
+      setItems(updated);
+    } else {
+      setItems([...items, { ...savedItem, sort_order: items.length }]);
+    }
+  };
 
   // Drag and Drop States
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-
-  // Calculator States
-  const [activeCalcIndex, setActiveCalcIndex] = useState<number | null>(null);
-  const [calcUnits, setCalcUnits] = useState<number>(1);
-  const [calcUnitLabel, setCalcUnitLabel] = useState<string>('Vehicles');
-  const [calcQty, setCalcQty] = useState<number>(1);
-  const [calcQtyLabel, setCalcQtyLabel] = useState<string>('days');
-  const [calcRate, setCalcRate] = useState<number>(0);
 
   // Load Customers and Services libraries
   useEffect(() => {
@@ -297,100 +325,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   };
 
   // Line item CRUD & Calculations
-  const addLineItem = () => {
-    const newItem: DocumentItem = {
-      id: crypto.randomUUID(),
-      document_id: documentToEdit?.id || '',
-      description: '',
-      quantity: undefined as any,
-      days: undefined as any,
-      rate: undefined as any,
-      unit: '',
-      gst_percentage: 0,
-      amount: 0,
-      sort_order: items.length
-    };
-    setItems([...items, newItem]);
-  };
-
   const removeLineItem = (index: number) => {
     const updated = items.filter((_, idx) => idx !== index);
     setItems(updated.map((item, idx) => ({ ...item, sort_order: idx })));
-  };
-
-  const handleItemChange = (index: number, field: keyof DocumentItem, value: any) => {
-    const updated = [...items];
-    const item = { ...updated[index] };
-
-    if (field === 'service_id') {
-      const srvId = value;
-      item.service_id = srvId;
-      const srv = services.find(s => s.id === srvId);
-      if (srv) {
-        item.description = srv.description ? `${srv.name} - ${srv.description}` : srv.name;
-        item.rate = Number(srv.default_rate);
-        item.unit = srv.unit;
-        item.gst_percentage = Number(srv.gst_percentage);
-      }
-    } else {
-      (item as any)[field] = value;
-    }
-
-    // Recalculate item amount using Qty * Days * Rate
-    const q = Number(field === 'quantity' ? value : item.quantity) || 0;
-    const d = Number(field === 'days' ? value : item.days) || 1;
-    const r = Number(field === 'rate' ? value : item.rate) || 0;
-    item.amount = q * d * r;
-
-    updated[index] = item;
-    setItems(updated);
-  };
-
-  const handleOpenCalculator = (index: number) => {
-    const item = items[index];
-    
-    // Parse existing parenthetical multiplier if any (e.g. "(2 Vehicles @ ₹4,000/day)")
-    const match = item.description.match(/\((\d+)\s+([\w\s]+)\s+@\s+₹?([\d,]+)\/(\w+)\)/);
-    
-    if (match) {
-      setCalcUnits(Number(match[1]));
-      setCalcUnitLabel(match[2].trim());
-      setCalcRate(Number(match[3].replace(/,/g, '')));
-      setCalcQtyLabel(match[4].trim() + 's'); // append 's' to restore plural label
-      setCalcQty(item.quantity);
-    } else {
-      // Default initial states
-      setCalcUnits(2);
-      setCalcUnitLabel('Vehicles');
-      setCalcQty(item.quantity || 30);
-      setCalcQtyLabel(item.unit || 'days');
-      setCalcRate(item.rate / 2 || 4000);
-    }
-    setActiveCalcIndex(index);
-  };
-
-  const handleApplyCalculation = () => {
-    if (activeCalcIndex === null) return;
-    
-    const updated = [...items];
-    const item = { ...updated[activeCalcIndex] };
-    
-    // Clean original description from existing parenthetical unit details to avoid duplicates
-    let baseDesc = item.description.replace(/\s*\(\d+\s+[\w\s]+\s+@\s+₹?[\d,]+(\/\w+)?.*\)/g, '').trim();
-    if (!baseDesc) {
-      baseDesc = 'Services';
-    }
-    
-    item.description = baseDesc;
-    item.quantity = calcUnits;
-    item.days = calcQty;
-    item.rate = calcRate;
-    item.amount = calcUnits * calcQty * calcRate;
-    item.unit = calcQtyLabel;
-    
-    updated[activeCalcIndex] = item;
-    setItems(updated);
-    setActiveCalcIndex(null);
   };
 
   // Totals calculations
@@ -647,14 +584,24 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           {/* Line Items Matrix */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '1rem' }}>Line Items Matrix</h3>
-              <button onClick={addLineItem} className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                <Plus size={14} />
+              <div>
+                <h3 style={{ fontSize: '1rem', margin: 0 }}>Line Items Summary</h3>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  Manage document services, rates, quantities, and tax specifications
+                </p>
+              </div>
+              <button 
+                type="button"
+                onClick={handleOpenAddItemModal} 
+                className="btn-primary" 
+                style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <Plus size={16} />
                 <span>Add Item</span>
               </button>
             </div>
 
-            {/* Editable Columns Section */}
+            {/* Editable Columns Label Customizer */}
             <div className="rename-cols-grid">
               <div>
                 <label style={{ fontSize: '0.7rem', display: 'block', color: 'var(--text-muted)' }}>Rename Desc Col</label>
@@ -678,163 +625,148 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </div>
             </div>
 
-            {/* Line items Table (Scrollable on mobile) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+            {/* Clean ERP Line Items Summary Table */}
+            <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border-color, rgba(255,255,255,0.1))' }}>
               {items.length > 0 ? (
-                items.map((item, idx) => (
-                  <div 
-                    key={item.id}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={handleDragOver}
-                    onDrop={() => handleDrop(idx)}
-                    className="editor-line-item"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.5rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-color)',
-                      background: 'var(--bg-card)'
-                    }}
-                  >
-                    <div style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                      <GripVertical size={16} />
-                    </div>
+                <table className="erp-summary-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}>#</th>
+                      <th style={{ width: '130px' }}>Service</th>
+                      <th>{colDesc}</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>{colQty}</th>
+                      <th style={{ width: '70px', textAlign: 'center' }}>{colUnit}</th>
+                      <th style={{ width: '100px', textAlign: 'right' }}>{colRate}</th>
+                      {docType !== 'non_tax_invoice' && (
+                        <th style={{ width: '75px', textAlign: 'center' }}>Tax</th>
+                      )}
+                      <th style={{ width: '110px', textAlign: 'right' }}>{colAmt}</th>
+                      <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => {
+                      const matchedSrv = services.find(s => s.id === item.service_id);
+                      const serviceName = matchedSrv ? matchedSrv.name : (item.service_id ? 'Preset Service' : 'Custom');
+                      const currSymbol = activeProfile?.currency === 'INR' ? '₹' : (activeProfile?.currency === 'USD' ? '$' : (activeProfile?.currency || '₹') + ' ');
+                      const lineTaxAmt = docType === 'non_tax_invoice' ? 0 : ((item.amount || 0) * (item.gst_percentage || 0) / 100);
+                      const lineTotalWithTax = (item.amount || 0) + lineTaxAmt;
 
-                    {/* Pre-saved Service Selector Dropdown */}
-                    <div style={{ width: '130px', flexShrink: 0 }}>
-                      <select 
-                        value={item.service_id || ''} 
-                        onChange={(e) => handleItemChange(idx, 'service_id', e.target.value)}
-                        style={{ padding: '0.4rem', fontSize: '0.75rem' }}
-                      >
-                        <option value="">-- Load Service --</option>
-                        {services.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Description Input */}
-                    <div style={{ flex: 1 }}>
-                      <input 
-                        type="text" 
-                        placeholder={colDesc}
-                        value={item.description} 
-                        onChange={(e) => handleItemChange(idx, 'description', e.target.value)} 
-                        style={{ padding: '0.4rem', fontSize: '0.8rem' }}
-                      />
-                    </div>
-
-                    {/* HSN/SAC Input */}
-                    <div style={{ width: '80px' }}>
-                      <input 
-                        type="text" 
-                        placeholder="HSN" 
-                        value={item.hsn_sac || ''} 
-                        onChange={(e) => handleItemChange(idx, 'hsn_sac', e.target.value)}
-                        style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
-                      />
-                    </div>
-
-                    {/* Quantity Input */}
-                    <div style={{ width: '60px' }}>
-                      <input 
-                        type="number" 
-                        placeholder="Qty" 
-                        value={item.quantity === undefined ? '' : item.quantity} 
-                        onChange={(e) => handleItemChange(idx, 'quantity', e.target.value === '' ? undefined : Number(e.target.value))}
-                        style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
-                      />
-                    </div>
-
-                    {/* Days Input */}
-                    <div style={{ width: '60px' }}>
-                      <input 
-                        type="number" 
-                        placeholder="Days" 
-                        value={item.days === undefined ? '' : item.days} 
-                        onChange={(e) => handleItemChange(idx, 'days', e.target.value === '' ? undefined : Number(e.target.value))}
-                        style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
-                      />
-                    </div>
-
-                    {/* Unit Input */}
-                    <div style={{ width: '60px' }}>
-                      <input 
-                        type="text" 
-                        placeholder="Unit" 
-                        value={item.unit || ''} 
-                        onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
-                        style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center' }}
-                      />
-                    </div>
-
-                    {/* Rate Input */}
-                    <div style={{ width: '90px' }}>
-                      <input 
-                        type="number" 
-                        placeholder="Rate" 
-                        value={item.rate === undefined ? '' : item.rate} 
-                        onChange={(e) => handleItemChange(idx, 'rate', e.target.value === '' ? undefined : Number(e.target.value))}
-                        style={{ padding: '0.4rem', fontSize: '0.8rem', textAlign: 'right' }}
-                      />
-                    </div>
-
-                    {/* Multi-unit calculator helper trigger */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenCalculator(idx)}
-                      className="btn-secondary"
-                      style={{ padding: '0.4rem', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      title="Multi-unit Billing Calculator"
-                    >
-                      <Calculator size={14} />
-                    </button>
-
-                    {/* GST dropdown */}
-                    {docType !== 'non_tax_invoice' && (
-                      <div style={{ width: '75px' }}>
-                        <select 
-                          value={item.gst_percentage} 
-                          onChange={(e) => handleItemChange(idx, 'gst_percentage', Number(e.target.value))}
-                          style={{ padding: '0.4rem', fontSize: '0.75rem' }}
+                      return (
+                        <tr 
+                          key={item.id}
+                          draggable
+                          onDragStart={() => handleDragStart(idx)}
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop(idx)}
                         >
-                          <option value={0}>0%</option>
-                          <option value={5}>5%</option>
-                          <option value={12}>12%</option>
-                          <option value={18}>18%</option>
-                          <option value={28}>28%</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Amount preview */}
-                    <div className="mono" style={{ width: '90px', textAlign: 'right', fontSize: '0.85rem', fontWeight: 600 }}>
-                      {activeProfile?.currency === 'INR' ? '₹' : '$'}
-                      {item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </div>
-
-                    {/* Trash Action */}
-                    <button 
-                      onClick={() => removeLineItem(idx)}
-                      className="btn-secondary"
-                      style={{ padding: '0.4rem', color: 'var(--accent-danger)', border: 'none', background: 'transparent' }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))
+                          <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', cursor: 'grab' }}>
+                              <GripVertical size={14} />
+                              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{idx + 1}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--accent-primary, #3b82f6)', display: 'block' }}>
+                              {serviceName}
+                            </span>
+                            {item.hsn_sac && (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                HSN: {item.hsn_sac}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'pre-wrap', lineHeight: 1.45, fontSize: '0.825rem' }}>
+                            {item.description}
+                          </td>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                            {item.quantity} {item.days && item.days > 1 ? `(${item.days}d)` : ''}
+                          </td>
+                          <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                            {item.unit || 'Unit'}
+                          </td>
+                          <td style={{ textAlign: 'right' }} className="mono">
+                            {currSymbol}{(item.rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                          {docType !== 'non_tax_invoice' && (
+                            <td style={{ textAlign: 'center' }}>
+                              <span style={{ padding: '2px 6px', background: 'rgba(59,130,246,0.1)', color: 'var(--accent-primary)', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                {item.gst_percentage || 0}%
+                              </span>
+                            </td>
+                          )}
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent-success)' }} className="mono">
+                            {currSymbol}{lineTotalWithTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditItemModal(item)}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem', border: 'none', background: 'transparent', color: 'var(--accent-primary)' }}
+                                title="Edit Item"
+                              >
+                                <Pencil size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateItem(idx)}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem', border: 'none', background: 'transparent', color: 'var(--text-secondary)' }}
+                                title="Duplicate Item"
+                              >
+                                <Copy size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeLineItem(idx)}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem', border: 'none', background: 'transparent', color: 'var(--accent-danger)' }}
+                                title="Delete Item"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               ) : (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)' }}>
-                  No items added yet. Click "Add Item" to add columns.
+                <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-canvas)', borderRadius: 'var(--radius-sm)' }}>
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>No items added yet</p>
+                  <p style={{ margin: '0.35rem 0 1rem 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Click "+ Add Item" to specify services, rates, and specifications</p>
+                  <button 
+                    type="button"
+                    onClick={handleOpenAddItemModal} 
+                    className="btn-primary" 
+                    style={{ padding: '0.45rem 1rem', fontSize: '0.8rem', fontWeight: 700, margin: '0 auto', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Plus size={14} />
+                    <span>Add First Item</span>
+                  </button>
                 </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* Line Item Popup Dialog Modal */}
+        <LineItemModal
+          isOpen={isItemModalOpen}
+          onClose={() => setIsItemModalOpen(false)}
+          onSaveItem={handleSaveItemFromModal}
+          itemToEdit={itemToEdit}
+          services={services}
+          currency={activeProfile?.currency || 'INR'}
+          isTaxableDoc={docType !== 'non_tax_invoice'}
+          colDesc={colDesc}
+          colQty={colQty}
+          colUnit={colUnit}
+          colRate={colRate}
+        />
 
         {/* Right Column: Customer selector, terms and summary */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -975,131 +907,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               />
             </div>
           </div>
-
         </div>
-
       </div>
-
-      {activeCalcIndex !== null && (
-        <div className="modal-overlay">
-          <div className="card animate-scale-up" style={{ width: '100%', maxWidth: '440px', padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: 'var(--shadow-lg)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Calculator size={18} style={{ color: 'var(--accent-primary)' }} />
-                <span>Multi-Unit Calculator</span>
-              </h3>
-              <button 
-                type="button" 
-                onClick={() => setActiveCalcIndex(null)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Number of Units (e.g. Vehicles / Displays)</label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input 
-                  type="number" 
-                  value={calcUnits} 
-                  onChange={(e) => setCalcUnits(Math.max(1, Number(e.target.value)))} 
-                  style={{ flex: 1 }}
-                />
-                <input 
-                  type="text" 
-                  value={calcUnitLabel} 
-                  onChange={(e) => setCalcUnitLabel(e.target.value)} 
-                  placeholder="e.g. Vehicles"
-                  style={{ width: '130px' }}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Duration per Unit (e.g. Days / Hours)</label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input 
-                  type="number" 
-                  value={calcQty} 
-                  onChange={(e) => setCalcQty(Math.max(1, Number(e.target.value)))} 
-                  style={{ flex: 1 }}
-                />
-                <input 
-                  type="text" 
-                  value={calcQtyLabel} 
-                  onChange={(e) => setCalcQtyLabel(e.target.value)} 
-                  placeholder="e.g. days"
-                  style={{ width: '130px' }}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Rate per Unit per {calcQtyLabel.replace(/s$/, '') || 'unit'}</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                  {activeProfile?.currency === 'INR' ? '₹' : '$'}
-                </span>
-                <input 
-                  type="number" 
-                  value={calcRate} 
-                  onChange={(e) => setCalcRate(Number(e.target.value))} 
-                  style={{ paddingLeft: '1.75rem' }}
-                />
-              </div>
-            </div>
-
-            <div style={{ 
-              background: 'var(--bg-input)', 
-              padding: '0.85rem', 
-              borderRadius: 'var(--radius-sm)', 
-              fontSize: '0.85rem',
-              border: '1px solid var(--border-color)'
-            }}>
-              <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: 'var(--text-primary)' }}>Calculation Summary:</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', color: 'var(--text-secondary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Total Quantity:</span>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{calcQty} {calcQtyLabel}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Combined Rate per {calcQtyLabel.replace(/s$/, '')}:</span>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {activeProfile?.currency === 'INR' ? '₹' : '$'}
-                    {(calcUnits * calcRate).toLocaleString('en-IN')}
-                  </span>
-                </div>
-                <hr style={{ border: 'none', borderBottom: '1px solid var(--border-color)', margin: '0.25rem 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Total Amount:</span>
-                  <span className="mono" style={{ fontWeight: 800, color: 'var(--accent-primary)' }}>
-                    {activeProfile?.currency === 'INR' ? '₹' : '$'}
-                    {(calcUnits * calcQty * calcRate).toLocaleString('en-IN')}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="btn-row" style={{ marginTop: '0.25rem' }}>
-              <button 
-                type="button"
-                className="btn-secondary" 
-                onClick={() => setActiveCalcIndex(null)}
-              >
-                Cancel
-              </button>
-              <button 
-                type="button"
-                className="btn-primary" 
-                onClick={handleApplyCalculation}
-              >
-                Apply Calculation
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
