@@ -505,18 +505,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 </tr>
               )}
 
-              {/* Taxable Amount Row */}
-              <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Taxable Amount</td>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
-                  {totals.taxableAmount.toFixed(2)}
-                </td>
-              </tr>
-
               {/* GST Row (Hidden for Non-Tax Invoices) */}
               {document.document_type !== 'non_tax_invoice' && (
                 <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
