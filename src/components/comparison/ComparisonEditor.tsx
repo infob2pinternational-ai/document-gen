@@ -125,15 +125,24 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         ? (activeProfile.invoice_prefix || 'INV/') 
         : (activeProfile.quotation_prefix || 'QTN/');
 
-      const compDocs = documents.filter(d => d.company_id === activeProfile.id && d.document_type === documentType);
-      const maxSeq = compDocs.reduce((max, d) => Math.max(max, d.sequence_number || 0), 0);
-
+      const compDocs = documents.filter(d => d.company_id === activeProfile.id);
       const startNum = isInvoice 
-        ? (activeProfile.invoice_start_number || 1001) 
-        : (activeProfile.quotation_start_number || 1001);
+        ? (Number(activeProfile.invoice_start_number) || 1001) 
+        : (Number(activeProfile.quotation_start_number) || 1001);
 
-      const nextNum = startNum + maxSeq;
-      setDocNumber(`${prefix}${String(nextNum).padStart(4, '0')}`);
+      let maxExistingSeq = 0;
+      compDocs.forEach(d => {
+        if (d.document_number && d.document_number.startsWith(prefix)) {
+          const numPart = d.document_number.substring(prefix.length).trim();
+          const parsed = parseInt(numPart, 10);
+          if (!isNaN(parsed) && parsed > maxExistingSeq) {
+            maxExistingSeq = parsed;
+          }
+        }
+      });
+
+      const nextNum = Math.max(startNum, maxExistingSeq + 1);
+      setDocNumber(`${prefix}${nextNum}`);
       createDefaultOption();
     }
   }, [documentToEdit, activeProfile, documentType]);

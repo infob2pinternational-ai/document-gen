@@ -349,7 +349,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                         </td>
                         <td data-label="Actions">
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                            {doc.customer_phone && (
+                            {doc.customer_phone && doc.status === 'approved' && (
                               <button
                                 onClick={() => {
                                   if (doc.status !== 'approved') {

@@ -264,35 +264,50 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // Sequence generator
   const generateSequenceNumber = async (type: DocumentType) => {
     if (!activeProfile) return;
+    
+    let prefix = 'INV/';
+    let startSeq = 1001;
+
+    if (type === 'invoice') {
+      prefix = activeProfile.invoice_prefix || 'INV/';
+      startSeq = Number(activeProfile.invoice_start_number) || 1001;
+    } else if (type === 'proforma_invoice') {
+      prefix = activeProfile.proforma_prefix || 'PI/';
+      startSeq = Number(activeProfile.proforma_start_number) || 1001;
+    } else if (type === 'quotation') {
+      prefix = activeProfile.quotation_prefix || 'QTN/';
+      startSeq = Number(activeProfile.quotation_start_number) || 1001;
+    } else if (type === 'work_order') {
+      prefix = activeProfile.work_order_prefix || 'WO/';
+      startSeq = Number(activeProfile.work_order_start_number) || 1001;
+    } else if (type === 'non_tax_invoice') {
+      prefix = activeProfile.non_tax_prefix || 'NT/';
+      startSeq = Number(activeProfile.non_tax_start_number) || 1001;
+    }
+
+    // Set immediate non-blank default
+    setSequenceNumber(startSeq);
+    setDocNumber(`${prefix}${startSeq}`);
+
     try {
       const allDocs = await dbService.getDocuments(activeProfile.id);
       
-      let nextSeq = 1001;
-      let prefix = 'INV/';
+      let maxExistingSeq = 0;
+      allDocs.forEach(d => {
+        if (d.document_number && d.document_number.startsWith(prefix)) {
+          const numPart = d.document_number.substring(prefix.length).trim();
+          const parsed = parseInt(numPart, 10);
+          if (!isNaN(parsed) && parsed > maxExistingSeq) {
+            maxExistingSeq = parsed;
+          }
+        }
+      });
 
-      if (type === 'invoice') {
-        prefix = activeProfile.invoice_prefix || 'INV/';
-        nextSeq = Number(activeProfile.invoice_start_number) || 1001;
-      } else if (type === 'proforma_invoice') {
-        prefix = activeProfile.proforma_prefix || 'PI/';
-        nextSeq = Number(activeProfile.proforma_start_number) || 1001;
-      } else if (type === 'quotation') {
-        prefix = activeProfile.quotation_prefix || 'QTN/';
-        nextSeq = Number(activeProfile.quotation_start_number) || 1001;
-      } else if (type === 'work_order') {
-        prefix = activeProfile.work_order_prefix || 'WO/';
-        nextSeq = Number(activeProfile.work_order_start_number) || 1001;
-      } else if (type === 'non_tax_invoice') {
-        prefix = activeProfile.non_tax_prefix || 'NT/';
-        nextSeq = Number(activeProfile.non_tax_start_number) || 1001;
-      }
+      let nextSeq = Math.max(startSeq, maxExistingSeq + 1);
 
-      // Find the first unused sequence number starting from nextSeq
-      let checkedSeq = nextSeq;
-      while (allDocs.some(d => d.document_type === type && d.document_number === `${prefix}${checkedSeq}`)) {
-        checkedSeq++;
+      while (allDocs.some(d => d.document_number === `${prefix}${nextSeq}`)) {
+        nextSeq++;
       }
-      nextSeq = checkedSeq;
 
       setSequenceNumber(nextSeq);
       setDocNumber(`${prefix}${nextSeq}`);
