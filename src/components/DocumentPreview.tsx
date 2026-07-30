@@ -479,21 +479,10 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 </tr>
               ))}
 
-              {/* Subtotal Row */}
-              <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Subtotal</td>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
-                  {totals.subtotal.toFixed(2)}
-                </td>
-              </tr>
-
-              {/* Discount Row (Displayed whenever discount > 0) */}
-              {totals.discountTotal > 0 && (
+              {/* Totals Section */}
+              {totals.discountTotal > 0 ? (
                 <>
+                  {/* Discount Row */}
                   <tr style={{ fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
                     <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                     <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Discount</td>
@@ -512,11 +501,23 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                     <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                     <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                     <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                    <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right', fontWeight: 700 }}>
+                    <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
                       {totals.taxableAmount.toFixed(2)}
                     </td>
                   </tr>
                 </>
+              ) : (
+                /* Subtotal Row when no discount */
+                <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Subtotal</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                  <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                    {totals.subtotal.toFixed(2)}
+                  </td>
+                </tr>
               )}
 
               {/* GST Row (Hidden for Non-Tax Invoices) */}
