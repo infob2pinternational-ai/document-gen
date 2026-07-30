@@ -347,7 +347,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   };
 
   // Shared Document Totals calculations
-  const { subtotal, taxTotal, total, effectiveGstRate } = calculateDocumentTotals(items, discountTotal, docType);
+  const { subtotal, taxableAmount, taxTotal, total, effectiveGstRate } = calculateDocumentTotals(items, discountTotal, docType);
 
   // Save Document
   const handleSaveDoc = async () => {
@@ -860,6 +860,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 style={{ textAlign: 'right' }}
               />
             </div>
+
+            {discountTotal > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Taxable Amount:</span>
+                <span className="mono" style={{ fontWeight: 700 }}>
+                  {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                  {taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
 
             {docType !== 'non_tax_invoice' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>

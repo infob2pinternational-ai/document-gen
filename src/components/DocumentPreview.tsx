@@ -493,16 +493,30 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
 
               {/* Discount Row (Displayed whenever discount > 0) */}
               {totals.discountTotal > 0 && (
-                <tr style={{ fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Discount</td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
-                    -{totals.discountTotal.toFixed(2)}
-                  </td>
-                </tr>
+                <>
+                  <tr style={{ fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Discount</td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                      -{totals.discountTotal.toFixed(2)}
+                    </td>
+                  </tr>
+
+                  {/* Taxable Amount Row */}
+                  <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Taxable Amount</td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right', fontWeight: 700 }}>
+                      {totals.taxableAmount.toFixed(2)}
+                    </td>
+                  </tr>
+                </>
               )}
 
               {/* GST Row (Hidden for Non-Tax Invoices) */}
