@@ -116,7 +116,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             }}
           >
             <Plus size={16} />
-            <span>Create Manual Quote</span>
+            <span>Create Quote</span>
           </button>
 
           <button 
@@ -271,7 +271,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                fontSize: '0.65rem',
                                textTransform: 'uppercase'
                              }}>
-                               Manual Quote
+                               Quote
                              </span>
                            ) : 
                            doc.document_type === 'comparison_invoice' ? (

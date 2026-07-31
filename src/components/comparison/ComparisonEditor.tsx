@@ -490,11 +490,11 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         console.error('[Push Trigger] Failed to send approval notification:', pushErr);
       });
 
-      alert(`${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Manual Quote'} saved successfully!`);
+      alert(`${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'} saved successfully!`);
       onSaveSuccess();
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to save ${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Manual Quote'}: ` + err.message);
+      alert(`Failed to save ${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'}: ` + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -512,8 +512,8 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
               {documentToEdit 
-                ? (documentType === 'comparison_invoice' ? 'Edit Manual Invoice' : 'Edit Manual Quote') 
-                : (documentType === 'comparison_invoice' ? 'Create Manual Invoice' : 'Create Manual Quote')}
+                ? (documentType === 'comparison_invoice' ? 'Edit Manual Invoice' : 'Edit Quote') 
+                : (documentType === 'comparison_invoice' ? 'Create Manual Invoice' : 'Create Quote')}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>
               Compare multiple options, packages, or deliverables in a single dynamic layout document.

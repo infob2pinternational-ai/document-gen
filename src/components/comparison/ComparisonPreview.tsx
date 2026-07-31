@@ -105,7 +105,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
           
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: themeColor, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              {document.document_type === 'comparison_invoice' ? 'Manual Invoice' : 'Manual Quote'}
+              {document.document_type === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'}
             </h2>
             <div style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
               No: {document.document_number}
