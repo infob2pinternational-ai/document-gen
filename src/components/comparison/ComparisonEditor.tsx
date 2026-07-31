@@ -102,12 +102,16 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
       ComparisonService.getComparisonData(documentToEdit.id)
         .then(data => {
           if (data) {
-            setOptions(data.options);
+            const sanitizedOptions = data.options.map(opt => ({
+              ...opt,
+              totalLabel: (!opt.totalLabel || opt.totalLabel === 'Subtotal Amount') ? 'Total' : opt.totalLabel
+            }));
+            setOptions(sanitizedOptions);
             setLayout(data.layout);
             setSelectedOptionIdForTotal(data.selectedOptionId);
             setThemeColor(data.themeColor || '#2563eb');
-            if (data.options.length > 0) {
-              setSelectedOptionTabId(data.options[0].id);
+            if (sanitizedOptions.length > 0) {
+              setSelectedOptionTabId(sanitizedOptions[0].id);
             }
           } else {
             // Fallback to default option if data record is missing
@@ -161,7 +165,7 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         { col_particular: 'Item Particular 2', col_qty: 2, col_rate: 150, col_amount: 300 }
       ],
       sumColumnId: 'col_amount',
-      totalLabel: 'Subtotal Amount',
+      totalLabel: 'Total',
       showTotal: true,
       totalValue: 400
     };

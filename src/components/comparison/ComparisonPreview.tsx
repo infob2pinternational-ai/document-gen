@@ -281,7 +281,7 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
                     marginTop: 'auto'
                   }}>
                     <span style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>
-                      {opt.totalLabel || 'Total'}
+                      {(!opt.totalLabel || opt.totalLabel === 'Subtotal Amount') ? 'Total' : opt.totalLabel}
                     </span>
                     <span style={{ fontWeight: 800, color: themeColor, fontSize: '1.1rem', fontFamily: 'monospace' }}>
                       {activeProfile.currency === 'INR' ? '₹' : '$'}
@@ -296,11 +296,33 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
 
         {/* Notes & Footnotes */}
         {(document.notes || config.notes) && (
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem', fontSize: '0.8rem', color: '#475569', lineHeight: 1.5 }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px', fontWeight: 700 }}>
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #cbd5e1',
+            borderLeft: `4px solid ${themeColor || '#2563eb'}`,
+            borderRadius: '6px',
+            padding: '1rem 1.25rem',
+            lineHeight: 1.6,
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+          }}>
+            <h4 style={{
+              margin: '0 0 0.5rem 0',
+              textTransform: 'uppercase',
+              color: '#0f172a',
+              letterSpacing: '0.5px',
+              fontWeight: 700,
+              fontSize: '0.85rem'
+            }}>
               Important Notes
             </h4>
-            <div style={{ whiteSpace: 'pre-line' }}>{document.notes || config.notes}</div>
+            <div style={{
+              whiteSpace: 'pre-line',
+              fontSize: '0.875rem',
+              color: '#1e293b',
+              fontWeight: 500
+            }}>
+              {document.notes || config.notes}
+            </div>
           </div>
         )}
 
