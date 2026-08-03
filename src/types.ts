@@ -118,4 +118,6 @@ export interface DocumentItem {
   gst_percentage: number;
   amount: number;
   sort_order: number;
+  discount_amount?: number;
+  discount_percent?: number;
 }

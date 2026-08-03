@@ -480,7 +480,19 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               ))}
 
               {/* Totals Section */}
-              {totals.discountTotal > 0 ? (
+              {/* Subtotal Row */}
+              <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Subtotal</td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                  {totals.subtotal.toFixed(2)}
+                </td>
+              </tr>
+
+              {totals.discountTotal > 0 && (
                 <>
                   {/* Discount Row */}
                   <tr style={{ fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
@@ -506,18 +518,6 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                     </td>
                   </tr>
                 </>
-              ) : (
-                /* Subtotal Row when no discount */
-                <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Subtotal</td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
-                  <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
-                    {totals.subtotal.toFixed(2)}
-                  </td>
-                </tr>
               )}
 
               {/* GST Row (Hidden for Non-Tax Invoices) */}

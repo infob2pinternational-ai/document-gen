@@ -68,9 +68,9 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
       setUnit(itemToEdit.unit || 'Unit');
       setRate(itemToEdit.rate ?? '');
       setGstPercentage(itemToEdit.gst_percentage ?? 18);
-      setDiscountType('percent');
-      setDiscountPercent('');
-      setDiscountAmount('');
+      setDiscountType(itemToEdit.discount_amount ? 'amount' : (itemToEdit.discount_percent ? 'percent' : 'percent'));
+      setDiscountPercent(itemToEdit.discount_percent ?? '');
+      setDiscountAmount(itemToEdit.discount_amount ?? '');
       setNotes('');
     } else {
       // Default reset
@@ -106,24 +106,7 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Keyboard shortcut listener (Esc -> Close, Ctrl+Enter -> Save)
-  useEffect(() => {
-    if (!isOpen) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        if (isValid) {
-          handleSave();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, description, quantity, rate, gstPercentage, unit, days, selectedServiceId, hsnSac]);
 
   if (!isOpen) return null;
 
@@ -134,16 +117,16 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
     (srv.hsn_sac && srv.hsn_sac.toLowerCase().includes(serviceSearchQuery.toLowerCase()))
   );
 
-  const handleSelectService = (srv: Service) => {
-    setSelectedServiceId(srv.id);
-    setServiceSearchQuery(srv.name);
-    setDescription(srv.description ? `${srv.name} - ${srv.description}` : srv.name);
-    setRate(srv.default_rate ?? 0);
-    setUnit(srv.unit || 'Unit');
-    setHsnSac(srv.hsn_sac || '');
-    if (srv.gst_percentage !== undefined) {
-      setGstPercentage(srv.gst_percentage);
+  const handleSelectService = (s: Service) => {
+    setSelectedServiceId(s.id);
+    setServiceSearchQuery(s.name);
+    if (!description || description === s.name) {
+      setDescription(s.name + (s.description ? `\n${s.description}` : ''));
     }
+    if (s.hsn_sac) setHsnSac(s.hsn_sac);
+    if (s.default_rate) setRate(s.default_rate);
+    if (s.unit) setUnit(s.unit);
+    if (s.gst_percentage !== undefined && isTaxableDoc) setGstPercentage(s.gst_percentage);
     setIsServiceDropdownOpen(false);
   };
 
@@ -220,12 +203,30 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
       rate: rateNum,
       gst_percentage: isTaxableDoc ? gstPercentage : 0,
       amount: subtotal, // Line Subtotal compatible with backend DB & PDF
-      sort_order: itemToEdit?.sort_order ?? 0
+      sort_order: itemToEdit?.sort_order ?? 0,
+      discount_amount: calculatedDiscountAmount > 0 ? calculatedDiscountAmount : undefined,
+      discount_percent: (calculatedDiscountAmount > 0 && Number(discountPercent) > 0) ? Number(discountPercent) : undefined
     };
 
     onSaveItem(itemToSave);
     onClose();
   };
+
+  // Keyboard shortcut listener (Esc -> Close, Ctrl+Enter -> Save)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (e.ctrlKey && e.key === 'Enter') {
+        if (isValid) {
+          handleSave();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isValid]);
 
   return (
     <div 

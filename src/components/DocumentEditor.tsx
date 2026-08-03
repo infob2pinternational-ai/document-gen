@@ -79,13 +79,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   };
 
   const handleSaveItemFromModal = (savedItem: DocumentItem) => {
+    let updated: DocumentItem[];
     const existingIdx = items.findIndex(i => i.id === savedItem.id);
     if (existingIdx > -1) {
-      const updated = [...items];
+      updated = [...items];
       updated[existingIdx] = savedItem;
-      setItems(updated);
     } else {
-      setItems([...items, { ...savedItem, sort_order: items.length }]);
+      updated = [...items, { ...savedItem, sort_order: items.length }];
+    }
+    setItems(updated);
+
+    const totalItemDiscounts = updated.reduce((sum, item) => sum + (item.discount_amount || 0), 0);
+    if (totalItemDiscounts > 0 || savedItem.discount_amount !== undefined) {
+      setDiscountTotal(totalItemDiscounts);
     }
   };
 
