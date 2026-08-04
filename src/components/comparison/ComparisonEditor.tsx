@@ -496,6 +496,16 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         console.error('[Push Trigger] Failed to send approval notification:', pushErr);
       });
 
+      // 4. Trigger Google Sheets Auto-Save
+      if (activeProfile?.google_sheets_url) {
+        dbService.syncDocumentToGoogleSheets(
+          activeProfile.google_sheets_url,
+          activeProfile.name,
+          documentPayload,
+          []
+        ).catch(err => console.error('Failed to auto-save comparison doc to Google Sheet:', err));
+      }
+
       setSuccessData({
         document: documentPayload,
         isEditMode: Boolean(documentToEdit)

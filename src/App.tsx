@@ -604,20 +604,12 @@ function App() {
   const handleDeleteDocument = async (id: string) => {
     const docToDelete = documents.find(d => d.id === id);
     try {
-      // Trigger Google Sheets auto-delete notification
+      // Trigger Google Sheets auto-delete notification with text/plain header (bypassing CORS preflight issues)
       if (activeProfile && activeProfile.google_sheets_url && docToDelete?.document_number) {
-        const deletePayload = {
-          action: 'delete',
-          document_number: docToDelete.document_number
-        };
-        fetch(activeProfile.google_sheets_url, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(deletePayload)
-        }).catch(err => console.error('Failed to notify Google Sheet of deletion:', err));
+        dbService.deleteDocumentFromGoogleSheets(
+          activeProfile.google_sheets_url,
+          docToDelete.document_number
+        ).catch(err => console.error('Failed to notify Google Sheet of deletion:', err));
       }
 
       await dbService.deleteDocument(id);

@@ -980,5 +980,84 @@ Go to Settings > Local Backup & Data Recovery in your portal and select this .zi
       console.error('Failed to sync backup to Google Drive:', err);
       return { success: false, error: err.message };
     }
+  },
+
+  async syncDocumentToGoogleSheets(
+    googleSheetsUrl: string | undefined, 
+    companyName: string,
+    doc: Document, 
+    items: DocumentItem[]
+  ): Promise<boolean> {
+    if (!googleSheetsUrl || !googleSheetsUrl.trim()) return false;
+
+    try {
+      const payload = {
+        action: 'save_document',
+        company_name: companyName,
+        document_number: doc.document_number,
+        document_type: doc.document_type,
+        customer_name: doc.customer_name,
+        customer_email: doc.customer_email || '',
+        customer_phone: doc.customer_phone || '',
+        customer_address: doc.customer_address || '',
+        customer_gstin: doc.customer_gstin || '',
+        date: doc.date,
+        subtotal: doc.subtotal,
+        discount_total: doc.discount_total || 0,
+        taxable_amount: (doc.subtotal || 0) - (doc.discount_total || 0),
+        tax_total: doc.tax_total,
+        total: doc.total,
+        items: (items || []).map(it => ({
+          description: it.description,
+          qty: it.quantity,
+          days: it.days || 1,
+          unit: it.unit,
+          rate: it.rate,
+          amount: it.amount
+        }))
+      };
+
+      await fetch(googleSheetsUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      return true;
+    } catch (err) {
+      console.error('[Google Sheets Sync Error]:', err);
+      return false;
+    }
+  },
+
+  async deleteDocumentFromGoogleSheets(
+    googleSheetsUrl: string | undefined,
+    documentNumber: string
+  ): Promise<boolean> {
+    if (!googleSheetsUrl || !googleSheetsUrl.trim()) return false;
+
+    try {
+      const payload = {
+        action: 'delete_document',
+        document_number: documentNumber
+      };
+
+      await fetch(googleSheetsUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      return true;
+    } catch (err) {
+      console.error('[Google Sheets Delete Sync Error]:', err);
+      return false;
+    }
   }
 };

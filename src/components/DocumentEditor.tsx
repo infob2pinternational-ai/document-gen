@@ -456,36 +456,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         console.error('[Push Trigger] Failed to send approval notification:', pushErr);
       });
 
-      // Trigger Google Sheets Auto-Save
+      // Trigger Google Sheets Auto-Save with text/plain header (bypassing CORS preflight issues)
       if (activeProfile.google_sheets_url) {
-        const payloadForSheets = {
-          company_name: activeProfile.name,
-          document_number: docNumber,
-          document_type: docType,
-          customer_name: customerName,
-          customer_gstin: customerGstin,
-          date,
-          subtotal,
-          tax_total: taxTotal,
-          discount_total: discountTotal,
-          total,
-          items: items.map(it => ({
-            description: it.description,
-            qty: it.quantity,
-            unit: it.unit,
-            rate: it.rate,
-            amount: it.amount
-          }))
-        };
-
-        fetch(activeProfile.google_sheets_url, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payloadForSheets)
-        }).catch(err => console.error('Failed to auto-save to Google Sheet:', err));
+        dbService.syncDocumentToGoogleSheets(
+          activeProfile.google_sheets_url,
+          activeProfile.name,
+          docPayload,
+          itemsPayload
+        ).catch(err => console.error('Failed to auto-save to Google Sheet:', err));
       }
 
       onRefreshDocs();
