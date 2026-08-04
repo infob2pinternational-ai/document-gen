@@ -108,7 +108,7 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
 
 
 
-  if (!isOpen) return null;
+
 
   // Filtered services for command palette search
   const safeServices = Array.isArray(services) ? services : [];
@@ -232,6 +232,8 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isValid]);
+
+  if (!isOpen) return null;
 
   return (
     <div 
