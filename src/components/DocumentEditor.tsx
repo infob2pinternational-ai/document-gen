@@ -4,6 +4,8 @@ import { dbService } from '../services/db';
 import { sendApprovalNotification } from '../services/push';
 import { ArrowLeft, Plus, Trash2, GripVertical, Save, Pencil, Copy } from 'lucide-react';
 import { LineItemModal } from './LineItemModal';
+import { DocumentSuccessDialog } from './DocumentSuccessDialog';
+import { DocumentPreview } from './DocumentPreview';
 import { calculateDocumentTotals } from '../utils/calculations';
 
 interface DocumentEditorProps {
@@ -55,6 +57,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const [loading, setLoading] = useState(false);
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<DocumentItem | null>(null);
+
+  // Confirmation Success Dialog & Document Preview States
+  const [successData, setSuccessData] = useState<{
+    document: Document;
+    items: DocumentItem[];
+    isEditMode: boolean;
+  } | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
 
   const handleOpenAddItemModal = () => {
     setItemToEdit(null);
@@ -479,7 +489,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       }
 
       onRefreshDocs();
-      onClose();
+      setSuccessData({
+        document: docPayload,
+        items: itemsPayload,
+        isEditMode: Boolean(documentToEdit)
+      });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       alert(`Failed to save document: ${errorMsg}\n\n(Please ensure you have executed the SQL migration scripts in your Supabase SQL Editor under "SQL Editor")`);
@@ -506,6 +520,20 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     setItems(updated.map((item, idx) => ({ ...item, sort_order: idx })));
     setDraggedIndex(null);
   };
+
+  if (previewDoc) {
+    return (
+      <DocumentPreview
+        activeProfile={activeProfile}
+        document={previewDoc}
+        onClose={() => {
+          setPreviewDoc(null);
+          onRefreshDocs();
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -924,6 +952,72 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Reusable Document Success Confirmation Dialog */}
+      {successData && (
+        <DocumentSuccessDialog
+          isOpen={Boolean(successData)}
+          isEditMode={successData.isEditMode}
+          document={successData.document}
+          items={successData.items}
+          profile={activeProfile}
+          createdByName={activeProfile?.approver_email || activeProfile?.email}
+          onClose={() => {
+            setSuccessData(null);
+            onRefreshDocs();
+            onClose();
+          }}
+          onViewDocument={() => {
+            const d = successData.document;
+            setSuccessData(null);
+            setPreviewDoc(d);
+          }}
+          onDownloadPdf={() => {
+            const d = successData.document;
+            setSuccessData(null);
+            setPreviewDoc(d);
+          }}
+          onPrint={() => {
+            const d = successData.document;
+            setSuccessData(null);
+            setPreviewDoc(d);
+          }}
+          onShare={() => {
+            if (successData?.document) {
+              const shareUrl = `${window.location.origin}/#doc=${successData.document.id}`;
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(shareUrl);
+              }
+            }
+          }}
+          onSendWhatsApp={() => {
+            if (successData?.document?.customer_phone) {
+              const phone = successData.document.customer_phone.replace(/[^0-9]/g, '');
+              const formattedPhone = phone.length === 10 ? `91${phone}` : phone;
+              const shareUrl = `${window.location.origin}/#doc=${successData.document.id}`;
+              const docTypeLabel = successData.document.document_type.replace('_', ' ').toUpperCase();
+              const messageText = `Hi ${successData.document.customer_name}, please find your ${docTypeLabel} #${successData.document.document_number} from ${activeProfile?.name}:\n${shareUrl}`;
+              window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`, '_blank');
+            }
+          }}
+          onCreateNew={() => {
+            setSuccessData(null);
+            onRefreshDocs();
+            setItems([]);
+            setNotes('');
+            setDiscountTotal(0);
+            setSelectedCustomerId('');
+            setCustomerName('');
+            setCustomerEmail('');
+            setCustomerPhone('');
+            setCustomerAddress('');
+            setCustomerGstin('');
+            if (activeProfile) {
+              generateSequenceNumber(docType);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

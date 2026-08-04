@@ -16,6 +16,7 @@ import {
 } from './ComparisonUtils';
 import { dbService } from '../../services/db';
 import { sendApprovalNotification } from '../../services/push';
+import { DocumentSuccessDialog } from '../DocumentSuccessDialog';
 import { 
   Plus, 
   Trash2, 
@@ -58,6 +59,11 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
   onClose,
   onSaveSuccess
 }) => {
+  // Document Success Confirmation Modal State
+  const [successData, setSuccessData] = useState<{
+    document: Document;
+    isEditMode: boolean;
+  } | null>(null);
   // Document Metadata States
   const [docNumber, setDocNumber] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
@@ -490,8 +496,10 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         console.error('[Push Trigger] Failed to send approval notification:', pushErr);
       });
 
-      alert(`${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'} saved successfully!`);
-      onSaveSuccess();
+      setSuccessData({
+        document: documentPayload,
+        isEditMode: Boolean(documentToEdit)
+      });
     } catch (err: any) {
       console.error(err);
       alert(`Failed to save ${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'}: ` + err.message);
@@ -1190,6 +1198,56 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
             }
           }}
           onClose={() => setTemplatesOpen(false)}
+        />
+      )}
+
+      {/* Reusable Document Success Dialog */}
+      {successData && (
+        <DocumentSuccessDialog
+          isOpen={Boolean(successData)}
+          isEditMode={successData.isEditMode}
+          document={successData.document}
+          items={[]}
+          profile={activeProfile}
+          createdByName={activeProfile?.approver_email || activeProfile?.email}
+          onClose={() => {
+            setSuccessData(null);
+            onSaveSuccess();
+          }}
+          onViewDocument={() => {
+            setSuccessData(null);
+            onSaveSuccess();
+          }}
+          onDownloadPdf={() => {
+            setSuccessData(null);
+            onSaveSuccess();
+          }}
+          onPrint={() => {
+            setSuccessData(null);
+            onSaveSuccess();
+          }}
+          onShare={() => {
+            if (successData?.document) {
+              const shareUrl = `${window.location.origin}/#doc=${successData.document.id}`;
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(shareUrl);
+              }
+            }
+          }}
+          onSendWhatsApp={() => {
+            if (successData?.document?.customer_phone) {
+              const phone = successData.document.customer_phone.replace(/[^0-9]/g, '');
+              const formattedPhone = phone.length === 10 ? `91${phone}` : phone;
+              const shareUrl = `${window.location.origin}/#doc=${successData.document.id}`;
+              const docTypeLabel = successData.document.document_type.replace('_', ' ').toUpperCase();
+              const messageText = `Hi ${successData.document.customer_name}, please find your ${docTypeLabel} #${successData.document.document_number} from ${activeProfile?.name}:\n${shareUrl}`;
+              window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`, '_blank');
+            }
+          }}
+          onCreateNew={() => {
+            setSuccessData(null);
+            onSaveSuccess();
+          }}
         />
       )}
 
