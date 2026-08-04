@@ -59,7 +59,29 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen || !document || !profile) return null;
+  if (!isOpen || !document) return null;
+
+  const safeProfile = profile || {
+    id: '',
+    name: 'B2P Company',
+    currency: 'INR',
+    email: '',
+    approver_email: '',
+    google_sheets_url: '',
+    col_name_description: 'Description',
+    col_name_quantity: 'Quantity',
+    col_name_unit: 'Unit',
+    col_name_rate: 'Rate',
+    col_name_amount: 'Amount',
+    invoice_prefix: 'INV/',
+    invoice_start_number: 1001,
+    proforma_prefix: 'PI/',
+    proforma_start_number: 1001,
+    quotation_prefix: 'QTN/',
+    quotation_start_number: 1001,
+    work_order_prefix: 'WO/',
+    work_order_start_number: 1001
+  };
 
   // Format labels & type text
   const docTypeLabels: Record<string, string> = {
@@ -72,11 +94,12 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
     comparison_invoice: 'Comparison Invoice'
   };
 
-  const docTypeLabel = docTypeLabels[document.document_type] || document.document_type.replace('_', ' ').toUpperCase();
-  const currencySymbol = profile.currency === 'INR' ? '₹' : (profile.currency === 'USD' ? '$' : `${profile.currency} `);
+  const rawDocType = document.document_type || 'invoice';
+  const docTypeLabel = docTypeLabels[rawDocType] || (rawDocType ? String(rawDocType).replace(/_/g, ' ').toUpperCase() : 'DOCUMENT');
+  const currencySymbol = (safeProfile.currency === 'INR' || !safeProfile.currency) ? '₹' : (safeProfile.currency === 'USD' ? '$' : `${safeProfile.currency} `);
 
   // Calculations
-  const totals = calculateDocumentTotals(items, document.discount_total, document.document_type);
+  const totals = calculateDocumentTotals(items || [], document.discount_total || 0, rawDocType as any);
 
   // Dates & Metadata
   const now = new Date();
@@ -90,8 +113,8 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
     hour12: true
   });
 
-  const currentUserEmail = createdByName || profile.approver_email || profile.email || 'Current Logged-in User';
-  const hasGoogleSheets = Boolean(profile.google_sheets_url && profile.google_sheets_url.trim().length > 0);
+  const currentUserEmail = createdByName || safeProfile.approver_email || safeProfile.email || 'Current Logged-in User';
+  const hasGoogleSheets = Boolean(safeProfile.google_sheets_url && safeProfile.google_sheets_url.trim().length > 0);
   const hasCustomerPhone = Boolean(document.customer_phone && document.customer_phone.trim().length > 0);
 
   const handleShareClick = () => {
@@ -232,7 +255,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
               Company Name
             </div>
             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {profile.name}
+              {safeProfile.name}
             </div>
           </div>
 
