@@ -111,11 +111,16 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
   if (!isOpen) return null;
 
   // Filtered services for command palette search
-  const filteredServices = services.filter(srv => 
-    srv.name.toLowerCase().includes(serviceSearchQuery.toLowerCase()) ||
-    (srv.description && srv.description.toLowerCase().includes(serviceSearchQuery.toLowerCase())) ||
-    (srv.hsn_sac && srv.hsn_sac.toLowerCase().includes(serviceSearchQuery.toLowerCase()))
-  );
+  const safeServices = Array.isArray(services) ? services : [];
+  const queryLower = (serviceSearchQuery || '').toLowerCase().trim();
+
+  const filteredServices = safeServices.filter(srv => {
+    if (!srv) return false;
+    const nameMatch = srv.name ? String(srv.name).toLowerCase().includes(queryLower) : false;
+    const descMatch = srv.description ? String(srv.description).toLowerCase().includes(queryLower) : false;
+    const hsnMatch = srv.hsn_sac ? String(srv.hsn_sac).toLowerCase().includes(queryLower) : false;
+    return nameMatch || descMatch || hsnMatch;
+  });
 
   const handleSelectService = (s: Service) => {
     setSelectedServiceId(s.id);
@@ -429,10 +434,10 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
                         </div>
                         <div style={{ textAlign: 'right' }} className="mono">
                           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-success)' }}>
-                            {currSymbol}{srv.default_rate.toLocaleString('en-IN')}
+                            {currSymbol}{Number(srv.default_rate || 0).toLocaleString('en-IN')}
                           </span>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>
-                            /{srv.unit}
+                            /{srv.unit || 'Unit'}
                           </span>
                         </div>
                       </div>
