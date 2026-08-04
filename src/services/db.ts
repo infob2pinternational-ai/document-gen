@@ -252,7 +252,7 @@ export const dbService = {
       }
       
       // Check if it already exists in Supabase
-      const { data: existing } = await supabase.from('profiles').select('id').eq('id', profile.id).single();
+      const { data: existing } = await supabase.from('profiles').select('id').eq('id', profile.id).maybeSingle();
       
       if (existing) {
         const { data, error } = await supabase.from('profiles').update(payload).eq('id', profile.id).select().single();
@@ -319,7 +319,7 @@ export const dbService = {
       const userId = userStr ? JSON.parse(userStr).id : null;
       const payload = { ...customer, user_id: userId };
       
-      const { data: existing } = await supabase.from('customers').select('id').eq('id', customer.id).single();
+      const { data: existing } = await supabase.from('customers').select('id').eq('id', customer.id).maybeSingle();
       if (existing) {
         const { data, error } = await supabase.from('customers').update(payload).eq('id', customer.id).select().single();
         if (error) throw error;
@@ -377,7 +377,7 @@ export const dbService = {
       const userId = userStr ? JSON.parse(userStr).id : null;
       const payload = { ...service, user_id: userId };
       
-      const { data: existing } = await supabase.from('services').select('id').eq('id', service.id).single();
+      const { data: existing } = await supabase.from('services').select('id').eq('id', service.id).maybeSingle();
       if (existing) {
         const { data, error } = await supabase.from('services').update(payload).eq('id', service.id).select().single();
         if (error) throw error;
@@ -538,7 +538,7 @@ export const dbService = {
       };
       
       // Save doc
-      const { data: existingDoc } = await supabase.from('documents').select('id').eq('id', doc.id).single();
+      const { data: existingDoc } = await supabase.from('documents').select('id').eq('id', doc.id).maybeSingle();
       if (existingDoc) {
         const { error } = await supabase.from('documents').update(docPayload).eq('id', doc.id);
         if (error) throw error;

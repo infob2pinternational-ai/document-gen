@@ -42,7 +42,7 @@ export const Services: React.FC<ServicesProps> = ({
       if (onRefreshServices) {
         onRefreshServices();
       } else {
-        const data = await dbService.getServices();
+        const data = await dbService.getServices(activeProfile?.id);
         setServices(data);
       }
     } catch (err) {

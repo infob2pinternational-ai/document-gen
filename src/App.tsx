@@ -1264,7 +1264,11 @@ function App() {
                 onRefreshStats={() => loadData(activeProfile?.id)}
                 preloadedServices={services}
                 onRefreshServices={() => {
-                  dbService.getServices().then(setServices);
+                  if (activeProfile) {
+                    dbService.getServices(activeProfile.id).then(setServices);
+                  } else {
+                    dbService.getServices().then(setServices);
+                  }
                 }}
               />
             )}
