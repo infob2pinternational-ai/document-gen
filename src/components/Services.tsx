@@ -119,11 +119,16 @@ export const Services: React.FC<ServicesProps> = ({
     }
   };
 
-  const filteredServices = services.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (s.description && s.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (s.hsn_sac && s.hsn_sac.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const safeServices = Array.isArray(services) ? services : [];
+  const searchLower = (searchTerm || '').toLowerCase().trim();
+
+  const filteredServices = safeServices.filter(s => {
+    if (!s) return false;
+    const nameMatch = s.name ? String(s.name).toLowerCase().includes(searchLower) : false;
+    const descMatch = s.description ? String(s.description).toLowerCase().includes(searchLower) : false;
+    const hsnMatch = s.hsn_sac ? String(s.hsn_sac).toLowerCase().includes(searchLower) : false;
+    return nameMatch || descMatch || hsnMatch;
+  });
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -187,11 +192,11 @@ export const Services: React.FC<ServicesProps> = ({
                       </td>
                       <td className="mono" data-label="HSN/SAC">{service.hsn_sac || '-'}</td>
                       <td className="mono" data-label="Default Rate" style={{ fontWeight: 500 }}>
-                        {activeProfile.currency === 'INR' ? '₹' : '$'}
-                        {service.default_rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        {activeProfile?.currency === 'INR' || !activeProfile?.currency ? '₹' : (activeProfile?.currency === 'USD' ? '$' : `${activeProfile.currency} `)}
+                        {Number(service.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td data-label="Unit" style={{ textTransform: 'lowercase' }}>{service.unit}</td>
-                      <td className="mono" data-label="GST %">{service.gst_percentage}%</td>
+                      <td data-label="Unit" style={{ textTransform: 'lowercase' }}>{service.unit || 'nos'}</td>
+                      <td className="mono" data-label="GST %">{service.gst_percentage ?? 18}%</td>
                       <td data-label="Actions">
                         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                           <button
