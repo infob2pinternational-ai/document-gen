@@ -116,11 +116,18 @@ export const Customers: React.FC<CustomersProps> = ({
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (c.gstin && c.gstin.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredCustomers = customers.filter(c => {
+    const term = searchTerm.toLowerCase().trim();
+    const cleanTerm = term.replace(/\D/g, '');
+    const matchName = c.name.toLowerCase().includes(term);
+    const matchEmail = c.email ? c.email.toLowerCase().includes(term) : false;
+    const matchGstin = c.gstin ? c.gstin.toLowerCase().includes(term) : false;
+    const matchPhone = c.phone ? (
+      c.phone.toLowerCase().includes(term) ||
+      (cleanTerm.length > 0 && c.phone.replace(/\D/g, '').includes(cleanTerm))
+    ) : false;
+    return matchName || matchEmail || matchGstin || matchPhone;
+  });
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -154,7 +161,7 @@ export const Customers: React.FC<CustomersProps> = ({
             <Search size={18} />
             <input
               type="text"
-              placeholder="Search by name, email, GSTIN..."
+              placeholder="Search by name, phone, email, GSTIN..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
