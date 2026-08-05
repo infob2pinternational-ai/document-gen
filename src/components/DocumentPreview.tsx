@@ -79,7 +79,45 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     const fetchDocDetails = async () => {
       try {
         console.log('DocumentPreview: Fetching details for document ID:', document.id);
-        
+
+        if (isPublicShare) {
+          // Public share view: route through the get_public_document RPC
+          // (Phase 1/2 of the RLS hardening work) instead of the raw
+          // table queries below - one call returns both the whitelisted
+          // profile fields and the items together. The authenticated
+          // in-app preview path (isPublicShare === false) is completely
+          // untouched and still uses the full-detail queries, since it
+          // needs the full row and isn't affected by the anon RLS
+          // lockdown this work is building toward.
+          const publicRes = await dbService.getPublicDocument({ id: document.id });
+          console.log('DocumentPreview: getPublicDocument returned:', publicRes);
+
+          if (publicRes) {
+            let profileToUse = activeProfile;
+            if (!profileToUse && publicRes.profile) {
+              const prof = publicRes.profile;
+              const lowerName = (prof.name || '').toLowerCase();
+              let mappedLogo = prof.logo_url;
+              if (lowerName.includes('international')) {
+                mappedLogo = '/billing/logo_b2p_international.png?v=5';
+              } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
+                mappedLogo = '/billing/logo_b2p_intermedia.png?v=5';
+              } else if (lowerName.includes('b2p')) {
+                mappedLogo = '/billing/logo_b2p_international.png?v=5';
+              }
+              const mappedProf = { ...prof, logo_url: mappedLogo } as CompanyProfile;
+              setActiveProfile(mappedProf);
+              profileToUse = mappedProf;
+            }
+            console.log('DocumentPreview: Active profile branding details:', { name: profileToUse?.name });
+            setItems(publicRes.items);
+          } else {
+            setError(true);
+          }
+          setLoading(false);
+          return;
+        }
+
         let profileToUse = activeProfile;
         if (!profileToUse) {
           const prof = await dbService.getProfileById(document.company_id);
@@ -119,7 +157,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       }
     };
     fetchDocDetails();
-  }, [document, activeProfile]);
+  }, [document, activeProfile, isPublicShare]);
 
   useEffect(() => {
     const originalTitle = window.document.title;

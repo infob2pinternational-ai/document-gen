@@ -36,15 +36,8 @@ export const Documents: React.FC<DocumentsProps> = ({
     .filter(d => !activeProfile || d.company_id === activeProfile.id)
     .filter(d => {
       // 1. Search text filter
-      const term = searchTerm.toLowerCase().trim();
-      const cleanTerm = term.replace(/\D/g, '');
-      const matchDocNumber = d.document_number.toLowerCase().includes(term);
-      const matchCustomerName = d.customer_name.toLowerCase().includes(term);
-      const matchPhone = d.customer_phone ? (
-        d.customer_phone.toLowerCase().includes(term) ||
-        (cleanTerm.length > 0 && d.customer_phone.replace(/\D/g, '').includes(cleanTerm))
-      ) : false;
-      const matchSearch = matchDocNumber || matchCustomerName || matchPhone;
+      const matchSearch = d.document_number.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          d.customer_name.toLowerCase().includes(searchTerm.toLowerCase());
       
       // 2. Document type filter
       const matchType = filterType === 'all' || d.document_type === filterType;
@@ -168,7 +161,7 @@ export const Documents: React.FC<DocumentsProps> = ({
               <Search size={18} />
               <input
                 type="text"
-                placeholder="Search by doc number, customer, phone..."
+                placeholder="Search by doc number, customer..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -262,14 +255,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                       <tr key={doc.id}>
                         <td className="mono" data-label="Doc Number" style={{ fontWeight: 600 }}>{doc.document_number}</td>
                         <td data-label="Date">{doc.date ? doc.date.split('-').reverse().join('/') : ''}</td>
-                        <td data-label="Customer Name">
-                          <div style={{ fontWeight: 500 }}>{doc.customer_name}</div>
-                          {doc.customer_phone && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                              {doc.customer_phone}
-                            </div>
-                          )}
-                        </td>
+                        <td data-label="Customer Name">{doc.customer_name}</td>
                         <td data-label="Document Type" style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
                           {doc.document_type === 'non_tax_invoice' ? 'Invoice' : 
                            doc.document_type === 'invoice' ? 'Tax Invoice' : 

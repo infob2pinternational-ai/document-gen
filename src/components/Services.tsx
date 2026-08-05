@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { CompanyProfile, Service } from '../types';
 import { dbService } from '../services/db';
 import { Search, Plus, Edit, Trash2, ShieldAlert } from 'lucide-react';
@@ -7,18 +7,21 @@ interface ServicesProps {
   role: string;
   activeProfile: CompanyProfile | null;
   onRefreshStats: () => void;
-  preloadedServices?: Service[];
-  onRefreshServices?: () => void;
+  // Services is a fully controlled component: App.tsx is the single
+  // owner of service data. This component never fetches or stores its
+  // own copy - it only renders what it's given and asks the parent to
+  // reload after a mutation.
+  preloadedServices: Service[];
+  onRefreshServices: () => void;
 }
 
 export const Services: React.FC<ServicesProps> = ({
   role,
   activeProfile,
   onRefreshStats,
-  preloadedServices = [],
+  preloadedServices,
   onRefreshServices
 }) => {
-  const [services, setServices] = useState<Service[]>(preloadedServices);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -31,30 +34,6 @@ export const Services: React.FC<ServicesProps> = ({
   const [hsnSac, setHsnSac] = useState('');
   const [gstPercentage, setGstPercentage] = useState<number>(18);
   const [loading, setLoading] = useState(false);
-
-  // Sync state if preloadedServices changes in parent
-  useEffect(() => {
-    setServices(preloadedServices);
-  }, [preloadedServices]);
-
-  const fetchServices = async () => {
-    try {
-      if (onRefreshServices) {
-        onRefreshServices();
-      } else {
-        const data = await dbService.getServices(activeProfile?.id);
-        setServices(data);
-      }
-    } catch (err) {
-      console.error('Error fetching services:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (preloadedServices.length === 0) {
-      fetchServices();
-    }
-  }, [activeProfile]);
 
   const handleOpenModal = (service: Service | null = null) => {
     if (service) {
@@ -95,7 +74,7 @@ export const Services: React.FC<ServicesProps> = ({
       };
 
       await dbService.saveService(payload);
-      await fetchServices();
+      onRefreshServices();
       onRefreshStats();
       setShowModal(false);
     } catch (err) {
@@ -110,7 +89,7 @@ export const Services: React.FC<ServicesProps> = ({
     if (window.confirm('Are you sure you want to delete this service?')) {
       try {
         await dbService.deleteService(id);
-        await fetchServices();
+        onRefreshServices();
         onRefreshStats();
       } catch (err) {
         console.error('Error deleting service:', err);
@@ -119,7 +98,7 @@ export const Services: React.FC<ServicesProps> = ({
     }
   };
 
-  const safeServices = Array.isArray(services) ? services : [];
+  const safeServices = Array.isArray(preloadedServices) ? preloadedServices : [];
   const searchLower = (searchTerm || '').toLowerCase().trim();
 
   const filteredServices = safeServices.filter(s => {

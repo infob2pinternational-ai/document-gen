@@ -442,40 +442,6 @@ export const dbService = {
     return profiles.find(p => p.id === id) || null;
   },
 
-  async getDocumentByNumber(docNumber: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
-    if (import.meta.env.DEV) console.log('dbService: getDocumentByNumber called with:', docNumber);
-    if (supabase) {
-      try {
-        const cleanNum = docNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        const { data: docs, error: docError } = await supabase.from('documents').select('*');
-        if (!docError && docs) {
-          const matched = docs.find(d => d.document_number.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanNum);
-          if (matched) {
-            const { data: items, error: itemsError } = await supabase
-              .from('document_items')
-              .select('*')
-              .eq('document_id', matched.id)
-              .order('sort_order', { ascending: true });
-            if (!itemsError) {
-              return { document: matched, items: items || [] };
-            }
-          }
-        }
-      } catch (err) {
-        if (import.meta.env.DEV) console.log('dbService: Supabase fetch failed in getDocumentByNumber:', err);
-      }
-    }
-    const docs = getLocal<Document[]>('documents', []);
-    const cleanNum = docNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    const matched = docs.find(d => d.document_number.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === cleanNum);
-    if (matched) {
-      const items = getLocal<DocumentItem[]>('document_items', []);
-      const docItems = items.filter(it => it.document_id === matched.id).sort((a, b) => a.sort_order - b.sort_order);
-      return { document: matched, items: docItems };
-    }
-    return null;
-  },
-
   async getDocumentById(id: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
     if (import.meta.env.DEV) console.log('dbService: getDocumentById called with ID:', id);
     if (supabase) {
@@ -507,6 +473,44 @@ export const dbService = {
       if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
       if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
       return { document: doc, items: docItems };
+  },
+
+  // Public/anonymous document lookup (share links only, both /doc/:id
+  // and /q/:documentNumber). Calls the get_public_document RPC created
+  // in the RLS-hardening Phase 1 work, which returns only the fields
+  // the public share preview actually renders. getDocumentById above
+  // is unrelated to this and remains in place unchanged - it's still
+  // used by the authenticated edit flow (DocumentEditor.tsx), which
+  // needs the full row and isn't affected by the anon RLS lockdown
+  // this work is building toward. The old getDocumentByNumber (which
+  // fetched every document row and filtered client-side) has been
+  // removed - it had no remaining callers once /q/:documentNumber was
+  // wired to this function instead.
+  // No offline/local equivalent - public share links require Supabase.
+  async getPublicDocument(params: { id?: string; documentNumber?: string }): Promise<{ document: Document; items: DocumentItem[]; profile: Partial<CompanyProfile> } | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.rpc('get_public_document', {
+        p_id: params.id ?? null,
+        p_document_number: params.documentNumber ?? null
+      });
+      if (error || !data) {
+        if (import.meta.env.DEV) console.log('dbService: getPublicDocument returned nothing:', error);
+        return null;
+      }
+      return {
+        // The RPC's whitelist (see get_public_document's SQL) only
+        // returns the subset of fields the public preview renders -
+        // asserted here since DocumentPreview.tsx's public-share path
+        // only ever reads that same subset.
+        document: data.document as Document,
+        items: (data.items || []) as DocumentItem[],
+        profile: (data.profile || {}) as Partial<CompanyProfile>
+      };
+    } catch (err) {
+      if (import.meta.env.DEV) console.log('dbService: getPublicDocument error:', err);
+      return null;
+    }
   },
 
   async saveDocument(doc: Document, items: DocumentItem[]): Promise<Document> {

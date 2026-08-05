@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { CompanyProfile, Customer } from '../types';
 import { dbService } from '../services/db';
 import { Search, Plus, Edit, Trash2, ShieldAlert } from 'lucide-react';
@@ -7,18 +7,21 @@ interface CustomersProps {
   role: string;
   activeProfile: CompanyProfile | null;
   onRefreshStats: () => void;
-  preloadedCustomers?: Customer[];
-  onRefreshCustomers?: () => void;
+  // Customers is a fully controlled component: App.tsx is the single
+  // owner of customer data. This component never fetches or stores its
+  // own copy - it only renders what it's given and asks the parent to
+  // reload after a mutation.
+  preloadedCustomers: Customer[];
+  onRefreshCustomers: () => void;
 }
 
 export const Customers: React.FC<CustomersProps> = ({
   role,
   activeProfile,
   onRefreshStats,
-  preloadedCustomers = [],
+  preloadedCustomers,
   onRefreshCustomers
 }) => {
-  const [customers, setCustomers] = useState<Customer[]>(preloadedCustomers);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -30,31 +33,6 @@ export const Customers: React.FC<CustomersProps> = ({
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Sync state if preloadedCustomers changes in parent
-  useEffect(() => {
-    setCustomers(preloadedCustomers);
-  }, [preloadedCustomers]);
-
-  const fetchCustomers = async () => {
-    if (!activeProfile) return;
-    try {
-      if (onRefreshCustomers) {
-        onRefreshCustomers();
-      } else {
-        const data = await dbService.getCustomers(activeProfile.id);
-        setCustomers(data);
-      }
-    } catch (err) {
-      console.error('Error fetching customers:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (preloadedCustomers.length === 0) {
-      fetchCustomers();
-    }
-  }, [activeProfile]);
 
   const handleOpenModal = (customer: Customer | null = null) => {
     if (customer) {
@@ -92,7 +70,7 @@ export const Customers: React.FC<CustomersProps> = ({
       };
 
       await dbService.saveCustomer(payload);
-      await fetchCustomers();
+      onRefreshCustomers();
       onRefreshStats();
       setShowModal(false);
     } catch (err) {
@@ -107,7 +85,7 @@ export const Customers: React.FC<CustomersProps> = ({
     if (window.confirm('Are you sure you want to delete this customer?')) {
       try {
         await dbService.deleteCustomer(id);
-        await fetchCustomers();
+        onRefreshCustomers();
         onRefreshStats();
       } catch (err) {
         console.error('Error deleting customer:', err);
@@ -116,18 +94,11 @@ export const Customers: React.FC<CustomersProps> = ({
     }
   };
 
-  const filteredCustomers = customers.filter(c => {
-    const term = searchTerm.toLowerCase().trim();
-    const cleanTerm = term.replace(/\D/g, '');
-    const matchName = c.name.toLowerCase().includes(term);
-    const matchEmail = c.email ? c.email.toLowerCase().includes(term) : false;
-    const matchGstin = c.gstin ? c.gstin.toLowerCase().includes(term) : false;
-    const matchPhone = c.phone ? (
-      c.phone.toLowerCase().includes(term) ||
-      (cleanTerm.length > 0 && c.phone.replace(/\D/g, '').includes(cleanTerm))
-    ) : false;
-    return matchName || matchEmail || matchGstin || matchPhone;
-  });
+  const filteredCustomers = preloadedCustomers.filter(c => 
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (c.gstin && c.gstin.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -161,7 +132,7 @@ export const Customers: React.FC<CustomersProps> = ({
             <Search size={18} />
             <input
               type="text"
-              placeholder="Search by name, phone, email, GSTIN..."
+              placeholder="Search by name, email, GSTIN..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
