@@ -12,7 +12,8 @@ import {
   Moon, 
   LogOut,
   Plus,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import type { CompanyProfile } from '../types';
 
@@ -53,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'services', label: 'Services', icon: Briefcase },
+    { id: 'sync-dashboard', label: 'Google Sync', icon: RefreshCw },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
 

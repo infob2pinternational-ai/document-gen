@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Document, Customer, Service } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
+import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { Documents } from './components/Documents';
+import { GoogleSyncDashboard } from './components/GoogleSyncDashboard';
 import { Customers } from './components/Customers';
 import { Services } from './components/Services';
 import { Settings } from './components/Settings';
@@ -13,6 +15,7 @@ import { AuthPanel } from './components/AuthPanel';
 import { ComparisonEditor } from './components/comparison/ComparisonEditor';
 import { ComparisonPreview } from './components/comparison/ComparisonPreview';
 import { Building, Menu, Moon, Sun, Download, Cloud } from 'lucide-react';
+import { getRecoverableDrafts, deleteDraft, type DraftSummary } from './utils/drafts';
 
 const playNotificationSound = () => {
   try {
@@ -70,6 +73,7 @@ function App() {
   }, [documents]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [syncQueue, setSyncQueue] = useState<SyncQueueRow[]>([]);
   
   // Sub-views
   const [editorOpen, setEditorOpen] = useState(false);
@@ -77,7 +81,7 @@ function App() {
   const [documentToEdit, setDocumentToEdit] = useState<Document | null>(null);
   const [comparisonEditorActive, setComparisonEditorActive] = useState(false);
   const [documentToPreview, setDocumentToPreview] = useState<Document | null>(null);
-  const [hasDraft, setHasDraft] = useState(false);
+  const [recoverableDrafts, setRecoverableDrafts] = useState<DraftSummary[]>([]);
   const [draftToRestore, setDraftToRestore] = useState<any>(null);
   
   // Modals
@@ -150,6 +154,16 @@ function App() {
     const initialTheme = savedTheme || 'dark';
     setTheme(initialTheme);
     document.documentElement.setAttribute('data-theme', initialTheme);
+  }, []);
+
+  // Google Sheets sync worker (Phase B2) - starts on app load, resumes
+  // immediately on the browser's 'online' event, and runs on a periodic
+  // interval in between. No-ops entirely in offline/local mode (no
+  // Supabase configured), since the sync queue lives in Postgres.
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    startBrowserWorker();
+    return () => stopBrowserWorker();
   }, []);
 
   // Detect Public Share URL Parameter or Path Routing
@@ -453,6 +467,45 @@ function App() {
     };
   }, [supabase, activeProfile, user]);
 
+  // Realtime sync for google_sync_queue and google_sync_log (Phase B4) -
+  // same merge-not-refetch pattern as the documents subscription above:
+  // apply the event payload directly to local state instead of
+  // re-querying, since Postgres already sent the full row.
+  useEffect(() => {
+    if (!supabase || !activeProfile || !user) return;
+
+    const channel = supabase
+      .channel(`sync-queue-${activeProfile.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'google_sync_queue' },
+        (payload) => {
+          const newRow = payload.new as any;
+          const oldRow = payload.old as any;
+          const target = newRow || oldRow;
+          if (!target || target.company_id !== activeProfile.id) return;
+
+          setSyncQueue(prev => {
+            if (payload.eventType === 'DELETE') {
+              return prev.filter(r => r.id !== target.id);
+            }
+            const idx = prev.findIndex(r => r.id === newRow.id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = newRow;
+              return updated;
+            }
+            return [...prev, newRow];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase?.removeChannel(channel);
+    };
+  }, [supabase, activeProfile, user]);
+
   // Auto-clear toast alert after 10 seconds
   useEffect(() => {
     if (toast) {
@@ -490,14 +543,16 @@ function App() {
   // unchanged in this phase, including the pre-existing getServices()
   // call with no company id (kept as-is; scoping this is a later phase).
   const refreshCompanyData = async (profileId: string) => {
-    const [docs, custs, servs] = await Promise.all([
+    const [docs, custs, servs, queue] = await Promise.all([
       dbService.getDocuments(profileId),
       dbService.getCustomers(profileId),
-      dbService.getServices()
+      dbService.getServices(),
+      getQueueStatusForCompany(profileId)
     ]);
     setDocuments(docs);
     setCustomers(custs);
     setServices(servs);
+    setSyncQueue(queue);
 
     // Handle deep-linking from push notifications (previewDocId)
     const params = new URLSearchParams(window.location.search);
@@ -575,44 +630,55 @@ function App() {
     }
   }, [user]);
 
-  // Check for unsaved drafts on startup
+  // Check for recoverable drafts on startup (Phase A3: multi-draft registry;
+  // Phase A4: now includes ComparisonEditor drafts too).
   useEffect(() => {
-    const draft = localStorage.getItem('docgen_draft_document');
-    if (draft) {
-      setHasDraft(true);
-    }
+    setRecoverableDrafts(getRecoverableDrafts());
   }, []);
 
-  const handleRestoreDraft = () => {
-    const draftStr = localStorage.getItem('docgen_draft_document');
-    if (draftStr) {
-      try {
-        const draft = JSON.parse(draftStr);
-        setDraftToRestore(draft);
-        setDocumentToEdit(draft.documentToEdit || null);
-        setCurrentTab('documents');
-        setEditorOpen(true);
-      } catch (err) {
-        console.error('Failed to parse draft:', err);
-      }
-    }
-    setHasDraft(false);
+  const refreshRecoverableDrafts = () => {
+    setRecoverableDrafts(getRecoverableDrafts());
   };
 
-  const handleDiscardDraft = () => {
-    localStorage.removeItem('docgen_draft_document');
-    setHasDraft(false);
-    setDraftToRestore(null);
+  const handleRestoreDraft = (summary: DraftSummary) => {
+    // Both editors restore their own draft content on mount (Phase A2/A4) -
+    // App.tsx only needs to open the right editor with the matching
+    // documentToEdit (or null for a new-document draft) so it computes
+    // the same draftKey.
+    if (summary.editorType === 'comparison') {
+      if (summary.documentId) {
+        const matchingDoc = documents.find(d => d.id === summary.documentId)
+          || ({ id: summary.documentId, document_type: summary.docType } as Document);
+        setDocumentToEdit(matchingDoc);
+        setComparisonEditorActive(false); // render branch already picks ComparisonEditor via document_type
+      } else {
+        setDocumentToEdit(null);
+        setComparisonEditorType(summary.docType as 'comparison_quotation' | 'comparison_invoice');
+        setComparisonEditorActive(true);
+      }
+    } else {
+      const matchingDoc = summary.documentId
+        ? (documents.find(d => d.id === summary.documentId) || ({ id: summary.documentId } as Document))
+        : null;
+      setDocumentToEdit(matchingDoc);
+    }
+    setCurrentTab('documents');
+    setEditorOpen(true);
+    setRecoverableDrafts(prev => prev.filter(d => d.draftKey !== summary.draftKey));
+  };
+
+  const handleDiscardDraftEntry = (draftKey: string) => {
+    deleteDraft(draftKey);
+    setRecoverableDrafts(prev => prev.filter(d => d.draftKey !== draftKey));
   };
 
   const handleCloseEditor = () => {
     setEditorOpen(false);
     setComparisonEditorActive(false);
     setDraftToRestore(null);
-    setTimeout(() => {
-      localStorage.removeItem('docgen_draft_document');
-      setHasDraft(false);
-    }, 100);
+    // Drafts are NOT deleted on close (Phase A2/A4) - just refresh the
+    // registry in case a new draft was created during this session.
+    refreshRecoverableDrafts();
   };
 
   // Phase 2 (data-loading consolidation): the useEffect that used to live
@@ -660,12 +726,21 @@ function App() {
   const handleDeleteDocument = async (id: string) => {
     const docToDelete = documents.find(d => d.id === id);
     try {
-      // Trigger Google Sheets auto-delete notification with text/plain header (bypassing CORS preflight issues)
+      // Enqueue Google Sheets delete-sync BEFORE the actual delete below -
+      // the queue row's document_id FK must reference a still-existing
+      // document at insert time (ON DELETE SET NULL only governs what
+      // happens to this row once the document is later removed, not
+      // whether a new row can reference an already-gone one). Must be
+      // awaited (not fire-and-forget) so it's guaranteed to complete
+      // before the delete runs - unlike the old direct-fetch call, this
+      // one has a real data dependency on the document still existing.
       if (activeProfile && activeProfile.google_sheets_url && docToDelete?.document_number) {
-        dbService.deleteDocumentFromGoogleSheets(
+        await dbService.deleteDocumentFromGoogleSheets(
           activeProfile.google_sheets_url,
+          activeProfile.id,
+          id,
           docToDelete.document_number
-        ).catch(err => console.error('Failed to notify Google Sheet of deletion:', err));
+        ).catch(err => console.error('Failed to enqueue Google Sheet deletion sync:', err));
       }
 
       await dbService.deleteDocument(id);
@@ -1169,57 +1244,82 @@ function App() {
       {/* Main Content viewport */}
       <main className="main-content">
         
-        {hasDraft && !editorOpen && !previewOpen && (
-          <div className="draft-banner" style={{
-            background: 'var(--accent-primary)',
-            color: '#fff',
-            padding: '0.85rem 1.25rem',
+        {recoverableDrafts.length > 0 && !editorOpen && !previewOpen && (
+          <div className="draft-banner-list" style={{
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            fontSize: '0.85rem',
-            borderRadius: 'var(--radius-sm)',
-            margin: '0 0 1rem 0',
-            boxShadow: 'var(--shadow-sm)',
-            border: '1px solid rgba(255,255,255,0.1)'
+            flexDirection: 'column',
+            gap: '0.5rem',
+            margin: '0 0 1rem 0'
           }}>
-            <span style={{ fontWeight: 500 }}>You have an unsaved document draft from your last session.</span>
-            <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-              <button 
-                onClick={handleRestoreDraft}
-                className="btn-primary"
-                style={{ 
-                  background: '#fff', 
-                  color: 'var(--accent-primary)', 
-                  border: 'none', 
-                  padding: '0.35rem 0.75rem', 
-                  borderRadius: 'var(--radius-sm)', 
-                  cursor: 'pointer', 
-                  fontWeight: 700,
-                  fontSize: '0.75rem'
-                }}
-              >
-                Resume
-              </button>
-              <button 
-                onClick={handleDiscardDraft}
-                className="btn-secondary"
-                style={{ 
-                  background: 'rgba(255,255,255,0.15)', 
-                  color: '#fff', 
-                  border: '1px solid rgba(255,255,255,0.25)', 
-                  padding: '0.35rem 0.75rem', 
-                  borderRadius: 'var(--radius-sm)', 
-                  cursor: 'pointer', 
-                  fontWeight: 500,
-                  fontSize: '0.75rem'
-                }}
-              >
-                Discard
-              </button>
-            </div>
+            {recoverableDrafts.length > 1 && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                You have {recoverableDrafts.length} unsaved document drafts:
+              </span>
+            )}
+            {recoverableDrafts.map(draft => (
+              <div key={draft.draftKey} className="draft-banner" style={{
+                background: 'var(--accent-primary)',
+                color: '#fff',
+                padding: '0.85rem 1.25rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                fontSize: '0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                boxShadow: 'var(--shadow-sm)',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}>
+                <span style={{ fontWeight: 500 }}>
+                  Unsaved {(draft.docType || 'document').replace('_', ' ')}
+                  {draft.customerName ? ` for ${draft.customerName}` : ''}
+                  {draft.documentNumber ? ` (${draft.documentNumber})` : ''}
+                  {draft.lastSaved && (
+                    <span style={{ fontWeight: 400, opacity: 0.85 }}>
+                      {' '}— last saved {new Date(draft.lastSaved).toLocaleString()}
+                    </span>
+                  )}
+                </span>
+                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleRestoreDraft(draft)}
+                    className="btn-primary"
+                    style={{
+                      background: '#fff',
+                      color: 'var(--accent-primary)',
+                      border: 'none',
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    Resume
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!confirm('Discard this draft? This cannot be undone.')) return;
+                      handleDiscardDraftEntry(draft.draftKey);
+                    }}
+                    className="btn-secondary"
+                    style={{
+                      background: 'rgba(255,255,255,0.15)',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.25)',
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -1289,12 +1389,22 @@ function App() {
                 role={user?.user_metadata?.role || 'admin'}
                 activeProfile={activeProfile}
                 documents={documents}
+                syncQueue={syncQueue}
                 onAddDocument={handleCreateDocument}
                 onAddComparison={handleCreateComparison}
                 onEditDocument={handleEditDocument}
                 onViewDocument={handleViewDocument}
                 onDeleteDocument={handleDeleteDocument}
                 onRefreshDocs={() => loadData(activeProfile?.id)}
+              />
+            )}
+
+            {currentTab === 'sync-dashboard' && (
+              <GoogleSyncDashboard
+                role={user?.user_metadata?.role || 'admin'}
+                activeProfile={activeProfile}
+                syncQueue={syncQueue}
+                onRefreshQueue={() => activeProfile && getQueueStatusForCompany(activeProfile.id).then(setSyncQueue)}
               />
             )}
 

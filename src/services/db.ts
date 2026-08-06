@@ -1,18 +1,15 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { CompanyProfile, Customer, Service, Document, DocumentItem } from '../types';
 import JSZip from 'jszip';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { enqueueSync } from './sheetsSyncQueue';
 
-const globalProcess = (globalThis as any).process;
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || globalProcess?.env?.SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || globalProcess?.env?.SUPABASE_ANON_KEY || '';
-
-export const isSupabaseConfigured = (): boolean => {
-  return !!(supabaseUrl && supabaseAnonKey);
-};
-
-export const supabase: SupabaseClient | null = isSupabaseConfigured()
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+// Re-exported for backward compatibility - every existing call site
+// (App.tsx, AuthPanel.tsx, ComparisonService.ts) imports these from
+// './db' or '../services/db' and continues to work unchanged. The
+// actual client now lives in supabaseClient.ts (Phase B2) so that
+// sheetsSyncQueue.ts can import it without creating a circular
+// dependency between db.ts and sheetsSyncQueue.ts.
+export { supabase, isSupabaseConfigured };
 
 export const SQL_SCHEMA = `DROP TABLE IF EXISTS document_items CASCADE;
 DROP TABLE IF EXISTS documents CASCADE;
@@ -220,6 +217,38 @@ const getLocal = <T>(key: string, defaultValue: T): T => {
 const setLocal = <T>(key: string, value: T): void => {
   localStorage.setItem(`docgen_${key}`, JSON.stringify(value));
 };
+
+// Shared payload builder for Google Sheets sync (Phase B4) - used by both
+// syncDocumentToGoogleSheets (single document) and forceFullResync (every
+// document for a company), so the shape is defined in exactly one place.
+function buildSyncPayload(companyName: string, doc: Document, items: DocumentItem[]) {
+  return {
+    action: 'save_document',
+    document_id: doc.id,
+    company_name: companyName,
+    document_number: doc.document_number,
+    document_type: doc.document_type,
+    customer_name: doc.customer_name,
+    customer_email: doc.customer_email || '',
+    customer_phone: doc.customer_phone || '',
+    customer_address: doc.customer_address || '',
+    customer_gstin: doc.customer_gstin || '',
+    date: doc.date,
+    subtotal: doc.subtotal,
+    discount_total: doc.discount_total || 0,
+    taxable_amount: (doc.subtotal || 0) - (doc.discount_total || 0),
+    tax_total: doc.tax_total,
+    total: doc.total,
+    items: (items || []).map(it => ({
+      description: it.description,
+      qty: it.quantity,
+      days: it.days || 1,
+      unit: it.unit,
+      rate: it.rate,
+      amount: it.amount
+    }))
+  };
+}
 
 export const dbService = {
   // Profiles
@@ -986,7 +1015,82 @@ Go to Settings > Local Backup & Data Recovery in your portal and select this .zi
     }
   },
 
+  // ─── Phase B2: public sync functions now enqueue via sheetsSyncQueue.ts
+  // instead of calling fetch() directly. Signatures for
+  // syncDocumentToGoogleSheets are UNCHANGED so DocumentEditor.tsx and
+  // ComparisonEditor.tsx's call sites need no changes at all.
+  // deleteDocumentFromGoogleSheets gains two required parameters
+  // (companyId, documentId) since the queue needs them - its one call
+  // site (App.tsx) is updated accordingly.
+  //
+  // The old direct-fetch implementations are kept below, renamed with a
+  // "Legacy" suffix and NOT called from anywhere, per the explicit
+  // instruction not to remove them until the queue path is fully
+  // verified (Phase B5). They can be restored as a one-line revert if
+  // needed.
+
   async syncDocumentToGoogleSheets(
+    googleSheetsUrl: string | undefined, 
+    companyName: string,
+    doc: Document, 
+    items: DocumentItem[]
+  ): Promise<boolean> {
+    if (!googleSheetsUrl || !googleSheetsUrl.trim()) return false;
+    if (!doc.id || !doc.company_id) return false;
+
+    const payload = buildSyncPayload(companyName, doc, items);
+    return enqueueSync(doc.company_id, doc.id, 'save_document', payload);
+  },
+
+  // ─── Phase B4: Force Full Resync ────────────────────────────────────
+  // Re-enqueues every document for a company. Uses the same upsert-by-
+  // document_id enqueueSync() path as a normal save, so re-running this
+  // never creates duplicate queue rows - each document's existing queue
+  // row (if any) is simply reset to 'pending' with a fresh payload.
+  async forceFullResync(companyId: string): Promise<number> {
+    const docs = await this.getDocuments(companyId);
+    const profile = await this.getProfileById(companyId);
+    const companyName = profile?.name || '';
+
+    let enqueuedCount = 0;
+    for (const doc of docs) {
+      try {
+        const full = await this.getDocumentById(doc.id);
+        const items = full?.items || [];
+        const payload = buildSyncPayload(companyName, doc, items);
+        const ok = await enqueueSync(companyId, doc.id, 'save_document', payload);
+        if (ok) enqueuedCount++;
+      } catch (err) {
+        console.error(`[ForceFullResync] Failed to enqueue document ${doc.id}:`, err);
+      }
+    }
+    return enqueuedCount;
+  },
+
+  async deleteDocumentFromGoogleSheets(
+    googleSheetsUrl: string | undefined,
+    companyId: string,
+    documentId: string,
+    documentNumber: string
+  ): Promise<boolean> {
+    if (!googleSheetsUrl || !googleSheetsUrl.trim()) return false;
+    if (!companyId || !documentId) return false;
+
+    const payload = {
+      action: 'delete_document',
+      document_id: documentId,
+      document_number: documentNumber
+    };
+
+    return enqueueSync(companyId, documentId, 'delete_document', payload);
+  },
+
+  // ─── Preserved, unused fallback implementations (Phase B2) ──────────
+  // Not called from anywhere in the app. Kept only so the direct-fetch
+  // path can be restored quickly if the queue needs to be rolled back
+  // before Phase B5's final verification.
+
+  async syncDocumentToGoogleSheetsLegacy(
     googleSheetsUrl: string | undefined, 
     companyName: string,
     doc: Document, 
@@ -1037,7 +1141,7 @@ Go to Settings > Local Backup & Data Recovery in your portal and select this .zi
     }
   },
 
-  async deleteDocumentFromGoogleSheets(
+  async deleteDocumentFromGoogleSheetsLegacy(
     googleSheetsUrl: string | undefined,
     documentNumber: string
   ): Promise<boolean> {

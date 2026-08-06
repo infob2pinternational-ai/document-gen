@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CompanyProfile, Document, Customer } from '../../types';
 import type { 
   ComparisonColumn, 
@@ -17,6 +17,15 @@ import {
 import { dbService } from '../../services/db';
 import { sendApprovalNotification } from '../../services/push';
 import { DocumentSuccessDialog } from '../DocumentSuccessDialog';
+import {
+  getDraftKey,
+  getTabId,
+  restoreDraft,
+  deleteDraft,
+  createDraftSaver,
+  type DraftPayload,
+  type DraftSaverStatus
+} from '../../utils/drafts';
 import { 
   Plus, 
   Trash2, 
@@ -30,7 +39,9 @@ import {
   FileText, 
   Palette,
   EyeOff,
-  FolderOpen
+  FolderOpen,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 interface ComparisonEditorProps {
@@ -89,8 +100,85 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
   const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // ─── Draft Recovery (Phase A4) ──────────────────────────────────────
+  // Same architecture as DocumentEditor (Phase A2): hybrid session/
+  // recovery layers via src/utils/drafts.ts. Unlike DocumentEditor,
+  // `documentType` here is a stable prop (App.tsx decides it before
+  // mounting this component - there's no in-editor type dropdown), so
+  // the draft key never changes mid-session and needs no cleanup effect
+  // for a type switch the way DocumentEditor's did.
+  const draftKey = getDraftKey(documentToEdit?.id ?? null, documentType);
+  const [draftStatus, setDraftStatus] = useState<DraftSaverStatus>({
+    dirty: false,
+    lastSaved: null,
+    saveFailed: false
+  });
+  const [draftRestoredNotice, setDraftRestoredNotice] = useState(false);
+  const [draftSaver] = useState(() =>
+    createDraftSaver(5000, 30000, (status) => setDraftStatus(status))
+  );
+  const hasInitializedRef = useRef(false);
+
+  const buildDraftFields = useCallback(() => ({
+    docNumber, selectedCustomerId, customerName, customerEmail, customerPhone,
+    customerAddress, customerGstin, docDate, notes, terms,
+    options, selectedOptionTabId, layout, selectedOptionIdForTotal, themeColor,
+    docType: documentType
+  }), [
+    docNumber, selectedCustomerId, customerName, customerEmail, customerPhone,
+    customerAddress, customerGstin, docDate, notes, terms,
+    options, selectedOptionTabId, layout, selectedOptionIdForTotal, themeColor,
+    documentType
+  ]);
+
+  const buildDraftPayload = useCallback((): DraftPayload => ({
+    draftKey,
+    documentId: documentToEdit?.id ?? null,
+    editorType: 'comparison',
+    fields: buildDraftFields(),
+    lastSaved: '', // overwritten by createDraftSaver at write time
+    tabId: getTabId()
+  }), [draftKey, documentToEdit, buildDraftFields]);
+
+  const handleDiscardDraft = () => {
+    if (!confirm('Discard this draft? Your unsaved changes will be permanently lost.')) return;
+    deleteDraft(draftKey);
+    draftSaver.cancel();
+    setDraftStatus({ dirty: false, lastSaved: null, saveFailed: false });
+    onClose();
+  };
+
   // Initialize Data
   useEffect(() => {
+    // Draft restoration takes priority over the normal edit/create-mode
+    // initialization below - attempted once per mount, same pattern as
+    // DocumentEditor (Phase A2). No legacy-format migration is needed
+    // here since ComparisonEditor never had a draft system before this.
+    if (!hasInitializedRef.current) {
+      const found = restoreDraft(draftKey);
+      if (found) {
+        const f = found.draft.fields;
+        setDocNumber(f.docNumber);
+        setSelectedCustomerId(f.selectedCustomerId);
+        setCustomerName(f.customerName);
+        setCustomerEmail(f.customerEmail);
+        setCustomerPhone(f.customerPhone);
+        setCustomerAddress(f.customerAddress);
+        setCustomerGstin(f.customerGstin);
+        setDocDate(f.docDate);
+        setNotes(f.notes);
+        setTerms(f.terms);
+        setOptions(f.options);
+        setSelectedOptionTabId(f.selectedOptionTabId);
+        setLayout(f.layout);
+        setSelectedOptionIdForTotal(f.selectedOptionIdForTotal);
+        setThemeColor(f.themeColor);
+        setDraftRestoredNotice(true);
+        hasInitializedRef.current = true;
+        return;
+      }
+    }
+
     if (documentToEdit) {
       // Edit mode: Load metadata
       setDocNumber(documentToEdit.document_number);
@@ -127,6 +215,9 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         .catch(err => {
           console.error('Failed to load comparison options:', err);
           createDefaultOption();
+        })
+        .finally(() => {
+          hasInitializedRef.current = true;
         });
     } else {
       // Create mode: Auto generate number based on documentType
@@ -154,8 +245,30 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
       const nextNum = Math.max(startNum, maxExistingSeq + 1);
       setDocNumber(`${prefix}${nextNum}`);
       createDefaultOption();
+      hasInitializedRef.current = true;
     }
   }, [documentToEdit, activeProfile, documentType]);
+
+  // Flush any pending draft write immediately when the editor unmounts.
+  useEffect(() => {
+    return () => {
+      draftSaver.flush();
+    };
+  }, [draftSaver]);
+
+  // Autosave Draft — same debounced pattern as DocumentEditor (Phase A2).
+  useEffect(() => {
+    if (!hasInitializedRef.current) return;
+    // Only save draft if there's meaningful content (avoid saving empty blanks)
+    if (customerName || options.some(o => o.rows.length > 0) || notes) {
+      draftSaver.markDirty(buildDraftPayload());
+    }
+  }, [
+    docNumber, selectedCustomerId, customerName, customerEmail, customerPhone,
+    customerAddress, customerGstin, docDate, notes, terms,
+    options, selectedOptionTabId, layout, selectedOptionIdForTotal, themeColor,
+    buildDraftPayload, draftSaver
+  ]);
 
   const createDefaultOption = () => {
     const optId = 'opt_' + Math.random().toString(36).substring(2, 9);
@@ -506,6 +619,13 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         ).catch(err => console.error('Failed to auto-save comparison doc to Google Sheet:', err));
       }
 
+      // Draft cleanup — only after a CONFIRMED successful save (per
+      // the same requirement as DocumentEditor: never delete on
+      // anything less than success).
+      deleteDraft(draftKey);
+      draftSaver.cancel();
+      setDraftStatus({ dirty: false, lastSaved: null, saveFailed: false });
+
       setSuccessData({
         document: documentPayload,
         isEditMode: Boolean(documentToEdit)
@@ -536,9 +656,54 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>
               Compare multiple options, packages, or deliverables in a single dynamic layout document.
             </p>
+            {/* Draft status indicators (Phase A4, same pattern as DocumentEditor) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '4px', minHeight: '1.1rem' }}>
+              {draftStatus.saveFailed && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--danger, #dc2626)' }}>
+                  <AlertTriangle size={12} />
+                  Draft save failed — retrying...
+                </span>
+              )}
+              {!draftStatus.saveFailed && draftStatus.dirty && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  ● Unsaved changes
+                </span>
+              )}
+              {!draftStatus.saveFailed && !draftStatus.dirty && draftStatus.lastSaved && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Draft saved at {new Date(draftStatus.lastSaved).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            {draftRestoredNotice && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px',
+                fontSize: '0.8rem', color: 'var(--primary, #2563eb)',
+                background: 'var(--primary-bg, rgba(37, 99, 235, 0.08))',
+                padding: '4px 8px', borderRadius: '6px', width: 'fit-content'
+              }}>
+                <span>Draft restored from your last session.</span>
+                <button
+                  onClick={() => setDraftRestoredNotice(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: 'inherit' }}
+                  aria-label="Dismiss"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            onClick={handleDiscardDraft}
+            className="btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            title="Permanently discard this draft"
+          >
+            <Trash2 size={16} />
+            <span>Discard Draft</span>
+          </button>
           <button 
             onClick={() => setTemplatesOpen(true)} 
             className="btn-secondary"

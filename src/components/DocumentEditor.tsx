@@ -1,18 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CompanyProfile, Customer, Service, Document, DocumentItem, DocumentType } from '../types';
 import { dbService } from '../services/db';
 import { sendApprovalNotification } from '../services/push';
-import { ArrowLeft, Plus, Trash2, GripVertical, Save, Pencil, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Save, Pencil, Copy, AlertTriangle, X } from 'lucide-react';
 import { LineItemModal } from './LineItemModal';
 import { DocumentSuccessDialog } from './DocumentSuccessDialog';
 import { DocumentPreview } from './DocumentPreview';
 import { calculateDocumentTotals } from '../utils/calculations';
+import {
+  getDraftKey,
+  getTabId,
+  restoreDraft,
+  deleteDraft,
+  migrateLegacyDraft,
+  migrateOldNewDraftKeyFormat,
+  createDraftSaver,
+  type DraftPayload,
+  type DraftSaverStatus
+} from '../utils/drafts';
 
 interface DocumentEditorProps {
   activeProfile: CompanyProfile | null;
   documentToEdit: Document | null; // null if creating
   onClose: () => void;
   onRefreshDocs: () => void;
+  // Kept for backward compatibility with App.tsx's existing prop wiring
+  // (not yet updated - see Phase A3). DocumentEditor now manages its own
+  // draft restoration internally via src/utils/drafts.ts and no longer
+  // reads this prop for the primary restore path; it's only consulted
+  // as a fallback if the new draft system finds nothing (e.g. a draft
+  // left over from immediately before this change shipped).
   draftToRestore?: any;
 }
 
@@ -65,6 +82,57 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     isEditMode: boolean;
   } | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+
+  // ─── Draft Recovery (Phase A2/A2.1) ─────────────────────────────────
+  // For edits, stable for the component's lifetime (documentToEdit.id
+  // never changes without a remount). For new documents, scoped by
+  // docType too - recomputed each render so it correctly tracks the
+  // in-editor type dropdown (see the cleanup effect below, which
+  // deletes the previous type-scoped draft when this changes).
+  const draftKey = getDraftKey(documentToEdit?.id ?? null, docType);
+  const [draftStatus, setDraftStatus] = useState<DraftSaverStatus>({
+    dirty: false,
+    lastSaved: null,
+    saveFailed: false
+  });
+  const [draftRestoredNotice, setDraftRestoredNotice] = useState(false);
+  const [draftSaver] = useState(() =>
+    createDraftSaver(5000, 30000, (status) => setDraftStatus(status))
+  );
+  // Guards the mount effect below from re-running its restore-or-init
+  // logic if activeProfile happens to change identity after mount.
+  const hasInitializedRef = useRef(false);
+  // Tracks the previous type-scoped draft key so switching the doc-type
+  // dropdown mid-session (new documents only) can clean up the
+  // now-abandoned key instead of leaving an orphaned draft behind.
+  const prevDraftKeyRef = useRef<string | null>(null);
+
+  const buildDraftFields = useCallback(() => ({
+    docType, docNumber, sequenceNumber, date, notes, terms, discountTotal,
+    selectedCustomerId, customerName, customerEmail, customerPhone,
+    customerAddress, customerGstin, colDesc, colQty, colUnit, colRate, colAmt, items
+  }), [
+    docType, docNumber, sequenceNumber, date, notes, terms, discountTotal,
+    selectedCustomerId, customerName, customerEmail, customerPhone,
+    customerAddress, customerGstin, colDesc, colQty, colUnit, colRate, colAmt, items
+  ]);
+
+  const buildDraftPayload = useCallback((): DraftPayload => ({
+    draftKey,
+    documentId: documentToEdit?.id ?? null,
+    editorType: 'document',
+    fields: buildDraftFields(),
+    lastSaved: '', // overwritten by createDraftSaver at write time
+    tabId: getTabId()
+  }), [draftKey, documentToEdit, buildDraftFields]);
+
+  const handleDiscardDraft = () => {
+    if (!confirm('Discard this draft? Your unsaved changes will be permanently lost.')) return;
+    deleteDraft(draftKey);
+    draftSaver.cancel();
+    setDraftStatus({ dirty: false, lastSaved: null, saveFailed: false });
+    onClose();
+  };
 
   const handleOpenAddItemModal = () => {
     setItemToEdit(null);
@@ -126,12 +194,99 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     loadLibraries();
   }, [activeProfile]);
 
+  // One-time migration of the pre-Phase-A single-draft format into the
+  // new per-document draft system. Safe to call on every mount - it's a
+  // no-op once the legacy key has already been migrated away.
+  useEffect(() => {
+    migrateLegacyDraft();
+  }, []);
+
+  // Flush any pending draft write immediately when the editor unmounts
+  // (navigating away, closing the tab is handled separately since drafts
+  // are NOT deleted on close - see handleCloseEditor equivalent below).
+  // draftSaver is stable for the component's lifetime (useState lazy
+  // init, setter never called), so listing it here never causes this
+  // effect to re-run - it still only fires its cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      draftSaver.flush();
+    };
+  }, [draftSaver]);
+
+  // Clean up the previous type-scoped draft key when docType changes
+  // mid-session for a NEW document (the in-editor dropdown, not
+  // editing an existing one - those are always keyed by stable id
+  // regardless of type). Without this, switching Invoice -> Quotation
+  // would leave an orphaned "new:invoice:{tabId}" draft behind.
+  useEffect(() => {
+    if (documentToEdit) return; // edits are keyed by id, not type - nothing to clean up
+    if (!hasInitializedRef.current) {
+      // Still establishing the initial key (first render, or the
+      // render where a restored draft's docType is being applied) -
+      // record it without deleting anything yet.
+      prevDraftKeyRef.current = draftKey;
+      return;
+    }
+    if (prevDraftKeyRef.current && prevDraftKeyRef.current !== draftKey) {
+      deleteDraft(prevDraftKeyRef.current);
+    }
+    prevDraftKeyRef.current = draftKey;
+  }, [draftKey, documentToEdit]);
+
   // Set default sequences and values on Create
   useEffect(() => {
     if (!activeProfile) return;
 
-    if (draftToRestore) {
-      // Restore Draft Mode
+    // Draft restoration takes priority over both the legacy prop-based
+    // restore and the normal edit/create-mode initialization. Only
+    // attempted once per mount - if the editor's own state changes
+    // later (e.g. activeProfile identity changes), we don't want to
+    // silently discard the user's in-progress work by re-restoring.
+    if (!hasInitializedRef.current) {
+      let found = restoreDraft(draftKey);
+
+      // One-time migration path: a new-document draft saved before the
+      // per-type key scoping shipped won't be found under the new
+      // `new:{docType}:{tabId}` key format. Check the old `new:{tabId}`
+      // format once and re-key it using its own stored docType.
+      if (!found && !documentToEdit) {
+        const migrated = migrateOldNewDraftKeyFormat();
+        if (migrated) {
+          found = { draft: migrated, source: 'recovery' };
+        }
+      }
+
+      if (found) {
+        const f = found.draft.fields;
+        setDocType(f.docType);
+        setDocNumber(f.docNumber);
+        setSequenceNumber(f.sequenceNumber);
+        setDate(f.date);
+        setNotes(f.notes);
+        setTerms(f.terms);
+        setDiscountTotal(f.discountTotal);
+        setSelectedCustomerId(f.selectedCustomerId);
+        setCustomerName(f.customerName);
+        setCustomerEmail(f.customerEmail);
+        setCustomerPhone(f.customerPhone);
+        setCustomerAddress(f.customerAddress);
+        setCustomerGstin(f.customerGstin);
+        setColDesc(f.colDesc);
+        setColQty(f.colQty);
+        setColUnit(f.colUnit);
+        setColRate(f.colRate);
+        setColAmt(f.colAmt);
+        setItems(f.items);
+        setDraftRestoredNotice(true);
+        hasInitializedRef.current = true;
+        return;
+      }
+    }
+
+    if (!hasInitializedRef.current && draftToRestore) {
+      // Backward-compat fallback: a draft handed down via the old prop
+      // path (see interface comment above) and not yet migrated/found
+      // by the new system.
       setDocType(draftToRestore.docType);
       setDocNumber(draftToRestore.docNumber);
       setSequenceNumber(draftToRestore.sequenceNumber);
@@ -151,6 +306,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       setColRate(draftToRestore.colRate);
       setColAmt(draftToRestore.colAmt);
       setItems(draftToRestore.items);
+      setDraftRestoredNotice(true);
+      hasInitializedRef.current = true;
     } else if (documentToEdit) {
       // Editing Mode
       const loadDocData = async () => {
@@ -188,6 +345,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         } catch (err) {
           console.error('Error loading document details:', err);
           alert('Failed to load document details.');
+        } finally {
+          hasInitializedRef.current = true;
         }
       };
       loadDocData();
@@ -217,6 +376,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       
       // Auto-sequence numbers
       generateSequenceNumber(docType);
+      hasInitializedRef.current = true;
     }
   }, [documentToEdit, activeProfile, draftToRestore]);
 
@@ -227,33 +387,20 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
   }, [docType]);
 
-  // Autosave Draft to localStorage
+  // Autosave Draft — Phase A2: debounced via drafts.ts's createDraftSaver
+  // instead of writing to localStorage directly on every keystroke.
+  // markDirty() debounces the actual write internally (5s for the
+  // session layer; the recovery layer is covered by its own 30s floor
+  // timer inside createDraftSaver) - this effect firing on every
+  // keystroke is fine, since it's now just scheduling, not writing.
   useEffect(() => {
+    // Skip marking dirty until initial load/restore has completed, so
+    // we don't overwrite a just-restored or freshly-loaded document with
+    // an empty in-progress draft during the render right after mount.
+    if (!hasInitializedRef.current) return;
     // Only save draft if items are present or customer name is filled (avoid saving empty blanks)
     if (items.length > 0 || customerName || notes || selectedCustomerId) {
-      const draftData = {
-        documentToEdit,
-        docType,
-        docNumber,
-        sequenceNumber,
-        date,
-        notes,
-        terms,
-        discountTotal,
-        selectedCustomerId,
-        customerName,
-        customerEmail,
-        customerPhone,
-        customerAddress,
-        customerGstin,
-        colDesc,
-        colQty,
-        colUnit,
-        colRate,
-        colAmt,
-        items
-      };
-      localStorage.setItem('docgen_draft_document', JSON.stringify(draftData));
+      draftSaver.markDirty(buildDraftPayload());
     }
   }, [
     documentToEdit,
@@ -275,7 +422,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     colUnit,
     colRate,
     colAmt,
-    items
+    items,
+    buildDraftPayload,
+    draftSaver
   ]);
 
   // Sequence generator
@@ -466,6 +615,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         ).catch(err => console.error('Failed to auto-save to Google Sheet:', err));
       }
 
+      // Draft cleanup — only after a CONFIRMED successful save (per
+      // requirement: never delete on anything less than success).
+      deleteDraft(draftKey);
+      draftSaver.cancel();
+      setDraftStatus({ dirty: false, lastSaved: null, saveFailed: false });
+
       onRefreshDocs();
       setSuccessData({
         document: docPayload,
@@ -528,10 +683,50 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '2px 0 0 0' }}>
               Sequence details and custom branding will be locked upon save.
             </p>
+            {/* Draft status indicators (Phase A2) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '4px', minHeight: '1.1rem' }}>
+              {draftStatus.saveFailed && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--danger, #dc2626)' }}>
+                  <AlertTriangle size={12} />
+                  Draft save failed — retrying...
+                </span>
+              )}
+              {!draftStatus.saveFailed && draftStatus.dirty && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  ● Unsaved changes
+                </span>
+              )}
+              {!draftStatus.saveFailed && !draftStatus.dirty && draftStatus.lastSaved && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Draft saved at {new Date(draftStatus.lastSaved).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            {draftRestoredNotice && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px',
+                fontSize: '0.8rem', color: 'var(--primary, #2563eb)',
+                background: 'var(--primary-bg, rgba(37, 99, 235, 0.08))',
+                padding: '4px 8px', borderRadius: '6px', width: 'fit-content'
+              }}>
+                <span>Draft restored from your last session.</span>
+                <button
+                  onClick={() => setDraftRestoredNotice(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: 'inherit' }}
+                  aria-label="Dismiss"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="editor-header-buttons">
+          <button onClick={handleDiscardDraft} className="btn-secondary" title="Permanently discard this draft">
+            <Trash2 size={14} />
+            <span>Discard Draft</span>
+          </button>
           <button onClick={onClose} className="btn-secondary">
             Cancel
           </button>

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../types';
-import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X, Download } from 'lucide-react';
+import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X, Download, RefreshCw } from 'lucide-react';
 import { dbService } from '../services/db';
+import { retryDocument, type SyncQueueRow } from '../services/sheetsSyncQueue';
 
 interface DocumentsProps {
   role: string;
   activeProfile: CompanyProfile | null;
   documents: Document[];
+  syncQueue: SyncQueueRow[];
   onAddDocument: () => void;
   onAddComparison: (type: 'comparison_quotation' | 'comparison_invoice') => void;
   onEditDocument: (doc: Document) => void;
@@ -19,6 +21,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   role,
   activeProfile,
   documents,
+  syncQueue,
   onAddDocument,
   onAddComparison,
   onEditDocument,
@@ -31,6 +34,34 @@ export const Documents: React.FC<DocumentsProps> = ({
   const [filterDateRange, setFilterDateRange] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  // Derives the 5-state display status directly from the live
+  // google_sync_queue row - never from local component state, per
+  // requirement 1. No queue row at all means this document has never
+  // been enqueued (e.g. sync isn't configured for this company) - no
+  // badge is shown for that case, only for documents that have one.
+  const getSyncDisplay = (docId: string) => {
+    const row = syncQueue.find(q => q.document_id === docId);
+    if (!row) return null;
+    if (row.status === 'synced') return { label: 'Synced', icon: '✓', color: '#10b981', row };
+    if (row.status === 'syncing') return { label: 'Syncing', icon: '🔄', color: '#3b82f6', row };
+    if (row.status === 'failed' && row.failed_permanently) return { label: 'Failed', icon: '❌', color: '#ef4444', row };
+    if (row.status === 'failed' && !row.failed_permanently) return { label: 'Retrying', icon: '🔄', color: '#f59e0b', row };
+    return { label: 'Pending', icon: '⏳', color: '#64748b', row };
+  };
+
+  const handleRetrySync = async (docId: string) => {
+    setRetryingId(docId);
+    try {
+      await retryDocument(docId);
+    } finally {
+      // syncQueue itself updates live via Realtime once the retry
+      // actually runs - this just clears the button's own "in flight"
+      // state for the click itself, not the sync outcome.
+      setRetryingId(null);
+    }
+  };
 
   const filteredDocs = documents
     .filter(d => !activeProfile || d.company_id === activeProfile.id)
@@ -245,6 +276,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <th>Total Amount</th>
                     <th>Created By</th>
                     <th>Status</th>
+                    <th>Sync Status</th>
                     <th>WA Sent By</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
@@ -339,6 +371,49 @@ export const Documents: React.FC<DocumentsProps> = ({
                               Pending Approval
                             </span>
                           )}
+                        </td>
+                        <td data-label="Sync Status">
+                          {(() => {
+                            const sync = getSyncDisplay(doc.id);
+                            if (!sync) {
+                              return <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>-</span>;
+                            }
+                            const tooltip = [
+                              `Last sync: ${sync.row.updated_at ? new Date(sync.row.updated_at).toLocaleString() : 'never'}`,
+                              `Attempts: ${sync.row.attempts}`,
+                              sync.row.last_error ? `Last error: ${sync.row.last_error}` : null
+                            ].filter(Boolean).join('\n');
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <span
+                                  title={tooltip}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 600,
+                                    color: sync.color,
+                                    cursor: 'default'
+                                  }}
+                                >
+                                  <span>{sync.icon}</span>
+                                  <span>{sync.label}</span>
+                                </span>
+                                {(sync.label === 'Failed' || sync.label === 'Retrying') && (
+                                  <button
+                                    onClick={() => handleRetrySync(doc.id)}
+                                    disabled={retryingId === doc.id}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.2rem', borderRadius: '4px' }}
+                                    title="Retry sync now"
+                                  >
+                                    <RefreshCw size={12} className={retryingId === doc.id ? 'spin' : ''} />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td data-label="WA Sent By" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                           {doc.whatsapp_sent_by_email ? (

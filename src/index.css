@@ -1248,3 +1248,12 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb,
   border-bottom: none;
 }
 
+/* Phase B4: retry-in-progress spin for the sync status retry button */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+
