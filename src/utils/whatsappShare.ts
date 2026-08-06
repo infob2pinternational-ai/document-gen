@@ -2,6 +2,21 @@ import type { Document } from '../types';
 import { dbService } from '../services/db';
 
 /**
+ * Normalizes a stored phone number into wa.me's expected format
+ * (country code + digits, no separators). Indian 10-digit numbers get
+ * the '91' country code prepended; anything else (already has a country
+ * code, or is some other length) is passed through digit-stripped only.
+ * Exported so any caller building a wa.me link - not just the
+ * document-share flow below - uses the same rule instead of a second
+ * copy of it (e.g. the mobile app's "message this customer" button).
+ */
+export function normalizeIndianPhone(phone: string): string {
+  let clean = phone.replace(/\D/g, '');
+  if (clean.length === 10) clean = '91' + clean;
+  return clean;
+}
+
+/**
  * Shared WhatsApp document-share logic (extracted from Documents.tsx).
  * This is the ONE implementation used by both the staff web app and the
  * owner mobile app - neither should have its own copy of this message
@@ -23,8 +38,7 @@ export function shareDocumentViaWhatsApp(
   }
   if (!doc.customer_phone) return;
 
-  let cleanPhone = doc.customer_phone.replace(/\D/g, '');
-  if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
+  const cleanPhone = normalizeIndianPhone(doc.customer_phone);
 
   const docDate = doc.date ? doc.date.split('-').reverse().join('/') : '';
   const formattedTotal = Number(doc.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

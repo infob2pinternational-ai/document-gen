@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Service } from '../../types';
 import { dbService } from '../../services/db';
+import { inputStyle } from '../formStyles';
 import { Plus, Edit2, Trash2, X } from 'lucide-react';
 
 interface ServicesScreenProps {
@@ -102,13 +103,4 @@ export const ServicesScreen: React.FC<ServicesScreenProps> = ({ activeProfile, s
       )}
     </div>
   );
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: '0.7rem',
-  borderRadius: 'var(--radius-md)',
-  border: '1px solid var(--border-color)',
-  background: 'var(--bg-primary)',
-  color: 'var(--text-primary)',
-  fontSize: '0.9rem'
 };

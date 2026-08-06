@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Document } from '../../types';
+import { docTypeLabel } from '../docTypeLabel';
 
 interface HomeProps {
   userName: string;
@@ -8,19 +9,6 @@ interface HomeProps {
   onViewDocument: (doc: Document) => void;
   onGoToPending: () => void;
 }
-
-const docTypeLabel = (type: Document['document_type']) => {
-  switch (type) {
-    case 'invoice': return 'Invoice';
-    case 'non_tax_invoice': return 'Invoice';
-    case 'proforma_invoice': return 'Proforma';
-    case 'quotation': return 'Quotation';
-    case 'work_order': return 'Work Order';
-    case 'comparison_quotation': return 'Quote';
-    case 'comparison_invoice': return 'Manual Invoice';
-    default: return 'Document';
-  }
-};
 
 function getGreeting(): string {
   const hour = new Date().getHours();

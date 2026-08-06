@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Document } from '../../types';
 import { Search } from 'lucide-react';
+import { docTypeLabel } from '../docTypeLabel';
 
 interface DocumentsListProps {
   title: string;
@@ -9,19 +10,6 @@ interface DocumentsListProps {
   onViewDocument: (doc: Document) => void;
   showFilters?: boolean;
 }
-
-const docTypeLabel = (type: Document['document_type']) => {
-  switch (type) {
-    case 'invoice': return 'Invoice';
-    case 'non_tax_invoice': return 'Invoice';
-    case 'proforma_invoice': return 'Proforma';
-    case 'quotation': return 'Quotation';
-    case 'work_order': return 'Work Order';
-    case 'comparison_quotation': return 'Quote';
-    case 'comparison_invoice': return 'Manual Invoice';
-    default: return 'Document';
-  }
-};
 
 const statusColor = (status?: string) => {
   if (status === 'approved') return '#10b981';

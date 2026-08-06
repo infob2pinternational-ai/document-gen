@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Customer } from '../../types';
 import { dbService } from '../../services/db';
+import { normalizeIndianPhone } from '../../utils/whatsappShare';
+import { inputStyle } from '../formStyles';
 import { Search, Phone, Edit2, X } from 'lucide-react';
 
 interface CustomersScreenProps {
@@ -9,11 +11,7 @@ interface CustomersScreenProps {
   onRefresh: () => void;
 }
 
-const whatsappHref = (phone: string) => {
-  let clean = phone.replace(/\D/g, '');
-  if (clean.length === 10) clean = '91' + clean;
-  return `https://wa.me/${clean}`;
-};
+const whatsappHref = (phone: string) => `https://wa.me/${normalizeIndianPhone(phone)}`;
 
 export const CustomersScreen: React.FC<CustomersScreenProps> = ({ activeProfile, customers, onRefresh }) => {
   const [search, setSearch] = useState('');
@@ -103,13 +101,4 @@ export const CustomersScreen: React.FC<CustomersScreenProps> = ({ activeProfile,
       )}
     </div>
   );
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: '0.7rem',
-  borderRadius: 'var(--radius-md)',
-  border: '1px solid var(--border-color)',
-  background: 'var(--bg-primary)',
-  color: 'var(--text-primary)',
-  fontSize: '0.9rem'
 };
