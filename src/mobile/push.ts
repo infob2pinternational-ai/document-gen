@@ -39,7 +39,9 @@ import type { CompanyProfile } from '../types';
 
 let setupStarted = false;
 
-export function isNativePushSupported(): boolean {
+// Not exported - nothing outside this file needs it (yet); keeps the
+// module's public surface to just setupPushNotifications().
+function isNativePushSupported(): boolean {
   return Capacitor.isNativePlatform();
 }
 

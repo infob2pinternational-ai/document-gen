@@ -48,6 +48,22 @@ export const OwnerApp: React.FC = () => {
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [editingDoc, setEditingDoc] = useState<Document | null>(null);
 
+  // Same approver gating rule as the desktop app's Documents.tsx: if the
+  // company profile has a designated approver_email, only that email can
+  // approve/reject - anyone else viewing the document (e.g. office staff
+  // who also have login access) sees it read-only. No approver_email
+  // configured means any authenticated user can approve, same as desktop.
+  // Layered on top of the role check - a role must have the
+  // pending_approval module AND (if set) be the designated approver.
+  // Defined once here (not inline at each call site - the push-setup
+  // effect below needs the same value, and hooks must run before this
+  // component's early returns, so it can't wait until after them).
+  const isDesignatedApprover = (profile: CompanyProfile | null, currentUser: any): boolean =>
+    canAccessModule(currentUser?.user_metadata?.role, 'pending_approval') && (
+      !profile?.approver_email ||
+      (currentUser?.email || '').toLowerCase() === profile.approver_email.toLowerCase()
+    );
+
   // Auth session (reuses the same Supabase auth as the web app - same
   // account, same session mechanism, no separate login system).
   //
@@ -124,19 +140,13 @@ export const OwnerApp: React.FC = () => {
   // setupPushNotifications() is a no-op on non-native platforms (web
   // preview) and only actually runs its setup once per app session.
   //
-  // Gated to the designated approver only (same approver_email rule as
-  // canApprove below, computed here separately since hooks must run
-  // before this component's early returns) - see push.ts's file-level
-  // comment: approver_devices has exactly one device slot per company,
-  // so registering for every employee would let anyone's device steal
-  // the real approver's notifications.
+  // Gated to the designated approver only (isDesignatedApprover above) -
+  // see push.ts's file-level comment: approver_devices has exactly one
+  // device slot per company, so registering for every employee would
+  // let anyone's device steal the real approver's notifications.
   useEffect(() => {
     if (!activeProfile) return;
-    const isApprover = canAccessModule(user?.user_metadata?.role, 'pending_approval') && (
-      !activeProfile.approver_email ||
-      (user?.email || '').toLowerCase() === activeProfile.approver_email.toLowerCase()
-    );
-    setupPushNotifications(activeProfile, isApprover, (documentId) => {
+    setupPushNotifications(activeProfile, isDesignatedApprover(activeProfile, user), (documentId) => {
       dbService.getDocumentById(documentId)
         .then(res => {
           if (res?.document) {
@@ -228,17 +238,7 @@ export const OwnerApp: React.FC = () => {
     setServices([]);
   };
 
-  // Same approver gating rule as the desktop app's Documents.tsx: if the
-  // company profile has a designated approver_email, only that email can
-  // approve/reject - anyone else viewing the document (e.g. office
-  // staff who also have login access) sees it read-only. No approver_email
-  // configured means any authenticated user can approve, same as desktop.
-  // Layered on top of the role check - a role must have the
-  // pending_approval module AND (if set) be the designated approver.
-  const canApprove = canAccessModule(role, 'pending_approval') && (
-    !activeProfile?.approver_email ||
-    (user?.email || '').toLowerCase() === activeProfile.approver_email.toLowerCase()
-  );
+  const canApprove = isDesignatedApprover(activeProfile, user);
 
   // Approve/reject call the exact same dbService methods the desktop
   // app's Documents.tsx uses - no separate approval logic here.
