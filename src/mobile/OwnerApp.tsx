@@ -10,6 +10,7 @@ import { CustomersScreen } from './screens/CustomersScreen';
 import { ServicesScreen } from './screens/ServicesScreen';
 import { BottomNav, type OwnerTab } from './components/BottomNav';
 import { PullToRefresh } from './components/PullToRefresh';
+import { ProfileSwitcher } from './components/ProfileSwitcher';
 import { setupPushNotifications } from './push';
 import { getRoleModules, canAccessModule, roleLabel } from './roles';
 import { LogOut } from 'lucide-react';
@@ -38,6 +39,7 @@ const MODULE_TO_TAB: Record<string, OwnerTab> = {
 export const OwnerApp: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -104,31 +106,59 @@ export const OwnerApp: React.FC = () => {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Data loading - reuses dbService exactly as the web app does.
+  // Same two-function split as the desktop app's App.tsx
+  // (refreshCompanyData() / loadData()): refreshCompanyData() re-fetches
+  // just the current company's documents/customers/services - used for
+  // every refresh that doesn't need to re-resolve which company is
+  // active (saves, deletes, pull-to-refresh, a manual profile switch).
+  // loadOwnerData() is only for startup: it also fetches the full
+  // profiles list and resolves which one should be active.
+  const refreshCompanyData = async (profileId: string) => {
+    const [docs, custs, servs] = await Promise.all([
+      dbService.getDocuments(profileId),
+      dbService.getCustomers(profileId),
+      dbService.getServices(profileId)
+    ]);
+    setDocuments(docs);
+    setCustomers(custs);
+    setServices(servs);
+  };
+
+  // Convenience wrapper for the many "just refresh whatever's currently
+  // active" call sites below (saves, deletes, pull-to-refresh) - a no-op
+  // if activeProfile isn't set yet, which shouldn't happen once past the
+  // initial load but guards against a stray call during it.
+  const refreshActiveCompanyData = async () => {
+    if (activeProfile) await refreshCompanyData(activeProfile.id);
+  };
+
   const loadOwnerData = async () => {
     setDataLoading(true);
     try {
       const rawProfiles = await dbService.getProfiles();
+      setProfiles(rawProfiles);
       if (rawProfiles.length === 0) {
         setActiveProfile(null);
-        setDataLoading(false);
         return;
       }
       const savedId = localStorage.getItem('docgen_active_profile_id');
       const profile = rawProfiles.find(p => p.id === savedId) || rawProfiles[0];
       setActiveProfile(profile);
-
-      const [docs, custs, servs] = await Promise.all([
-        dbService.getDocuments(profile.id),
-        dbService.getCustomers(profile.id),
-        dbService.getServices(profile.id)
-      ]);
-      setDocuments(docs);
-      setCustomers(custs);
-      setServices(servs);
+      await refreshCompanyData(profile.id);
     } finally {
       setDataLoading(false);
     }
+  };
+
+  // Same profile-switch contract as the desktop Sidebar's
+  // setActiveProfile prop: update state, persist the same
+  // docgen_active_profile_id key so reopening the app restores it, then
+  // refresh this company's data - not a full reload (matches desktop's
+  // manual-switch behavior exactly, not a redesign).
+  const handleSwitchProfile = (profile: CompanyProfile) => {
+    setActiveProfile(profile);
+    localStorage.setItem('docgen_active_profile_id', profile.id);
+    refreshCompanyData(profile.id);
   };
 
   useEffect(() => {
@@ -232,6 +262,7 @@ export const OwnerApp: React.FC = () => {
     }
     localStorage.removeItem('supabase_user');
     setUser(null);
+    setProfiles([]);
     setActiveProfile(null);
     setDocuments([]);
     setCustomers([]);
@@ -244,13 +275,13 @@ export const OwnerApp: React.FC = () => {
   // app's Documents.tsx uses - no separate approval logic here.
   const handleApprove = async (doc: Document) => {
     await dbService.approveDocument(doc.id, user?.email || 'System');
-    await loadOwnerData();
+    if (activeProfile) await refreshCompanyData(activeProfile.id);
     setViewingDoc(null);
   };
 
   const handleReject = async (doc: Document) => {
     await dbService.rejectDocument(doc.id, user?.email || 'System');
-    await loadOwnerData();
+    if (activeProfile) await refreshCompanyData(activeProfile.id);
     setViewingDoc(null);
   };
 
@@ -260,7 +291,7 @@ export const OwnerApp: React.FC = () => {
         document={editingDoc}
         activeProfile={activeProfile}
         onClose={() => setEditingDoc(null)}
-        onRefreshDocs={loadOwnerData}
+        onRefreshDocs={refreshActiveCompanyData}
       />
     );
   }
@@ -296,19 +327,22 @@ export const OwnerApp: React.FC = () => {
 
   return (
     <div className="owner-shell">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{roleLabel(role)}</span>
-        <button
-          onClick={handleLogout}
-          className="btn-secondary"
-          style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}
-          title="Log Out"
-        >
-          <LogOut size={14} />
-          <span>Log Out</span>
-        </button>
+      <div style={{ padding: '0.6rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} onSwitch={handleSwitchProfile} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{roleLabel(role)}</span>
+          <button
+            onClick={handleLogout}
+            className="btn-secondary"
+            style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}
+            title="Log Out"
+          >
+            <LogOut size={14} />
+            <span>Log Out</span>
+          </button>
+        </div>
       </div>
-      <PullToRefresh onRefresh={loadOwnerData}>
+      <PullToRefresh onRefresh={refreshActiveCompanyData}>
         {effectiveTab === 'home' && canAccessModule(role, 'dashboard') && (
           <Home
             userName={user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Owner'}
@@ -340,14 +374,14 @@ export const OwnerApp: React.FC = () => {
           <CustomersScreen
             activeProfile={activeProfile}
             customers={customers}
-            onRefresh={loadOwnerData}
+            onRefresh={refreshActiveCompanyData}
           />
         )}
         {effectiveTab === 'services' && canAccessModule(role, 'services') && (
           <ServicesScreen
             activeProfile={activeProfile}
             services={services}
-            onRefresh={loadOwnerData}
+            onRefresh={refreshActiveCompanyData}
           />
         )}
       </PullToRefresh>
