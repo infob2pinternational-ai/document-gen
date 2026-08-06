@@ -26,5 +26,12 @@ dist-ssr
 *.sln
 *.sw?
 dist
+
+# Capacitor / Android build artifacts (Phase 1: Owner mobile app)
+android/app/build
+android/.gradle
+android/build
+android/local.properties
+dist/mobile
 scratch/
 

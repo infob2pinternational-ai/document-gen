@@ -42,29 +42,38 @@ const CONFIG = {
 
 /**
  * ─── CORS ────────────────────────────────────────────────────────────
- * The frontend deliberately sends Content-Type: text/plain (not
- * application/json) to avoid triggering a CORS preflight — this is why
- * doOptions below will rarely if ever actually be invoked in practice.
- * It's included for completeness per the requirement, and as a safety
- * net if the request shape ever changes. Apps Script cannot reliably
- * serve as a full CORS preflight responder for genuinely preflighted
- * requests (verified against current documentation) - if that's ever
- * needed, use a same-origin proxy instead of relying on this.
+ * IMPORTANT (corrected): earlier revisions of this script called
+ * .setHeaders(...) on the TextOutput returned by ContentService. That
+ * method does not exist - confirmed directly against Google's official
+ * Apps Script reference for the TextOutput class, which lists only:
+ * append, clear, downloadAsFile, getContent, getFileName, getMimeType,
+ * setContent, setMimeType. There is no way to set custom response
+ * headers (including Access-Control-Allow-Origin) from Apps Script at
+ * all - not a workaround-able gap, a hard platform limitation.
+ *
+ * This isn't actually a problem in practice: the frontend deliberately
+ * sends Content-Type: text/plain (not application/json), which avoids
+ * a CORS preflight (OPTIONS) entirely - browsers only preflight
+ * "non-simple" requests. Apps Script Web App responses are served with
+ * a permissive CORS policy by the platform itself for this kind of
+ * request, with no header-setting required or possible on the script's
+ * side. doOptions() below is kept only as a harmless no-op for
+ * completeness (it will essentially never be invoked given the
+ * request shape above) - it does NOT and CANNOT provide real CORS
+ * preflight compliance, since Apps Script has no mechanism for that.
+ * If a genuinely preflighted request is ever needed later (custom
+ * headers, application/json content-type), Apps Script cannot serve
+ * as a CORS preflight responder at all - the fallback is a same-origin
+ * proxy (e.g. a Vercel serverless function), not another attempt at
+ * this.
  */
 function doOptions() {
-  return ContentService.createTextOutput('')
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeaders({
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    });
+  return ContentService.createTextOutput('');
 }
 
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeaders({ 'Access-Control-Allow-Origin': '*' });
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
@@ -95,10 +104,21 @@ function doPost(e) {
     }
 
     action = data.action;
+
+    // full_backup has no document_id (it's a whole-system backup, not
+    // tied to one document) - handled before the document-centric
+    // validation below. Restored from the original script per the
+    // Settings "Backup to Google Drive" button, which still sends
+    // exactly this shape (action, timestamp, payload).
+    if (action === 'full_backup') {
+      saveFullJsonBackup(data.payload);
+      return respondAndLog(true, action, null, 'Full backup saved to Drive', startedAt);
+    }
+
     documentId = data.document_id;
 
     if (!action || (action !== 'save_document' && action !== 'delete_document')) {
-      return respondAndLog(false, action, documentId, 'Invalid or missing action (expected save_document or delete_document)', startedAt);
+      return respondAndLog(false, action, documentId, 'Invalid or missing action (expected save_document, delete_document, or full_backup)', startedAt);
     }
     if (!documentId) {
       return respondAndLog(false, action, documentId, 'Missing document_id', startedAt);
@@ -110,9 +130,28 @@ function doPost(e) {
     // ─── Route ────────────────────────────────────────────────────
     if (action === 'save_document') {
       const row = upsertDocumentRow(data);
+      // Restored from the original script: an individual JSON backup
+      // file per document in Drive, alongside the sheet row. Wrapped in
+      // its own try/catch (the original script didn't do this) so a
+      // Drive hiccup can't turn an otherwise-successful sheet save into
+      // a reported failure - the sheet row is the primary result.
+      try {
+        saveJsonBackup(data);
+      } catch (backupErr) {
+        logRequest(startedAt, new Date(), 'save_document_backup', documentId, false, 'Drive backup failed: ' + (backupErr && backupErr.message ? backupErr.message : String(backupErr)));
+      }
       return respondAndLog(true, action, documentId, `Saved to row ${row}`, startedAt, row);
     } else {
-      const row = deleteDocumentRow(documentId);
+      const row = deleteDocumentRow(documentId, data.document_number);
+      // Restored from the original script: delete the matching Drive
+      // backup file too, keyed by document_number (same key the
+      // backup files were always named by) - not document_id, to stay
+      // compatible with files the old script already created.
+      try {
+        deleteBackupFile(data.document_number);
+      } catch (backupErr) {
+        logRequest(startedAt, new Date(), 'delete_document_backup', documentId, false, 'Drive backup delete failed: ' + (backupErr && backupErr.message ? backupErr.message : String(backupErr)));
+      }
       if (row === null) {
         // Idempotent: already gone (e.g. a retried delete) is a success,
         // not an error - the desired end state (no row) is already true.
@@ -136,8 +175,9 @@ function upsertDocumentRow(data) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = getOrCreateDataSheet(ss);
   const idColIndex = CONFIG.COLUMNS.indexOf('document_id') + 1; // 1-based
+  const numberColIndex = CONFIG.COLUMNS.indexOf('document_number') + 1;
 
-  const existingRow = findRowByDocumentId(sheet, data.document_id, idColIndex);
+  const existingRow = findExistingRow(sheet, data.document_id, data.document_number, idColIndex, numberColIndex);
 
   const rowValues = CONFIG.COLUMNS.map(function (col) {
     switch (col) {
@@ -166,11 +206,15 @@ function upsertDocumentRow(data) {
   });
 
   if (existingRow) {
-    // Update in place - this is the fix for the duplicate-row bug.
-    // Restoring a previously-deleted document also lands here: if it
-    // was deleted, findRowByDocumentId finds nothing, so it falls to
-    // the append branch below and recreates the row - no separate
-    // "restore" action is needed.
+    // Update in place - this is the fix for the duplicate-row bug. The
+    // full row (including document_id in column A) is written every
+    // time, so a row found via the document_number fallback below gets
+    // its missing document_id backfilled automatically, right here -
+    // no separate migration step needed for documents that existed
+    // before this script. Restoring a previously-deleted document also
+    // lands here: if it was deleted, findExistingRow finds nothing, so
+    // it falls to the append branch below and recreates the row - no
+    // separate "restore" action is needed.
     sheet.getRange(existingRow, 1, 1, rowValues.length).setValues([rowValues]);
     return existingRow;
   } else {
@@ -185,12 +229,13 @@ function upsertDocumentRow(data) {
  * (idempotent - a retried delete after the row is already gone is not
  * an error).
  */
-function deleteDocumentRow(documentId) {
+function deleteDocumentRow(documentId, documentNumber) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = getOrCreateDataSheet(ss);
   const idColIndex = CONFIG.COLUMNS.indexOf('document_id') + 1;
+  const numberColIndex = CONFIG.COLUMNS.indexOf('document_number') + 1;
 
-  const existingRow = findRowByDocumentId(sheet, documentId, idColIndex);
+  const existingRow = findExistingRow(sheet, documentId, documentNumber, idColIndex, numberColIndex);
   if (!existingRow) return null;
 
   sheet.deleteRow(existingRow);
@@ -198,11 +243,18 @@ function deleteDocumentRow(documentId) {
 }
 
 /**
- * ─── Lookup index ─────────────────────────────────────────────────────
- * ONE bulk read of the document_id column, not a per-row scan. Fast
- * even at 10,000+ rows since it's a single getValues() call.
+ * ─── Lookup ───────────────────────────────────────────────────────────
+ * Primary match: document_id (fast, one bulk read - what keeps this
+ * fast at 10,000+ rows). Fallback: document_number, but ONLY against
+ * rows whose document_id cell is still empty - these are rows written
+ * before this script existed. This is what makes old documents
+ * self-healing: the first time an old document is edited or deleted
+ * after this script goes live, it's found by its old key
+ * (document_number), and on save, the full row rewrite backfills the
+ * missing document_id - so every subsequent save finds it via the fast
+ * primary path, with zero manual migration step.
  */
-function findRowByDocumentId(sheet, documentId, idColIndex) {
+function findExistingRow(sheet, documentId, documentNumber, idColIndex, numberColIndex) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return null; // only header row (or empty) exists
 
@@ -212,6 +264,16 @@ function findRowByDocumentId(sheet, documentId, idColIndex) {
       return i + 2; // +2: 1-based, and skip the header row
     }
   }
+
+  if (documentNumber) {
+    const numbers = sheet.getRange(2, numberColIndex, lastRow - 1, 1).getValues();
+    for (let i = 0; i < numbers.length; i++) {
+      if (ids[i][0] === '' && numbers[i][0] === documentNumber) {
+        return i + 2;
+      }
+    }
+  }
+
   return null;
 }
 
@@ -263,4 +325,60 @@ function logRequest(startedAt, completedAt, action, documentId, success, errorMe
     errorMessage || '',
     completedAt.getTime() - startedAt.getTime()
   ]);
+}
+
+/**
+ * ─── Google Drive backups ────────────────────────────────────────────
+ * Restored, essentially unchanged, from the original script (shared
+ * back into this conversation) - preserves compatibility with backup
+ * files that script already created in your Drive. Three things:
+ *  1. saveJsonBackup - one JSON file per document, overwritten on
+ *     every save_document, filename keyed by document_number.
+ *  2. deleteBackupFile - removes that file on delete_document.
+ *  3. saveFullJsonBackup - the whole-system backup from Settings'
+ *     "Backup to Google Drive" button, one dated file per run.
+ * All three share one "B2P Document Backups" Drive folder, auto-
+ * created on first use, exactly as before.
+ */
+function getBackupFolder() {
+  const folderName = 'B2P Document Backups';
+  const folders = DriveApp.getFoldersByName(folderName);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+}
+
+function saveJsonBackup(data) {
+  if (!data || !data.document_number) return;
+  const folder = getBackupFolder();
+  const fileName = data.document_number.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
+
+  const files = folder.getFilesByName(fileName);
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
+
+  folder.createFile(fileName, JSON.stringify(data, null, 2), MimeType.PLAIN_TEXT);
+}
+
+function saveFullJsonBackup(payload) {
+  const folder = getBackupFolder();
+  const dateStr = new Date().toISOString().split('T')[0];
+  const fileName = 'b2p_full_backup_' + dateStr + '.json';
+
+  const files = folder.getFilesByName(fileName);
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
+
+  folder.createFile(fileName, JSON.stringify(payload, null, 2), MimeType.PLAIN_TEXT);
+}
+
+function deleteBackupFile(documentNumber) {
+  if (!documentNumber) return;
+  const folder = getBackupFolder();
+  const fileName = documentNumber.replace(/[^a-zA-Z0-9_-]/g, '_') + '.json';
+  const files = folder.getFilesByName(fileName);
+
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
 }

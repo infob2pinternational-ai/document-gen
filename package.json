@@ -7,9 +7,17 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:mobile": "tsc -b && vite build --config vite.mobile.config.ts",
+    "cap:sync": "npm run build:mobile && npx cap sync android",
+    "cap:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/status-bar": "^8.0.3",
     "@supabase/supabase-js": "^2.110.0",
     "firebase": "^12.16.0",
     "jszip": "^3.10.1",

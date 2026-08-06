@@ -3,6 +3,7 @@ import type { CompanyProfile, Document, DocumentItem } from '../types';
 import { dbService } from '../services/db';
 import { ArrowLeft, Printer, AlertTriangle, Download } from 'lucide-react';
 import { calculateDocumentTotals } from '../utils/calculations';
+import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
 
 interface DocumentPreviewProps {
   activeProfile: CompanyProfile | null;
@@ -173,70 +174,16 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     window.print();
   };
 
+  // Reuses the shared WhatsApp-share utility (also used by Documents.tsx
+  // and the owner mobile app) instead of its own separate copy of this
+  // logic - this also fixes a pre-existing gap where this button never
+  // called dbService.logWhatsAppSend, unlike the Documents.tsx version.
   const handleWhatsAppSend = () => {
-    if (document.status !== 'approved') {
-      alert('This document must be approved first before it can be sent via WhatsApp.');
-      return;
-    }
-    if (!document.customer_phone) {
-      alert('This customer does not have a phone number specified.');
-      return;
-    }
-
-    let cleanPhone = document.customer_phone.replace(/\D/g, '');
-    if (cleanPhone.length === 10) {
-      cleanPhone = '91' + cleanPhone;
-    }
-
-    const docDate = document.date ? document.date.split('-').reverse().join('/') : '';
-    const formattedTotal = Number(document.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
-    const shareLink = baseUrl + '/doc/' + document.id;
-    
+    const userStr = localStorage.getItem('supabase_user');
+    const storedUser = userStr ? JSON.parse(userStr) : null;
+    const userEmail = storedUser ? storedUser.email : '';
     const companyName = activeProfile?.name || 'B2P International';
-    
-    let docTypeLabel = 'Document';
-    let docNoLabel = 'Doc';
-    if (document.document_type === 'invoice') {
-      docTypeLabel = 'Tax Invoice';
-      docNoLabel = 'Invoice';
-    } else if (document.document_type === 'non_tax_invoice') {
-      docTypeLabel = 'Invoice';
-      docNoLabel = 'Invoice';
-    } else if (document.document_type === 'proforma_invoice') {
-      docTypeLabel = 'Proforma Invoice';
-      docNoLabel = 'Invoice';
-    } else if (document.document_type === 'quotation') {
-      docTypeLabel = 'Quotation';
-      docNoLabel = 'Quotation';
-    } else if (document.document_type === 'work_order') {
-      docTypeLabel = 'Work Order';
-      docNoLabel = 'Work Order';
-    }
-
-    const message = `*Dear ${document.customer_name}*,\n\n` +
-      `Greetings from ${companyName}.\n\n` +
-      `Thank you for choosing us. Please find your ${docTypeLabel}.\n\n` +
-      `📄 ${docNoLabel} No.: ${document.document_number}\n` +
-      `📅 Date: ${docDate}\n` +
-      `💰 Amount: ₹${formattedTotal}\n\n` +
-      `🔗 *View / Download ${docNoLabel}*\n` +
-      `${shareLink}\n\n` +
-      `Should you require any clarification or revisions, please feel free to contact us.\n\n` +
-      `Thank you for your trust in ${companyName}.\n\n` +
-      `Warm Regards,\n` +
-      `${companyName}\n\n` +
-      `━━━━━━━━━━━━━━━━━━\n\n` +
-      `📲 *Follow Us*\n` +
-      `Instagram\n` +
-      `https://www.instagram.com/b2p_international/\n\n` +
-      `Facebook\n` +
-      `https://facebook.com/b2pinternational\n\n` +
-      `⭐ *Share Your Experience*\n` +
-      `https://g.page/r/CcC1J3PCvB_BEBM/review`;
-
-    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, 'whatsapp_window');
+    shareDocumentViaWhatsApp(document, companyName, userEmail);
   };
 
   const getDocTitle = (type: string) => {
