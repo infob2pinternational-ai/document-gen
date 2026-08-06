@@ -19,6 +19,11 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            // 'proguard-android.txt' is no longer accepted by recent AGP/R8
+            // versions (it bundles -dontoptimize, which R8 now rejects
+            // outright at config-evaluation time, regardless of whether
+            // minifyEnabled is on). 'proguard-android-optimize.txt' is the
+            // standard modern replacement Android itself ships.
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
