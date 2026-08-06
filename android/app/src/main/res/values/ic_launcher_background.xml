@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Sampled directly from the official B2P ONE icon
+         (assets/branding/b2p-one-icon.png) - average of 8 background-only
+         points, not an invented/approximated value. Only visible in the
+         thin edge margin the OS's adaptive-icon mask can reveal around the
+         full-bleed foreground layer. -->
+    <color name="ic_launcher_background">#002160</color>
 </resources>
