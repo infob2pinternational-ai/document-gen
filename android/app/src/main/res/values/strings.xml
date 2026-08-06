@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">B2P Owner</string>
-    <string name="title_activity_main">B2P Owner</string>
+    <string name="app_name">B2P ONE</string>
+    <string name="title_activity_main">B2P ONE</string>
     <string name="package_name">com.b2pinternational.owner</string>
     <string name="custom_url_scheme">com.b2pinternational.owner</string>
 </resources>

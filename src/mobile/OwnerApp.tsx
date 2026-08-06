@@ -8,18 +8,32 @@ import { DocumentView } from './screens/DocumentView';
 import { DocumentEdit } from './screens/DocumentEdit';
 import { CustomersScreen } from './screens/CustomersScreen';
 import { ServicesScreen } from './screens/ServicesScreen';
-import { BottomNav } from './components/BottomNav';
+import { BottomNav, type OwnerTab } from './components/BottomNav';
+import { PullToRefresh } from './components/PullToRefresh';
 import { setupPushNotifications } from './push';
+import { getRoleModules, canAccessModule, roleLabel } from './roles';
+import { LogOut } from 'lucide-react';
 
-type OwnerTab = 'home' | 'pending' | 'documents' | 'customers' | 'services';
+const MODULE_TO_TAB: Record<string, OwnerTab> = {
+  dashboard: 'home',
+  pending_approval: 'pending',
+  documents: 'documents',
+  customers: 'customers',
+  services: 'services'
+};
 
 /**
- * Owner-only mobile shell (Capacitor). Deliberately NOT the staff web
- * app's App.tsx - this is a new, simplified UI purpose-built for the
- * owner's approval workflow. It reuses the exact same service layer as
- * the web app (dbService, supabase auth, RLS, calculations, WhatsApp
- * share) - no business logic is duplicated, only the presentation is
- * new. See conversation for the architecture decision.
+ * B2P ONE mobile shell (Capacitor). Deliberately NOT the staff web app's
+ * App.tsx - this is a new, simplified UI. It reuses the exact same
+ * service layer as the web app (dbService, supabase auth, RLS,
+ * calculations, WhatsApp share, DocumentEditor) - no business logic is
+ * duplicated, only the presentation is new.
+ *
+ * One app for every employee (Phase 8, section 3): which tabs/actions
+ * are visible is driven entirely by roles.ts's role -> module mapping,
+ * read from the same user.user_metadata.role field the desktop app
+ * already uses for its own (simpler) admin/non-admin gating - not a
+ * separate permission system, not a separate app per role.
  */
 export const OwnerApp: React.FC = () => {
   const [user, setUser] = useState<any>(null);
@@ -109,9 +123,20 @@ export const OwnerApp: React.FC = () => {
   // which company profile to register the device token against.
   // setupPushNotifications() is a no-op on non-native platforms (web
   // preview) and only actually runs its setup once per app session.
+  //
+  // Gated to the designated approver only (same approver_email rule as
+  // canApprove below, computed here separately since hooks must run
+  // before this component's early returns) - see push.ts's file-level
+  // comment: approver_devices has exactly one device slot per company,
+  // so registering for every employee would let anyone's device steal
+  // the real approver's notifications.
   useEffect(() => {
     if (!activeProfile) return;
-    setupPushNotifications(activeProfile, (documentId) => {
+    const isApprover = canAccessModule(user?.user_metadata?.role, 'pending_approval') && (
+      !activeProfile.approver_email ||
+      (user?.email || '').toLowerCase() === activeProfile.approver_email.toLowerCase()
+    );
+    setupPushNotifications(activeProfile, isApprover, (documentId) => {
       dbService.getDocumentById(documentId)
         .then(res => {
           if (res?.document) {
@@ -121,7 +146,7 @@ export const OwnerApp: React.FC = () => {
         })
         .catch(err => console.error('[Mobile Push] Failed to open deep-linked document:', err));
     });
-  }, [activeProfile]);
+  }, [activeProfile, user]);
 
   // Realtime - same merge pattern as the web app, scoped to the active
   // company, so approvals/edits made from the web app (or another
@@ -169,9 +194,38 @@ export const OwnerApp: React.FC = () => {
     setViewingDoc(doc);
   };
 
+  // roles.ts's module map, keyed off the same user_metadata.role field
+  // the desktop app already reads - see roles.ts for the full rationale.
+  const role = user?.user_metadata?.role;
+  const allowedModules = getRoleModules(role);
+  const allowedTabs = allowedModules
+    .map(m => MODULE_TO_TAB[m])
+    .filter((t): t is OwnerTab => Boolean(t));
+  // Fall back to the first tab this role actually has if the current
+  // `tab` state isn't one of them (e.g. role changed, or 'home' - the
+  // initial state - isn't in this role's allowed set).
+  const effectiveTab: OwnerTab | undefined = allowedTabs.includes(tab) ? tab : allowedTabs[0];
+
+  const canEdit = canAccessModule(role, 'edit_documents');
+
   const handleEditDocument = (doc: Document) => {
+    if (!canEdit) return;
     setViewingDoc(null);
     setEditingDoc(doc);
+  };
+
+  const handleLogout = async () => {
+    // Exact same sign-out sequence as the desktop app's App.tsx
+    // handleLogout - not a separate logout implementation.
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    localStorage.removeItem('supabase_user');
+    setUser(null);
+    setActiveProfile(null);
+    setDocuments([]);
+    setCustomers([]);
+    setServices([]);
   };
 
   // Same approver gating rule as the desktop app's Documents.tsx: if the
@@ -179,8 +233,12 @@ export const OwnerApp: React.FC = () => {
   // approve/reject - anyone else viewing the document (e.g. office
   // staff who also have login access) sees it read-only. No approver_email
   // configured means any authenticated user can approve, same as desktop.
-  const canApprove = !activeProfile?.approver_email ||
-    (user?.email || '').toLowerCase() === activeProfile.approver_email.toLowerCase();
+  // Layered on top of the role check - a role must have the
+  // pending_approval module AND (if set) be the designated approver.
+  const canApprove = canAccessModule(role, 'pending_approval') && (
+    !activeProfile?.approver_email ||
+    (user?.email || '').toLowerCase() === activeProfile.approver_email.toLowerCase()
+  );
 
   // Approve/reject call the exact same dbService methods the desktop
   // app's Documents.tsx uses - no separate approval logic here.
@@ -213,6 +271,7 @@ export const OwnerApp: React.FC = () => {
         document={viewingDoc}
         activeProfile={activeProfile}
         canApprove={canApprove}
+        canEdit={canEdit}
         onClose={() => setViewingDoc(null)}
         onEdit={handleEditDocument}
         onApprove={handleApprove}
@@ -221,10 +280,36 @@ export const OwnerApp: React.FC = () => {
     );
   }
 
+  if (!effectiveTab) {
+    // No module in this role's allowed set maps to a tab - shouldn't
+    // happen with the default roles.ts matrix (every role has at least
+    // one), but a role misconfigured to an empty list shouldn't render
+    // a blank screen.
+    return (
+      <div className="owner-shell" style={{ alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
+        <p>No modules are available for your role ({roleLabel(role)}).</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Contact your administrator.</p>
+        <button onClick={handleLogout} className="btn-secondary" style={{ marginTop: '1rem' }}>Log Out</button>
+      </div>
+    );
+  }
+
   return (
     <div className="owner-shell">
-      <div className="owner-screen">
-        {tab === 'home' && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{roleLabel(role)}</span>
+        <button
+          onClick={handleLogout}
+          className="btn-secondary"
+          style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}
+          title="Log Out"
+        >
+          <LogOut size={14} />
+          <span>Log Out</span>
+        </button>
+      </div>
+      <PullToRefresh onRefresh={loadOwnerData}>
+        {effectiveTab === 'home' && canAccessModule(role, 'dashboard') && (
           <Home
             userName={user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Owner'}
             activeProfile={activeProfile}
@@ -234,7 +319,7 @@ export const OwnerApp: React.FC = () => {
             onGoToPending={() => setTab('pending')}
           />
         )}
-        {tab === 'pending' && (
+        {effectiveTab === 'pending' && canAccessModule(role, 'pending_approval') && (
           <DocumentsList
             title="Pending Approval"
             documents={documents.filter(d => d.status === 'pending_approval' || !d.status)}
@@ -242,7 +327,7 @@ export const OwnerApp: React.FC = () => {
             onViewDocument={handleViewDocument}
           />
         )}
-        {tab === 'documents' && (
+        {effectiveTab === 'documents' && canAccessModule(role, 'documents') && (
           <DocumentsList
             title="Documents"
             documents={documents}
@@ -251,22 +336,22 @@ export const OwnerApp: React.FC = () => {
             showFilters
           />
         )}
-        {tab === 'customers' && (
+        {effectiveTab === 'customers' && canAccessModule(role, 'customers') && (
           <CustomersScreen
             activeProfile={activeProfile}
             customers={customers}
             onRefresh={loadOwnerData}
           />
         )}
-        {tab === 'services' && (
+        {effectiveTab === 'services' && canAccessModule(role, 'services') && (
           <ServicesScreen
             activeProfile={activeProfile}
             services={services}
             onRefresh={loadOwnerData}
           />
         )}
-      </div>
-      <BottomNav currentTab={tab} onChangeTab={setTab} />
+      </PullToRefresh>
+      <BottomNav currentTab={effectiveTab} onChangeTab={setTab} allowedTabs={allowedTabs} />
     </div>
   );
 };

@@ -1,11 +1,13 @@
 import React from 'react';
 import { Home, Clock, FileText, Users, Briefcase } from 'lucide-react';
 
-type OwnerTab = 'home' | 'pending' | 'documents' | 'customers' | 'services';
+export type OwnerTab = 'home' | 'pending' | 'documents' | 'customers' | 'services';
 
 interface BottomNavProps {
   currentTab: OwnerTab;
   onChangeTab: (tab: OwnerTab) => void;
+  /** Only these tabs are rendered - role-gated by OwnerApp.tsx via roles.ts. */
+  allowedTabs: OwnerTab[];
 }
 
 const items: { id: OwnerTab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
@@ -16,10 +18,11 @@ const items: { id: OwnerTab; label: string; icon: React.ComponentType<{ size?: n
   { id: 'services', label: 'Services', icon: Briefcase }
 ];
 
-export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, onChangeTab }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, onChangeTab, allowedTabs }) => {
+  const visibleItems = items.filter(item => allowedTabs.includes(item.id));
   return (
     <nav className="owner-bottom-nav">
-      {items.map(item => {
+      {visibleItems.map(item => {
         const Icon = item.icon;
         return (
           <button

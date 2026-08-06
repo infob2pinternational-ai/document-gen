@@ -19,6 +19,16 @@ import type { CompanyProfile } from '../types';
  * changes at all: it sends to whatever token it's given, regardless of
  * which platform obtained it.
  *
+ * IMPORTANT - approver_devices.company_id is UNIQUE in the schema: there
+ * is only ever one registered device per company, by design (it
+ * predates this app being used by every employee). Now that B2P ONE is
+ * a single app for the whole team (Phase 8, section 3), registering
+ * unconditionally here would let ANY employee who opens the app and
+ * grants notification permission silently overwrite the real approver's
+ * token, stealing their approval notifications. The caller (OwnerApp.tsx)
+ * MUST only invoke this for the user who is actually the designated
+ * approver (activeProfile.approver_email) - see isApprover below.
+ *
  * Requires android/app/google-services.json (a real file generated from
  * this app's Firebase console registration, tied to its signing
  * certificate) to actually receive messages at runtime.
@@ -37,13 +47,15 @@ export function isNativePushSupported(): boolean {
  * Registers this device for push notifications and wires up the
  * deep-link handler for when a notification is tapped. Safe to call
  * multiple times (e.g. on every login) - only runs its setup once per
- * app session.
+ * app session. `isApprover` must be true or this is a no-op - see the
+ * file-level comment on why (one device slot per company).
  */
 export async function setupPushNotifications(
   activeProfile: CompanyProfile,
+  isApprover: boolean,
   onNotificationTapped: (documentId: string) => void
 ): Promise<void> {
-  if (!isNativePushSupported() || setupStarted) return;
+  if (!isNativePushSupported() || setupStarted || !isApprover) return;
   setupStarted = true;
 
   try {
@@ -57,7 +69,7 @@ export async function setupPushNotifications(
     }
 
     await PushNotifications.addListener('registration', (token) => {
-      dbService.registerApproverDevice(activeProfile.id, token.value, 'Owner Mobile App')
+      dbService.registerApproverDevice(activeProfile.id, token.value, 'B2P ONE App')
         .catch(err => console.error('[Mobile Push] Failed to save device token:', err));
     });
 

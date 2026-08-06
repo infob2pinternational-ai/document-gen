@@ -36,9 +36,12 @@ export const Login: React.FC<LoginProps> = ({ onLoggedIn }) => {
   return (
     <div className="owner-shell" style={{ justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
       <form onSubmit={handleLogin} style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', marginBottom: '0.5rem' }}>
-          B2P Owner
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', marginBottom: '0' }}>
+          B2P ONE
         </h1>
+        <p style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.05em', textAlign: 'center', color: 'var(--text-secondary)', marginTop: '-0.5rem', marginBottom: '0.5rem' }}>
+          ONE APP. ALL BUSINESS.
+        </p>
         {error && (
           <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center' }}>{error}</div>
         )}

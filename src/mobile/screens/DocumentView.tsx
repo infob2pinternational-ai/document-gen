@@ -7,6 +7,7 @@ interface DocumentViewProps {
   document: Document;
   activeProfile: CompanyProfile | null;
   canApprove: boolean;
+  canEdit: boolean;
   onClose: () => void;
   onEdit: (doc: Document) => void;
   onApprove: (doc: Document) => Promise<void>;
@@ -24,6 +25,7 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
   document,
   activeProfile,
   canApprove,
+  canEdit,
   onClose,
   onEdit,
   onApprove,
@@ -58,49 +60,50 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
     }
   };
 
+  const showActionBar = (isPending && canApprove) || canEdit;
+
   return (
     <div className="owner-shell">
-      {isPending && canApprove && (
+      {showActionBar && (
         <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
-          <button
-            onClick={handleApprove}
-            disabled={actionLoading !== null}
-            className="btn-primary"
-            style={{ flex: 1, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: '#10b981' }}
-          >
-            <Check size={16} />
-            <span>{actionLoading === 'approve' ? 'Approving...' : 'Approve'}</span>
-          </button>
-          <button
-            onClick={handleReject}
-            disabled={actionLoading !== null}
-            className="btn-secondary"
-            style={{ flex: 1, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#ef4444' }}
-          >
-            <X size={16} />
-            <span>{actionLoading === 'reject' ? 'Rejecting...' : 'Reject'}</span>
-          </button>
-          <button
-            onClick={() => onEdit(document)}
-            disabled={actionLoading !== null}
-            className="btn-secondary"
-            style={{ minHeight: '44px', minWidth: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Edit Document"
-          >
-            <Pencil size={16} />
-          </button>
-        </div>
-      )}
-      {!isPending && (
-        <div style={{ display: 'flex', padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
-          <button
-            onClick={() => onEdit(document)}
-            className="btn-secondary"
-            style={{ minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-          >
-            <Pencil size={16} />
-            <span>Edit Document</span>
-          </button>
+          {isPending && canApprove && (
+            <>
+              <button
+                onClick={handleApprove}
+                disabled={actionLoading !== null}
+                className="btn-primary"
+                style={{ flex: 1, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: '#10b981' }}
+              >
+                <Check size={16} />
+                <span>{actionLoading === 'approve' ? 'Approving...' : 'Approve'}</span>
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={actionLoading !== null}
+                className="btn-secondary"
+                style={{ flex: 1, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#ef4444' }}
+              >
+                <X size={16} />
+                <span>{actionLoading === 'reject' ? 'Rejecting...' : 'Reject'}</span>
+              </button>
+            </>
+          )}
+          {canEdit && (
+            <button
+              onClick={() => onEdit(document)}
+              disabled={actionLoading !== null}
+              className="btn-secondary"
+              style={
+                isPending && canApprove
+                  ? { minHeight: '44px', minWidth: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+                  : { flex: 1, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }
+              }
+              title="Edit Document"
+            >
+              <Pencil size={16} />
+              {!(isPending && canApprove) && <span>Edit Document</span>}
+            </button>
+          )}
         </div>
       )}
       <div className="owner-screen" style={{ paddingBottom: '1rem' }}>
