@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Document } from '../types';
-import { 
+import { computeDashboardStats } from '../utils/dashboardStats';
+import {
   FileText, 
   Search, 
   TrendingUp,
@@ -41,26 +42,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     workOrderCount: 0
   });
 
-  // Calculate stats for the active profile
+  // Calculate stats for the active profile (shared with the mobile
+  // Home screen via utils/dashboardStats.ts, not duplicated here).
   useEffect(() => {
     if (!activeProfile) return;
-    const companyDocs = documents.filter(d => d.company_id === activeProfile.id);
-    
-    // Revenue: sum of all invoices
-    const paidRevenue = companyDocs
-      .filter(d => d.document_type === 'invoice' || d.document_type === 'non_tax_invoice')
-      .reduce((sum, d) => sum + Number(d.total), 0);
-
-    const invoices = companyDocs.filter(d => d.document_type === 'invoice' || d.document_type === 'non_tax_invoice').length;
-    const quotes = companyDocs.filter(d => d.document_type === 'quotation').length;
-    const workOrders = companyDocs.filter(d => d.document_type === 'work_order').length;
-
-    setStats({
-      revenue: paidRevenue,
-      invoiceCount: invoices,
-      quoteCount: quotes,
-      workOrderCount: workOrders
-    });
+    const { revenue, invoiceCount, quoteCount, workOrderCount } = computeDashboardStats(documents, activeProfile.id);
+    setStats({ revenue, invoiceCount, quoteCount, workOrderCount });
   }, [activeProfile, documents]);
 
   // Currency helper
@@ -80,17 +67,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     .slice(0, 10); // Limit to top 10 recent
 
   // Compute coverage stats for all profiles
-  const profileCoverages = profiles.map(prof => {
-    const pDocs = documents.filter(d => d.company_id === prof.id);
-    const pRevenue = pDocs
-      .filter(d => d.document_type === 'invoice' || d.document_type === 'non_tax_invoice')
-      .reduce((sum, d) => sum + Number(d.total), 0);
-    return {
-      profile: prof,
-      docCount: pDocs.length,
-      revenue: pRevenue
-    };
-  });
+  const profileCoverages = profiles.map(prof => ({
+    profile: prof,
+    docCount: documents.filter(d => d.company_id === prof.id).length,
+    revenue: computeDashboardStats(documents, prof.id).revenue
+  }));
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>

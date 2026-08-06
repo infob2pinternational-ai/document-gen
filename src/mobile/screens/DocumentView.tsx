@@ -1,22 +1,108 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../../types';
 import { DocumentPreview } from '../../components/DocumentPreview';
+import { Check, X, Pencil } from 'lucide-react';
 
 interface DocumentViewProps {
   document: Document;
   activeProfile: CompanyProfile | null;
+  canApprove: boolean;
   onClose: () => void;
+  onEdit: (doc: Document) => void;
+  onApprove: (doc: Document) => Promise<void>;
+  onReject: (doc: Document) => Promise<void>;
 }
 
 /**
- * Phase 1: view-only, reusing the exact same DocumentPreview component
- * the web app uses (same print/PDF layout, same WhatsApp share button -
- * now itself reusing the shared shareDocumentViaWhatsApp utility). No
- * Approve/Reject/Edit actions yet - those are Phase 2.
+ * View-only DocumentPreview reuse (Phase 1), now with Approve/Reject
+ * (Phase 1/2) and Edit (Phase 3) actions layered on top - all three call
+ * straight into the same dbService methods / DocumentEditor component
+ * the desktop app uses (see OwnerApp.tsx and DocumentEdit.tsx), no
+ * duplicated approval or save logic.
  */
-export const DocumentView: React.FC<DocumentViewProps> = ({ document, activeProfile, onClose }) => {
+export const DocumentView: React.FC<DocumentViewProps> = ({
+  document,
+  activeProfile,
+  canApprove,
+  onClose,
+  onEdit,
+  onApprove,
+  onReject
+}) => {
+  const [actionLoading, setActionLoading] = useState<'approve' | 'reject' | null>(null);
+  const isPending = document.status !== 'approved' && document.status !== 'rejected';
+
+  const handleApprove = async () => {
+    if (!window.confirm(`Are you sure you want to approve document ${document.document_number}?`)) return;
+    setActionLoading('approve');
+    try {
+      await onApprove(document);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to approve document.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!window.confirm(`Are you sure you want to reject document ${document.document_number}?`)) return;
+    setActionLoading('reject');
+    try {
+      await onReject(document);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to reject document.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div className="owner-shell">
+      {isPending && canApprove && (
+        <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
+          <button
+            onClick={handleApprove}
+            disabled={actionLoading !== null}
+            className="btn-primary"
+            style={{ flex: 1, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: '#10b981' }}
+          >
+            <Check size={16} />
+            <span>{actionLoading === 'approve' ? 'Approving...' : 'Approve'}</span>
+          </button>
+          <button
+            onClick={handleReject}
+            disabled={actionLoading !== null}
+            className="btn-secondary"
+            style={{ flex: 1, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#ef4444' }}
+          >
+            <X size={16} />
+            <span>{actionLoading === 'reject' ? 'Rejecting...' : 'Reject'}</span>
+          </button>
+          <button
+            onClick={() => onEdit(document)}
+            disabled={actionLoading !== null}
+            className="btn-secondary"
+            style={{ minHeight: '44px', minWidth: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Edit Document"
+          >
+            <Pencil size={16} />
+          </button>
+        </div>
+      )}
+      {!isPending && (
+        <div style={{ display: 'flex', padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
+          <button
+            onClick={() => onEdit(document)}
+            className="btn-secondary"
+            style={{ minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+          >
+            <Pencil size={16} />
+            <span>Edit Document</span>
+          </button>
+        </div>
+      )}
       <div className="owner-screen" style={{ paddingBottom: '1rem' }}>
         <DocumentPreview
           document={document}

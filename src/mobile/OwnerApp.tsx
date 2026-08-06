@@ -5,9 +5,11 @@ import { Login } from './screens/Login';
 import { Home } from './screens/Home';
 import { DocumentsList } from './screens/DocumentsList';
 import { DocumentView } from './screens/DocumentView';
+import { DocumentEdit } from './screens/DocumentEdit';
 import { CustomersScreen } from './screens/CustomersScreen';
 import { ServicesScreen } from './screens/ServicesScreen';
 import { BottomNav } from './components/BottomNav';
+import { setupPushNotifications } from './push';
 
 type OwnerTab = 'home' | 'pending' | 'documents' | 'customers' | 'services';
 
@@ -30,6 +32,7 @@ export const OwnerApp: React.FC = () => {
 
   const [tab, setTab] = useState<OwnerTab>('home');
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
+  const [editingDoc, setEditingDoc] = useState<Document | null>(null);
 
   // Auth session (reuses the same Supabase auth as the web app - same
   // account, same session mechanism, no separate login system).
@@ -102,6 +105,24 @@ export const OwnerApp: React.FC = () => {
     if (user) loadOwnerData();
   }, [user]);
 
+  // Phase 5: native push registration + tap-to-deep-link, once we know
+  // which company profile to register the device token against.
+  // setupPushNotifications() is a no-op on non-native platforms (web
+  // preview) and only actually runs its setup once per app session.
+  useEffect(() => {
+    if (!activeProfile) return;
+    setupPushNotifications(activeProfile, (documentId) => {
+      dbService.getDocumentById(documentId)
+        .then(res => {
+          if (res?.document) {
+            setViewingDoc(res.document);
+            setEditingDoc(null);
+          }
+        })
+        .catch(err => console.error('[Mobile Push] Failed to open deep-linked document:', err));
+    });
+  }, [activeProfile]);
+
   // Realtime - same merge pattern as the web app, scoped to the active
   // company, so approvals/edits made from the web app (or another
   // device) appear here live too.
@@ -148,12 +169,54 @@ export const OwnerApp: React.FC = () => {
     setViewingDoc(doc);
   };
 
+  const handleEditDocument = (doc: Document) => {
+    setViewingDoc(null);
+    setEditingDoc(doc);
+  };
+
+  // Same approver gating rule as the desktop app's Documents.tsx: if the
+  // company profile has a designated approver_email, only that email can
+  // approve/reject - anyone else viewing the document (e.g. office
+  // staff who also have login access) sees it read-only. No approver_email
+  // configured means any authenticated user can approve, same as desktop.
+  const canApprove = !activeProfile?.approver_email ||
+    (user?.email || '').toLowerCase() === activeProfile.approver_email.toLowerCase();
+
+  // Approve/reject call the exact same dbService methods the desktop
+  // app's Documents.tsx uses - no separate approval logic here.
+  const handleApprove = async (doc: Document) => {
+    await dbService.approveDocument(doc.id, user?.email || 'System');
+    await loadOwnerData();
+    setViewingDoc(null);
+  };
+
+  const handleReject = async (doc: Document) => {
+    await dbService.rejectDocument(doc.id, user?.email || 'System');
+    await loadOwnerData();
+    setViewingDoc(null);
+  };
+
+  if (editingDoc) {
+    return (
+      <DocumentEdit
+        document={editingDoc}
+        activeProfile={activeProfile}
+        onClose={() => setEditingDoc(null)}
+        onRefreshDocs={loadOwnerData}
+      />
+    );
+  }
+
   if (viewingDoc) {
     return (
       <DocumentView
         document={viewingDoc}
         activeProfile={activeProfile}
+        canApprove={canApprove}
         onClose={() => setViewingDoc(null)}
+        onEdit={handleEditDocument}
+        onApprove={handleApprove}
+        onReject={handleReject}
       />
     );
   }
@@ -164,6 +227,7 @@ export const OwnerApp: React.FC = () => {
         {tab === 'home' && (
           <Home
             userName={user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Owner'}
+            activeProfile={activeProfile}
             documents={documents}
             loading={dataLoading}
             onViewDocument={handleViewDocument}
