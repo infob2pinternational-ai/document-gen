@@ -33,16 +33,39 @@ export const OwnerApp: React.FC = () => {
 
   // Auth session (reuses the same Supabase auth as the web app - same
   // account, same session mechanism, no separate login system).
+  //
+  // dbService's useCloud() helper (shared - not duplicated here) gates
+  // every single Supabase read/write on the presence of the
+  // `supabase_user` localStorage key, not on the live Supabase session
+  // itself (see db.ts). The web app's App.tsx writes that key from
+  // inside its own auth effect; this shell has its own independent auth
+  // effect and was never writing it. Login still succeeded (that's a
+  // direct supabase.auth call, unaffected by useCloud()), but every
+  // dbService.getX() call afterwards silently fell through to
+  // useCloud()'s empty-localStorage fallback instead of ever reaching
+  // Supabase - which is why Home/Documents/Customers/Services all
+  // rendered empty despite a working session and correct RLS. Mirroring
+  // the same write here (not touching db.ts, which is shared with the
+  // web app) is the fix.
   useEffect(() => {
     if (!isSupabaseConfigured() || !supabase) {
       setAuthLoading(false);
       return;
     }
+    const syncCloudFlag = (session: { user: any } | null | undefined) => {
+      if (session?.user) {
+        localStorage.setItem('supabase_user', JSON.stringify(session.user));
+      } else {
+        localStorage.removeItem('supabase_user');
+      }
+    };
     supabase.auth.getSession().then(({ data }) => {
+      syncCloudFlag(data.session);
       setUser(data.session?.user ?? null);
       setAuthLoading(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncCloudFlag(session);
       setUser(session?.user ?? null);
     });
     return () => listener.subscription.unsubscribe();
