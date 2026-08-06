@@ -312,8 +312,11 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
             </div>
           )}
 
-          {/* GST Row (If taxable document) */}
-          {document.document_type !== 'non_tax_invoice' && (
+          {/* GST Row - hidden for Non-Tax Invoices and for any document
+              where no GST was actually applied (taxTotal is 0), per the
+              business rule that non-GST documents must show no GST row
+              or a ₹0 GST amount at all. */}
+          {document.document_type !== 'non_tax_invoice' && totals.taxTotal > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               <span>GST {totals.effectiveGstRate > 0 ? `(${totals.effectiveGstRate.toFixed(0)}%)` : ''}</span>
               <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>

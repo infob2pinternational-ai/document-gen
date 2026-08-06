@@ -118,6 +118,16 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
     createDraftSaver(5000, 30000, (status) => setDraftStatus(status))
   );
   const hasInitializedRef = useRef(false);
+  // Tracks which document identity (its id, or 'new') the init effect
+  // below has already run for. Needed in addition to hasInitializedRef:
+  // that effect depends on `activeProfile`, and App.tsx's loadData()
+  // hands down a brand-new activeProfile object every time it re-runs -
+  // including on Supabase's automatic session check when the tab
+  // regains focus (switching browser tabs, minimizing, alt-tabbing).
+  // Without this, that identity churn alone re-ran the "load from DB" /
+  // "reset to blank" branches below on every tab-focus change, silently
+  // wiping the in-progress draft even though it was safely persisted.
+  const initializedForKeyRef = useRef<string | null>(null);
 
   const buildDraftFields = useCallback(() => ({
     docNumber, selectedCustomerId, customerName, customerEmail, customerPhone,
@@ -150,6 +160,16 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
 
   // Initialize Data
   useEffect(() => {
+    // Bail out entirely if we've already initialized (or started
+    // initializing) for this exact document identity - see
+    // initializedForKeyRef's declaration for why this is necessary
+    // beyond hasInitializedRef alone. Set immediately (not just on
+    // completion) so a second effect fire while an async load is still
+    // in flight doesn't kick off a duplicate.
+    const targetKey = documentToEdit?.id ?? 'new';
+    if (initializedForKeyRef.current === targetKey) return;
+    initializedForKeyRef.current = targetKey;
+
     // Draft restoration takes priority over the normal edit/create-mode
     // initialization below - attempted once per mount, same pattern as
     // DocumentEditor (Phase A2). No legacy-format migration is needed

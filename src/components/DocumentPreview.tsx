@@ -505,8 +505,11 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                 </tr>
               )}
 
-              {/* GST Row (Hidden for Non-Tax Invoices) */}
-              {document.document_type !== 'non_tax_invoice' && (
+              {/* GST Row - hidden for Non-Tax Invoices and for any document
+                  where no GST was actually applied (taxTotal is 0), per the
+                  business rule that non-GST documents must show no GST row
+                  or a ₹0 GST amount at all. */}
+              {document.document_type !== 'non_tax_invoice' && totals.taxTotal > 0 && (
                 <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>

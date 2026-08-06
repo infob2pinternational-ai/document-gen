@@ -102,6 +102,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // Guards the mount effect below from re-running its restore-or-init
   // logic if activeProfile happens to change identity after mount.
   const hasInitializedRef = useRef(false);
+  // Tracks which document identity (its id, or 'new') the init effect
+  // below has already run for. Needed in addition to hasInitializedRef:
+  // that effect depends on `activeProfile`, and App.tsx's loadData()
+  // hands down a brand-new activeProfile object every time it re-runs -
+  // including on Supabase's automatic session check when the tab
+  // regains focus (switching browser tabs, minimizing, alt-tabbing).
+  // Without this, that identity churn alone re-ran the "load from DB" /
+  // "reset to blank" branches below on every tab-focus change, silently
+  // wiping the in-progress draft even though it was safely persisted.
+  const initializedForKeyRef = useRef<string | null>(null);
   // Tracks the previous type-scoped draft key so switching the doc-type
   // dropdown mid-session (new documents only) can clean up the
   // now-abandoned key instead of leaving an orphaned draft behind.
@@ -236,6 +246,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // Set default sequences and values on Create
   useEffect(() => {
     if (!activeProfile) return;
+
+    // Bail out entirely if we've already initialized (or started
+    // initializing) for this exact document identity - see
+    // initializedForKeyRef's declaration for why this is necessary
+    // beyond hasInitializedRef alone. Set immediately (not just on
+    // completion) so a second effect fire while an async load is still
+    // in flight doesn't kick off a duplicate.
+    const targetKey = documentToEdit?.id ?? 'new';
+    if (initializedForKeyRef.current === targetKey) return;
+    initializedForKeyRef.current = targetKey;
 
     // Draft restoration takes priority over both the legacy prop-based
     // restore and the normal edit/create-mode initialization. Only
