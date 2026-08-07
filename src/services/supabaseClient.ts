@@ -9,11 +9,14 @@
  * (App.tsx, AuthPanel.tsx, ComparisonService.ts) continues to work
  * completely unchanged.
  */
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Hardcoded Supabase credentials for production deployment
+// Hardcoded Supabase credentials for production deployment.
 const supabaseUrl = 'https://rqovkmjsdwzggebvwvdk.supabase.co';
-const supabaseAnonKey = 'eyJhbGci••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••';
+
+const supabaseAnonKey =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxb3ZrbWpzZHd6Z2dlYnZ3dmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxNDQ0MzMsImV4cCI6MjA5ODcyMDQzM30.A_4pG8rG4KDTxa85DSjJ1Y6wGwqMwXPL9DrlzoYjZ9M';
 
 export const isSupabaseConfigured = (): boolean => {
   return !!(supabaseUrl && supabaseAnonKey);
