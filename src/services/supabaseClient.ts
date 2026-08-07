@@ -11,9 +11,9 @@
  */
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const globalProcess = (globalThis as any).process;
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || globalProcess?.env?.SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || globalProcess?.env?.SUPABASE_ANON_KEY || '';
+// Hardcoded Supabase credentials for production deployment
+const supabaseUrl = 'https://rqovkmjsdwzggebvwvdk.supabase.co';
+const supabaseAnonKey = 'eyJhbGci••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••';
 
 export const isSupabaseConfigured = (): boolean => {
   return !!(supabaseUrl && supabaseAnonKey);
