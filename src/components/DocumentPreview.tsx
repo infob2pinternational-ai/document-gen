@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CompanyProfile, Document, DocumentItem } from '../types';
 import { dbService } from '../services/db';
 import { ArrowLeft, Printer, AlertTriangle, Download } from 'lucide-react';
@@ -10,13 +10,37 @@ interface DocumentPreviewProps {
   document: Document;
   onClose: () => void;
   isPublicShare?: boolean;
+  // Additive, defaults false - every existing caller (desktop's
+  // Documents.tsx, the public share page) renders exactly as before.
+  // The B2P ONE mobile app's DocumentView.tsx is the only caller that
+  // sets this: it shows its own unified toolbar (Back/Approve/Reject/
+  // Edit/WhatsApp/Print) above this component instead, so this
+  // component's own "Back to List" / WhatsApp / Print action row would
+  // otherwise duplicate it.
+  hideToolbar?: boolean;
 }
+
+// Resolves the canonical B2P/B2P-International/Inter-Media logo file
+// relative to import.meta.env.BASE_URL (Vite's build-time `base`
+// config) instead of a hardcoded absolute path. This component is
+// shared between the desktop web app (vite.config.ts, base: '/billing/'
+// -> these PNGs really are served at /billing/logo_*.png in
+// production) and the B2P ONE mobile app (vite.mobile.config.ts, base:
+// './' -> there is no /billing/ path in the Capacitor bundle at all).
+// Hardcoding '/billing/...' here worked for desktop by coincidence and
+// 404'd on every mobile document preview - this resolves to the
+// correct base for whichever build is actually running, so desktop's
+// resulting URL is byte-for-byte unchanged while mobile now points at
+// a real file (see vite.mobile.config.ts's publicDir, which ships the
+// same public/logo_*.png files into the mobile bundle).
+const resolveLogoFile = (file: string) => `${import.meta.env.BASE_URL}${file}`;
 
 export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   activeProfile: propProfile,
   document,
   onClose,
-  isPublicShare = false
+  isPublicShare = false,
+  hideToolbar = false
 }) => {
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,11 +69,96 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasHeight, setCanvasHeight] = useState(1050);
 
+  // Pinch-to-zoom - mobile only (hideToolbar), entirely additive on
+  // top of the fit-to-width `scale` above rather than replacing it:
+  // pinchScale is a multiplier applied to the already-scaled wrapper,
+  // so zooming in/out never touches the 800px print-fidelity canvas
+  // itself. Desktop callers never set hideToolbar, so none of this
+  // effect's listeners are ever attached - no behavior change, same as
+  // before this existed.
+  //
+  // The touchmove listener is attached manually via addEventListener
+  // rather than React's onTouchMove prop: React registers touch
+  // listeners as passive by default (for scroll performance), and a
+  // passive listener's preventDefault() is a no-op that also throws
+  // inside the handler - silently aborting everything after it,
+  // including the actual zoom state update. { passive: false } here is
+  // what makes preventDefault (needed to stop the page's own scroll
+  // from fighting the pinch) actually take effect.
+  const [pinchScale, setPinchScale] = useState(1);
+  const pinchScaleRef = useRef(1); // mirrors pinchScale, read inside the
+  // listeners below so they don't need to be re-attached on every zoom
+  // frame just to see a fresh value.
+  const pinchState = useRef<{ startDist: number; startScale: number } | null>(null);
+  const pinchCleanup = useRef<(() => void) | null>(null);
+
+  // Callback ref, not useRef+useEffect: this component shows a loading
+  // placeholder before the real canvas/wrapper mounts (see the
+  // isPublicShare/loading branches below), so a plain ref would still
+  // be null on the effect's first run and never gets attached once the
+  // wrapper actually appears (an effect with a stable dependency array
+  // doesn't re-run just because a ref's target changed). A callback
+  // ref fires exactly when the DOM node itself is attached/detached,
+  // regardless of when that happens across renders - which is what
+  // this needs. Wrapped in useCallback so its identity only changes
+  // with hideToolbar (practically never) rather than on every render -
+  // an inline (non-memoized) ref function makes React detach/reattach
+  // on every single re-render, including the ones this listener itself
+  // triggers via setPinchScale on each pinch frame.
+  const setWrapperRef = useCallback((el: HTMLDivElement | null) => {
+    pinchCleanup.current?.();
+    pinchCleanup.current = null;
+    if (!el || !hideToolbar) return;
+
+    const distance = (touches: TouchList) => {
+      const [a, b] = [touches[0], touches[1]];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchState.current = { startDist: distance(e.touches), startScale: pinchScaleRef.current };
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchState.current) {
+        e.preventDefault();
+        const dist = distance(e.touches);
+        const next = Math.min(3, Math.max(1, pinchState.current.startScale * (dist / pinchState.current.startDist)));
+        pinchScaleRef.current = next;
+        setPinchScale(next);
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinchState.current = null;
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    pinchCleanup.current = () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [hideToolbar]);
+
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
       if (width < 840) {
-        setScale(Math.min(1, (width - 36) / 800));
+        // Margin subtracted here must match whatever horizontal padding
+        // the caller's scroll container actually has, or the scaled
+        // canvas either overflows or leaves excess unused space. B2P
+        // ONE's DocumentView.tsx (hideToolbar=true path) uses a tight
+        // 16px total side padding specifically so the preview "feels
+        // like a real document" rather than a small floating card;
+        // desktop's own narrow-viewport fallback (hideToolbar=false,
+        // e.g. Documents.tsx in a narrow window) keeps a bit more
+        // breathing room at 36px. Same formula either way, just tuned
+        // to each caller's actual available width.
+        const margin = hideToolbar ? 8 : 36;
+        setScale(Math.min(1, (width - margin) / 800));
       } else {
         setScale(1);
       }
@@ -57,7 +166,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [hideToolbar]);
 
   // Dynamically observe and measure canvas height to avoid vertical clipping
   useEffect(() => {
@@ -100,11 +209,11 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               const lowerName = (prof.name || '').toLowerCase();
               let mappedLogo = prof.logo_url;
               if (lowerName.includes('international')) {
-                mappedLogo = '/billing/logo_b2p_international.png?v=5';
+                mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
               } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
-                mappedLogo = '/billing/logo_b2p_intermedia.png?v=5';
+                mappedLogo = resolveLogoFile('logo_b2p_intermedia.png?v=5');
               } else if (lowerName.includes('b2p')) {
-                mappedLogo = '/billing/logo_b2p_international.png?v=5';
+                mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
               }
               const mappedProf = { ...prof, logo_url: mappedLogo } as CompanyProfile;
               setActiveProfile(mappedProf);
@@ -126,11 +235,11 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             const lowerName = prof.name.toLowerCase();
             let mappedLogo = prof.logo_url;
             if (lowerName.includes('international')) {
-              mappedLogo = '/billing/logo_b2p_international.png?v=5';
+              mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
             } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
-              mappedLogo = '/billing/logo_b2p_intermedia.png?v=5';
+              mappedLogo = resolveLogoFile('logo_b2p_intermedia.png?v=5');
             } else if (lowerName.includes('b2p')) {
-              mappedLogo = '/billing/logo_b2p_international.png?v=5';
+              mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
             }
             const mappedProf = { ...prof, logo_url: mappedLogo };
             setActiveProfile(mappedProf);
@@ -224,51 +333,67 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* Action Header */}
-      <div className="no-print" style={{
-        display: 'flex',
-        justifyContent: isPublicShare ? 'center' : 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        background: 'var(--bg-card)',
-        padding: '1rem 1.5rem',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--border-color)',
-        width: '100%',
-        gap: '0.75rem'
-      }}>
-        {!isPublicShare && (
-          <button onClick={onClose} className="btn-secondary">
-            <ArrowLeft size={16} />
-            <span>Back to List</span>
-          </button>
-        )}
-        <div className="preview-actions" style={{ width: isPublicShare ? '100%' : 'auto', justifyContent: 'center' }}>
-          {document.customer_phone && !isPublicShare && document.status === 'approved' && (
-            <button onClick={handleWhatsAppSend} className="btn-secondary" style={{ color: '#25D366', borderColor: '#25D366' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '6px' }}>
-                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.49-4.22c1.7.994 3.551 1.54 5.46 1.545 5.867 0 10.639-4.76 10.643-10.627.002-2.842-1.096-5.513-3.093-7.514S14.86 3.1 12.016 3.1C6.15 3.1 1.38 7.86 1.377 13.728c-.001 1.955.513 3.868 1.49 5.58l-.995 3.637 3.733-.979zm11.168-5.32c-.305-.152-1.802-.888-2.082-.99-.28-.102-.484-.152-.688.152-.204.305-.79.99-.969 1.2-.178.204-.356.229-.66.076-.305-.152-1.289-.475-2.455-1.515-.908-.81-1.52-1.81-1.698-2.115-.178-.305-.019-.47.133-.621.137-.136.305-.356.457-.534.152-.178.204-.305.305-.508.102-.204.051-.381-.025-.533-.076-.152-.688-1.659-.942-2.27-.248-.596-.5-.515-.688-.525-.178-.01-.382-.01-.586-.01-.204 0-.535.076-.814.381-.28.305-1.069 1.042-1.069 2.54 0 1.498 1.09 2.946 1.242 3.149.152.204 2.146 3.277 5.198 4.59.726.313 1.293.5 1.734.64.73.232 1.394.2 1.918.12.584-.087 1.802-.737 2.057-1.448.255-.71.255-1.321.178-1.448-.076-.127-.28-.203-.585-.355z"/>
-              </svg>
-              <span>Send via WhatsApp</span>
+      {/* Action Header - suppressed when the caller (B2P ONE mobile app)
+          renders its own unified toolbar instead; see hideToolbar. */}
+      {!hideToolbar && (
+        <div className="no-print" style={{
+          display: 'flex',
+          justifyContent: isPublicShare ? 'center' : 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          background: 'var(--bg-card)',
+          padding: '1rem 1.5rem',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-color)',
+          width: '100%',
+          gap: '0.75rem'
+        }}>
+          {!isPublicShare && (
+            <button onClick={onClose} className="btn-secondary">
+              <ArrowLeft size={16} />
+              <span>Back to List</span>
             </button>
           )}
-          <button onClick={handlePrint} className="btn-primary" style={{ flexGrow: isPublicShare ? 1 : 0, justifyContent: 'center' }}>
-            {isPublicShare ? <Download size={16} /> : <Printer size={16} />}
-            <span>{isPublicShare ? 'Download / Print PDF' : 'Print / Export PDF'}</span>
-          </button>
+          <div className="preview-actions" style={{ width: isPublicShare ? '100%' : 'auto', justifyContent: 'center' }}>
+            {document.customer_phone && !isPublicShare && document.status === 'approved' && (
+              <button onClick={handleWhatsAppSend} className="btn-secondary" style={{ color: '#25D366', borderColor: '#25D366' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '6px' }}>
+                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.49-4.22c1.7.994 3.551 1.54 5.46 1.545 5.867 0 10.639-4.76 10.643-10.627.002-2.842-1.096-5.513-3.093-7.514S14.86 3.1 12.016 3.1C6.15 3.1 1.38 7.86 1.377 13.728c-.001 1.955.513 3.868 1.49 5.58l-.995 3.637 3.733-.979zm11.168-5.32c-.305-.152-1.802-.888-2.082-.99-.28-.102-.484-.152-.688.152-.204.305-.79.99-.969 1.2-.178.204-.356.229-.66.076-.305-.152-1.289-.475-2.455-1.515-.908-.81-1.52-1.81-1.698-2.115-.178-.305-.019-.47.133-.621.137-.136.305-.356.457-.534.152-.178.204-.305.305-.508.102-.204.051-.381-.025-.533-.076-.152-.688-1.659-.942-2.27-.248-.596-.5-.515-.688-.525-.178-.01-.382-.01-.586-.01-.204 0-.535.076-.814.381-.28.305-1.069 1.042-1.069 2.54 0 1.498 1.09 2.946 1.242 3.149.152.204 2.146 3.277 5.198 4.59.726.313 1.293.5 1.734.64.73.232 1.394.2 1.918.12.584-.087 1.802-.737 2.057-1.448.255-.71.255-1.321.178-1.448-.076-.127-.28-.203-.585-.355z"/>
+                </svg>
+                <span>Send via WhatsApp</span>
+              </button>
+            )}
+            <button onClick={handlePrint} className="btn-primary" style={{ flexGrow: isPublicShare ? 1 : 0, justifyContent: 'center' }}>
+              {isPublicShare ? <Download size={16} /> : <Printer size={16} />}
+              <span>{isPublicShare ? 'Download / Print PDF' : 'Print / Export PDF'}</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Scaling Wrapper for Mobile Responsiveness */}
-      <div 
+      {/* Scaling Wrapper for Mobile Responsiveness. pinchScale (mobile
+          only, see the touch-listener effect above) is a plain CSS
+          transform on top of this already fit-to-width box - the
+          browser accounts for transformed bounds in the ancestor's
+          scrollable area, so once zoomed in past the viewport, normal
+          single-finger drag within .owner-preview-screen's existing
+          scroll container pans around it with no extra pan logic
+          needed here. touchAction disables the browser's own native
+          pinch-zoom only on mobile, so it can't double-apply against
+          our own transform. */}
+      <div
+        ref={setWrapperRef}
         className="document-canvas-wrapper"
         style={{
           width: scale < 1 ? `${800 * scale}px` : '100%',
-          overflow: 'hidden',
+          overflow: hideToolbar ? 'visible' : 'hidden',
           display: 'flex',
           justifyContent: 'flex-start',
           height: scale < 1 ? `${canvasHeight * scale}px` : 'auto',
-          margin: '0 auto'
+          margin: '0 auto',
+          transform: pinchScale !== 1 ? `scale(${pinchScale})` : undefined,
+          transformOrigin: 'top center',
+          touchAction: hideToolbar ? 'pan-x pan-y' : undefined
         }}
       >
         {/* Printable Sheet Canvas */}
