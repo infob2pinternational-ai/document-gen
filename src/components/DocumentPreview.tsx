@@ -4,6 +4,7 @@ import { dbService } from '../services/db';
 import { ArrowLeft, Printer, AlertTriangle, Download } from 'lucide-react';
 import { calculateDocumentTotals } from '../utils/calculations';
 import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
+import { resolveProfileLogo } from '../utils/resolveProfileLogo';
 
 interface DocumentPreviewProps {
   activeProfile: CompanyProfile | null;
@@ -19,21 +20,6 @@ interface DocumentPreviewProps {
   // otherwise duplicate it.
   hideToolbar?: boolean;
 }
-
-// Resolves the canonical B2P/B2P-International/Inter-Media logo file
-// relative to import.meta.env.BASE_URL (Vite's build-time `base`
-// config) instead of a hardcoded absolute path. This component is
-// shared between the desktop web app (vite.config.ts, base: '/billing/'
-// -> these PNGs really are served at /billing/logo_*.png in
-// production) and the B2P ONE mobile app (vite.mobile.config.ts, base:
-// './' -> there is no /billing/ path in the Capacitor bundle at all).
-// Hardcoding '/billing/...' here worked for desktop by coincidence and
-// 404'd on every mobile document preview - this resolves to the
-// correct base for whichever build is actually running, so desktop's
-// resulting URL is byte-for-byte unchanged while mobile now points at
-// a real file (see vite.mobile.config.ts's publicDir, which ships the
-// same public/logo_*.png files into the mobile bundle).
-const resolveLogoFile = (file: string) => `${import.meta.env.BASE_URL}${file}`;
 
 export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   activeProfile: propProfile,
@@ -206,16 +192,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             let profileToUse = activeProfile;
             if (!profileToUse && publicRes.profile) {
               const prof = publicRes.profile;
-              const lowerName = (prof.name || '').toLowerCase();
-              let mappedLogo = prof.logo_url;
-              if (lowerName.includes('international')) {
-                mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
-              } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
-                mappedLogo = resolveLogoFile('logo_b2p_intermedia.png?v=5');
-              } else if (lowerName.includes('b2p')) {
-                mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
-              }
-              const mappedProf = { ...prof, logo_url: mappedLogo } as CompanyProfile;
+              const mappedProf = { ...prof, logo_url: resolveProfileLogo(prof) } as CompanyProfile;
               setActiveProfile(mappedProf);
               profileToUse = mappedProf;
             }
@@ -232,16 +209,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         if (!profileToUse) {
           const prof = await dbService.getProfileById(document.company_id);
           if (prof) {
-            const lowerName = prof.name.toLowerCase();
-            let mappedLogo = prof.logo_url;
-            if (lowerName.includes('international')) {
-              mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
-            } else if (lowerName.includes('inter media') || lowerName.includes('inter-media')) {
-              mappedLogo = resolveLogoFile('logo_b2p_intermedia.png?v=5');
-            } else if (lowerName.includes('b2p')) {
-              mappedLogo = resolveLogoFile('logo_b2p_international.png?v=5');
-            }
-            const mappedProf = { ...prof, logo_url: mappedLogo };
+            const mappedProf = { ...prof, logo_url: resolveProfileLogo(prof) };
             setActiveProfile(mappedProf);
             profileToUse = mappedProf;
           }
@@ -305,6 +273,13 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
       default: return 'DOCUMENT';
     }
   };
+
+  // Same resolution ProfileSwitcher.tsx uses for its own logo, so both
+  // screens always render the identical asset - see resolveProfileLogo's
+  // own comment for why activeProfile.logo_url can't be rendered as-is
+  // (it may hold a legacy desktop-only /billing/... path that 404s here
+  // on mobile).
+  const logoSrc = resolveProfileLogo(activeProfile);
 
 
   if (loading) {
@@ -414,7 +389,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           margin: '0'
         }}>
         {/* Logo Watermark */}
-        {activeProfile.logo_url && (
+        {logoSrc && (
           <div style={{
             position: 'absolute',
             top: '50%',
@@ -429,9 +404,9 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
             width: '320px',
             height: '320px'
           }}>
-            <img 
-              src={activeProfile.logo_url} 
-              alt="Watermark" 
+            <img
+              src={logoSrc}
+              alt="Watermark"
               loading="lazy"
               style={{
                 width: '100%',
@@ -455,11 +430,11 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
         }}>
           {/* Left Column: Company Info */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '60%' }}>
-            {activeProfile.logo_url ? (
-              <img 
-                src={activeProfile.logo_url} 
-                alt={activeProfile.name} 
-                style={{ height: '90px', width: 'auto', display: 'block', objectFit: 'contain', alignSelf: 'flex-start' }} 
+            {logoSrc ? (
+              <img
+                src={logoSrc}
+                alt={activeProfile.name}
+                style={{ height: '90px', width: 'auto', display: 'block', objectFit: 'contain', alignSelf: 'flex-start' }}
               />
             ) : (
               <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>{activeProfile.name}</h2>

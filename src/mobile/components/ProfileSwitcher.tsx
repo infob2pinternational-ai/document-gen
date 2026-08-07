@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CompanyProfile } from '../../types';
 import { ChevronDown } from 'lucide-react';
+import { resolveProfileLogo } from '../../utils/resolveProfileLogo';
 
 interface ProfileSwitcherProps {
   profiles: CompanyProfile[];
@@ -35,9 +36,9 @@ export const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({ profiles, acti
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
-          {activeProfile?.logo_url ? (
+          {resolveProfileLogo(activeProfile) ? (
             <img
-              src={activeProfile.logo_url}
+              src={resolveProfileLogo(activeProfile)}
               alt="Logo"
               style={{ width: '26px', height: '26px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 }}
             />
@@ -99,8 +100,8 @@ export const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({ profiles, acti
                 fontSize: '0.85rem'
               }}
             >
-              {p.logo_url ? (
-                <img src={p.logo_url} alt="Logo" loading="lazy" style={{ width: '20px', height: '20px', borderRadius: '2px', objectFit: 'cover' }} />
+              {resolveProfileLogo(p) ? (
+                <img src={resolveProfileLogo(p)} alt="Logo" loading="lazy" style={{ width: '20px', height: '20px', borderRadius: '2px', objectFit: 'cover' }} />
               ) : (
                 <div style={{
                   width: '20px', height: '20px', borderRadius: '2px',

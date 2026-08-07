@@ -26,6 +26,17 @@ export default defineConfig({
   // root, so Supabase env vars silently never loaded for this build -
   // this line is the fix.
   envDir: '../../',
+  // Same story as envDir above, for the same reason: publicDir defaults
+  // to '<root>/public' (i.e. src/mobile/public, which doesn't exist),
+  // NOT '<project root>/public', when `root` is overridden. Without this,
+  // the top-level public/ directory - including logo_b2p_*.png, which
+  // ProfileSwitcher.tsx and DocumentPreview.tsx both resolve against
+  // import.meta.env.BASE_URL (see src/utils/resolveProfileLogo.ts) -
+  // was silently never copied into dist/mobile, so those <img> tags
+  // pointed at a URL that resolved correctly but 404'd because the file
+  // simply wasn't shipped. This points it at the same public/ directory
+  // the desktop build (vite.config.ts) already uses.
+  publicDir: '../../public',
   build: {
     outDir: '../../dist/mobile',
     emptyOutDir: true
