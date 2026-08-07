@@ -345,9 +345,11 @@ export const OwnerApp: React.FC = () => {
       <PullToRefresh onRefresh={refreshActiveCompanyData}>
         {effectiveTab === 'home' && canAccessModule(role, 'dashboard') && (
           <Home
-            userName={user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Owner'}
+            userName={user?.user_metadata?.full_name || user?.email?.split('@')[0] || ''}
             activeProfile={activeProfile}
             documents={documents}
+            customers={customers}
+            services={services}
             loading={dataLoading}
             onViewDocument={handleViewDocument}
             onGoToPending={() => setTab('pending')}
