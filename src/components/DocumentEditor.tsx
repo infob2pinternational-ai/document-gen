@@ -102,6 +102,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // Guards the mount effect below from re-running its restore-or-init
   // logic if activeProfile happens to change identity after mount.
   const hasInitializedRef = useRef(false);
+  // Guards generateSequenceNumber() against a slower, earlier request
+  // resolving after a faster, later one - without this, rapidly
+  // switching Document Type (e.g. Tax Invoice -> Non-Tax Invoice) could
+  // let the stale Tax Invoice response land last and silently overwrite
+  // the correct Non-Tax Invoice number. Each call captures its own
+  // token; a call only applies its result if it's still the latest one
+  // issued by the time it resolves.
+  const sequenceRequestRef = useRef(0);
   // Tracks which document identity (its id, or 'new') the init effect
   // below has already run for. Needed in addition to hasInitializedRef:
   // that effect depends on `activeProfile`, and App.tsx's loadData()
@@ -450,6 +458,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // Sequence generator
   const generateSequenceNumber = async (type: DocumentType) => {
     if (!activeProfile) return;
+    const requestId = ++sequenceRequestRef.current;
     
     let prefix = 'INV/';
     let startSeq = 1001;
@@ -471,12 +480,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       startSeq = Number(activeProfile.non_tax_start_number) || 1001;
     }
 
-    // Set immediate non-blank default
+    // Set immediate non-blank default - only if no newer request has
+    // been issued since this one started (guards the synchronous part
+    // too, in case multiple calls somehow queue before any await returns).
+    if (sequenceRequestRef.current !== requestId) return;
     setSequenceNumber(startSeq);
     setDocNumber(`${prefix}${startSeq}`);
 
     try {
       const allDocs = await dbService.getDocuments(activeProfile.id);
+      // Stale check: a newer type may have been selected while this
+      // request was in flight - discard this result rather than let it
+      // overwrite the correct, newer one.
+      if (sequenceRequestRef.current !== requestId) return;
       
       let maxExistingSeq = 0;
       allDocs.forEach(d => {
@@ -772,7 +788,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 <label className="form-label">Document Type</label>
                 <select 
                   value={docType} 
-                  onChange={(e) => setDocType(e.target.value as DocumentType)}
+                  onChange={(e) => {
+                    const newType = e.target.value as DocumentType;
+                    setDocType(newType);
+                    // Fix: switching document type previously only updated
+                    // docType state - the already-generated docNumber (from
+                    // whatever type was selected before, e.g. the 'invoice'
+                    // default on mount) was never regenerated, so a Tax
+                    // Invoice number could silently be saved on a Non-Tax
+                    // Invoice. This select is disabled whenever editing an
+                    // existing document (documentToEdit set), so this only
+                    // ever fires while creating a new one.
+                    generateSequenceNumber(newType);
+                  }}
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
                   <option value="invoice">Tax Invoice</option>
