@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { CompanyProfile, Document, Customer, Service } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
@@ -630,14 +630,60 @@ function App() {
     }
   }, [user]);
 
+  // Cross-references new-document drafts against the currently loaded
+  // documents list, deleting (from actual storage, not just the
+  // rendered list) any draft whose content has clearly already been
+  // captured in a real saved document. Deliberately does NOT touch
+  // existing-document drafts (documentId set) - those are already
+  // cleaned up directly by their own save flow using the same
+  // doc:{id} key, and there's no safe way to tell a stale edit-draft
+  // from a genuinely in-progress one without a full content diff, so
+  // this cross-reference only applies where the match signal is
+  // strong: exact document_number + customer_name (+ document_type
+  // when available) against an already-saved document. Matching on
+  // customer name alone is deliberately NOT sufficient - a customer
+  // can have multiple genuinely different unsaved drafts in progress.
+  // useCallback with no deps: takes both lists as parameters rather
+  // than closing over component state, so it's a stable reference
+  // usable safely in an effect's dependency array.
+  const pruneObsoleteDrafts = useCallback((rawDrafts: DraftSummary[], docs: Document[]): DraftSummary[] => {
+    return rawDrafts.filter(draft => {
+      if (draft.documentId) return true; // existing-document drafts: leave alone, see comment above
+      if (!draft.documentNumber || !draft.customerName) return true; // not enough identity info to safely match
+
+      const alreadySaved = docs.some(d =>
+        d.document_number === draft.documentNumber &&
+        d.customer_name.trim().toLowerCase() === draft.customerName.trim().toLowerCase() &&
+        (!draft.docType || d.document_type === draft.docType)
+      );
+
+      if (alreadySaved) {
+        deleteDraft(draft.draftKey); // actually removes it from storage, not just the rendered list
+        return false;
+      }
+      return true;
+    });
+  }, []);
+
   // Check for recoverable drafts on startup (Phase A3: multi-draft registry;
-  // Phase A4: now includes ComparisonEditor drafts too).
+  // Phase A4: now includes ComparisonEditor drafts too). Loads the raw
+  // registry only - documents is still empty at this exact point
+  // (loadData()'s fetch hasn't resolved yet), so there's nothing
+  // meaningful to prune here yet. The effect below (keyed on
+  // `documents`) runs right after this on the same mount, and again on
+  // every subsequent load/refresh/Realtime update - that's what
+  // actually clears a stale banner for an already-saved document,
+  // matching Fix 2.
   useEffect(() => {
     setRecoverableDrafts(getRecoverableDrafts());
   }, []);
 
+  useEffect(() => {
+    setRecoverableDrafts(prev => pruneObsoleteDrafts(prev, documents));
+  }, [documents, pruneObsoleteDrafts]);
+
   const refreshRecoverableDrafts = () => {
-    setRecoverableDrafts(getRecoverableDrafts());
+    setRecoverableDrafts(pruneObsoleteDrafts(getRecoverableDrafts(), documents));
   };
 
   const handleRestoreDraft = (summary: DraftSummary) => {
