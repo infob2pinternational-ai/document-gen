@@ -40,6 +40,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   onRefreshDocs,
   draftToRestore
 }) => {
+  // Profile-specific rule: B2P Inter-Media Solutions only issues Tax
+  // Invoices - Non-Tax Invoice is not a valid document type for this
+  // profile (see the Document Type dropdown and handleSaveDoc below).
+  // Uses the same name-substring identification pattern already
+  // established by the existing isB2PInternational check further down
+  // this file, per the explicit instruction to reuse the existing
+  // profile identification mechanism rather than add a new one.
+  const isB2PInterMediaSolutions = !!activeProfile?.name?.toLowerCase().includes('inter-media');
+
   // Database Libraries
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -566,6 +575,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       alert('To save a Tax Invoice, your Company GSTIN is mandatory. Please add your GSTIN in Settings > Company Profile.');
       return;
     }
+    // Profile-specific rule: B2P Inter-Media Solutions cannot save a
+    // Non-Tax Invoice under any circumstances. The Document Type
+    // dropdown already hides this option, but that alone is not the
+    // enforcement mechanism - this check is the actual backstop, so a
+    // Non-Tax Invoice can never reach the database for this profile
+    // regardless of how docType ended up set to that value.
+    if (isB2PInterMediaSolutions && docType === 'non_tax_invoice') {
+      alert('Non-Tax Invoice is not available for B2P Inter-Media Solutions. This profile issues Tax Invoices only.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -804,7 +823,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
                   <option value="invoice">Tax Invoice</option>
-                  <option value="non_tax_invoice">Invoice</option>
+                  {/* Profile-specific rule: B2P Inter-Media Solutions only
+                      issues Tax Invoices - Non-Tax Invoice is not a valid
+                      document type for this profile, so it's not offered
+                      as a choice. Backed up by a hard save-time check
+                      below (handleSaveDoc) - this UI hiding alone is not
+                      the enforcement mechanism. */}
+                  {!isB2PInterMediaSolutions && (
+                    <option value="non_tax_invoice">Invoice</option>
+                  )}
                   <option value="proforma_invoice">Proforma Invoice</option>
                   <option value="quotation">Quotation</option>
                   <option value="work_order">Work Order</option>
