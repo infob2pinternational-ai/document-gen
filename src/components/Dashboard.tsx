@@ -14,6 +14,11 @@ import {
 
 interface DashboardProps {
   role: string;
+  // Logged-in user's auth email (Supabase `user.email`). Optional purely
+  // for prop-drilling safety (e.g. logged-out/loading states) - treated
+  // as "no restriction" when absent, same as every other optional field
+  // in this file.
+  userEmail?: string;
   activeProfile: CompanyProfile | null;
   profiles: CompanyProfile[];
   documents: Document[];
@@ -23,8 +28,20 @@ interface DashboardProps {
   setCurrentTab: (tab: string) => void;
 }
 
+// Per-user financial-visibility restriction (staff Dashboard only - not a
+// role, since other staff accounts must keep seeing revenue). These two
+// specific accounts should not see cash-collected figures on the
+// Dashboard, but must still see everything operational (document counts,
+// customer names, document numbers, etc.) and must still see every
+// financial field while actually creating/editing a document - this
+// constant is only ever read inside Dashboard.tsx, nowhere else.
+// Matched against the email's local part (before '@'), the same way this
+// file already renders "Created By" from doc.created_by_email.split('@')[0].
+const FINANCIALS_HIDDEN_FOR_USERS = ['brutf5354', 'sivasatheesan33'];
+
 export const Dashboard: React.FC<DashboardProps> = ({
   role,
+  userEmail,
   activeProfile,
   profiles,
   documents,
@@ -33,6 +50,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDeleteDocument,
   setCurrentTab
 }) => {
+  const hideFinancials = FINANCIALS_HIDDEN_FOR_USERS.includes(
+    (userEmail || '').split('@')[0].trim().toLowerCase()
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [stats, setStats] = useState({
@@ -87,27 +107,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* KPI Cards Grid */}
       <div className="grid-4">
-        {/* Revenue */}
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '12px',
-            background: 'rgba(16, 185, 129, 0.1)',
-            color: 'var(--accent-success)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <TrendingUp size={24} />
+        {/* Revenue - hidden entirely (not just blanked) for the two
+            restricted accounts; every other KPI card below is
+            operational, not financial, and stays visible for everyone. */}
+        {!hideFinancials && (
+          <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              background: 'rgba(16, 185, 129, 0.1)',
+              color: 'var(--accent-success)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <TrendingUp size={24} />
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>Revenue (Paid)</p>
+              <h3 className="mono" style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem' }}>
+                {formatCurrency(stats.revenue, activeProfile?.currency || 'INR')}
+              </h3>
+            </div>
           </div>
-          <div>
-            <p style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>Revenue (Paid)</p>
-            <h3 className="mono" style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem' }}>
-              {formatCurrency(stats.revenue, activeProfile?.currency || 'INR')}
-            </h3>
-          </div>
-        </div>
+        )}
 
         {/* Invoices */}
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
@@ -353,12 +377,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.7rem' }}>DOCUMENTS</span>
                     <span className="mono" style={{ fontWeight: 600 }}>{docCount}</span>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.7rem' }}>COLLECTED REVENUE</span>
-                    <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-success)' }}>
-                      {formatCurrency(revenue, profile.currency)}
-                    </span>
-                  </div>
+                  {/* Only the Collected Revenue amount is restricted here -
+                      DOCUMENTS count above stays visible for everyone. */}
+                  {!hideFinancials && (
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.7rem' }}>COLLECTED REVENUE</span>
+                      <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-success)' }}>
+                        {formatCurrency(revenue, profile.currency)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

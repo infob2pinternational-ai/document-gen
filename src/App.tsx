@@ -1387,8 +1387,9 @@ function App() {
           /* Normal Tab routing rendering */
           <>
              {currentTab === 'dashboard' && (
-              <Dashboard 
+              <Dashboard
                 role={user?.user_metadata?.role || 'admin'}
+                userEmail={user?.email}
                 activeProfile={activeProfile}
                 profiles={profiles}
                 documents={documents}
