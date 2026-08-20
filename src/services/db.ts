@@ -112,6 +112,7 @@ CREATE TABLE documents (
   tax_total NUMERIC NOT NULL DEFAULT 0,
   discount_total NUMERIC NOT NULL DEFAULT 0,
   total NUMERIC NOT NULL DEFAULT 0,
+  advance NUMERIC NOT NULL DEFAULT 0,
   notes TEXT,
   terms TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
@@ -236,6 +237,11 @@ function buildSyncPayload(companyName: string, doc: Document, items: DocumentIte
     date: doc.date,
     subtotal: doc.subtotal,
     discount_total: doc.discount_total || 0,
+    // Optional advance payment - 0 for documents where none was entered
+    // (including every pre-existing document saved before this field
+    // existed). Balance Due is deliberately NOT sent as its own column;
+    // it's always derivable as total - advance, so it can't go stale.
+    advance: doc.advance || 0,
     taxable_amount: (doc.subtotal || 0) - (doc.discount_total || 0),
     tax_total: doc.tax_total,
     total: doc.total,

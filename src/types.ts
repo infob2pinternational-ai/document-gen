@@ -95,6 +95,13 @@ export interface Document {
   tax_total: number;
   discount_total: number;
   total: number;
+  // Optional payment already received/paid against this document's Grand
+  // Total ("total" above). Missing/null/undefined/0 all mean "no advance
+  // entered" - never shown in the UI/PDF/WhatsApp share and never
+  // affects `total` itself. Balance Due is always derived as
+  // `total - advance` (see calculateBalanceDue in utils/calculations.ts)
+  // rather than stored, so it can never go stale.
+  advance?: number;
   notes?: string;
   terms?: string;
   created_by_email?: string;

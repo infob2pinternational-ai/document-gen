@@ -123,3 +123,32 @@ export function calculateDocumentTotals(
     amountInWords
   };
 }
+
+/**
+ * Optional "Advance" payment support. Kept deliberately separate from
+ * calculateDocumentTotals above (which computes the Grand Total) rather
+ * than folded into it - an advance payment must NEVER change the Grand
+ * Total, it only feeds a separately-displayed Balance Due.
+ *
+ * Normalizes a raw advance value the same way discountTotal is
+ * normalized above: null/undefined/empty-string/NaN/Infinity/negative
+ * all collapse to 0, i.e. "no advance entered". Accepts a raw input
+ * string too so form `onChange` handlers can call it directly.
+ */
+export function normalizeAdvance(advance: number | string | null | undefined): number {
+  const n = Number(advance);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Balance Due = Grand Total − Advance. Always derived from the Grand
+ * Total at display/save time (never stored as its own authoritative
+ * field), so it can never go stale. Clamped to never render negative -
+ * the actual guard against saving an advance greater than the Grand
+ * Total is the validation check in DocumentEditor's handleSaveDoc; this
+ * clamp is only a last-resort display safety net (e.g. for an old row
+ * edited directly in the database).
+ */
+export function calculateBalanceDue(grandTotal: number, advance: number | string | null | undefined): number {
+  return Math.max(0, grandTotal - normalizeAdvance(advance));
+}

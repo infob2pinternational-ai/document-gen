@@ -1,5 +1,6 @@
 import type { Document } from '../types';
 import { dbService } from '../services/db';
+import { normalizeAdvance, calculateBalanceDue } from './calculations';
 
 /**
  * Normalizes a stored phone number into wa.me's expected format
@@ -42,6 +43,16 @@ export function shareDocumentViaWhatsApp(
 
   const docDate = doc.date ? doc.date.split('-').reverse().join('/') : '';
   const formattedTotal = Number(doc.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Optional Advance / Balance Due line - only added to the message when
+  // an advance was actually entered (doc.advance is undefined/null for
+  // any document saved before this feature existed, which
+  // normalizeAdvance safely treats as "no advance").
+  const advanceAmount = normalizeAdvance(doc.advance);
+  const balanceDue = calculateBalanceDue(Number(doc.total) || 0, advanceAmount);
+  const advanceLine = advanceAmount > 0
+    ? `💵 Advance: ₹${advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+      `📌 Balance Due: ₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n`
+    : `\n`;
   const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
   const shareLink = baseUrl + '/doc/' + doc.id;
 
@@ -69,7 +80,8 @@ export function shareDocumentViaWhatsApp(
     `Thank you for choosing us. Please find your ${docTypeLabel}.\n\n` +
     `📄 ${docNoLabel} No.: ${doc.document_number}\n` +
     `📅 Date: ${docDate}\n` +
-    `💰 Amount: ₹${formattedTotal}\n\n` +
+    `💰 Amount: ₹${formattedTotal}\n` +
+    advanceLine +
     `🔗 *View / Download ${docNoLabel}*\n` +
     `${shareLink}\n\n` +
     `Should you require any clarification or revisions, please feel free to contact us.\n\n` +

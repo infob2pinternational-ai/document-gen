@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, Trash2, GripVertical, Save, Pencil, Copy, AlertTriangl
 import { LineItemModal } from './LineItemModal';
 import { DocumentSuccessDialog } from './DocumentSuccessDialog';
 import { DocumentPreview } from './DocumentPreview';
-import { calculateDocumentTotals } from '../utils/calculations';
+import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
 import {
   getDraftKey,
   getTabId,
@@ -62,6 +62,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountTotal, setDiscountTotal] = useState<number>(0);
+  // Optional "Advance" payment already received against this document's
+  // Grand Total - behaves like discountTotal above (a plain numeric
+  // amount, 0 means "not entered"). See utils/calculations.ts for the
+  // normalization/Balance Due helpers shared with DocumentPreview.tsx.
+  const [advance, setAdvance] = useState<number>(0);
 
   // Customer Billing Details
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
@@ -135,11 +140,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const prevDraftKeyRef = useRef<string | null>(null);
 
   const buildDraftFields = useCallback(() => ({
-    docType, docNumber, sequenceNumber, date, notes, terms, discountTotal,
+    docType, docNumber, sequenceNumber, date, notes, terms, discountTotal, advance,
     selectedCustomerId, customerName, customerEmail, customerPhone,
     customerAddress, customerGstin, colDesc, colQty, colUnit, colRate, colAmt, items
   }), [
-    docType, docNumber, sequenceNumber, date, notes, terms, discountTotal,
+    docType, docNumber, sequenceNumber, date, notes, terms, discountTotal, advance,
     selectedCustomerId, customerName, customerEmail, customerPhone,
     customerAddress, customerGstin, colDesc, colQty, colUnit, colRate, colAmt, items
   ]);
@@ -302,6 +307,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         setNotes(f.notes);
         setTerms(f.terms);
         setDiscountTotal(f.discountTotal);
+        // f.advance is undefined for any draft saved before this field
+        // existed - normalizeAdvance collapses that to 0 safely.
+        setAdvance(normalizeAdvance(f.advance));
         setSelectedCustomerId(f.selectedCustomerId);
         setCustomerName(f.customerName);
         setCustomerEmail(f.customerEmail);
@@ -331,6 +339,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       setNotes(draftToRestore.notes);
       setTerms(draftToRestore.terms);
       setDiscountTotal(draftToRestore.discountTotal);
+      setAdvance(normalizeAdvance(draftToRestore.advance));
       setSelectedCustomerId(draftToRestore.selectedCustomerId);
       setCustomerName(draftToRestore.customerName);
       setCustomerEmail(draftToRestore.customerEmail);
@@ -360,6 +369,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             setNotes(document.notes || '');
             setTerms(document.terms || '');
             setDiscountTotal(Number(document.discount_total));
+            // document.advance is undefined/null for any document saved
+            // before this feature existed - normalizeAdvance collapses
+            // that to 0 (no advance) rather than crashing or showing NaN.
+            setAdvance(normalizeAdvance(document.advance));
 
             // Customer
             setSelectedCustomerId(document.customer_id || '');
@@ -404,13 +417,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       setItems([]);
       setNotes('');
       setDiscountTotal(0);
+      setAdvance(0);
       setSelectedCustomerId('');
       setCustomerName('');
       setCustomerEmail('');
       setCustomerPhone('');
       setCustomerAddress('');
       setCustomerGstin('');
-      
+
       // Auto-sequence numbers
       generateSequenceNumber(docType);
       hasInitializedRef.current = true;
@@ -448,6 +462,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     notes,
     terms,
     discountTotal,
+    advance,
     selectedCustomerId,
     customerName,
     customerEmail,
@@ -559,6 +574,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // Shared Document Totals calculations
   const { subtotal, taxableAmount, taxTotal, total, effectiveGstRate } = calculateDocumentTotals(items, discountTotal, docType);
 
+  // Optional Advance / Balance Due (kept out of calculateDocumentTotals -
+  // an advance payment must never change the Grand Total above).
+  const advanceAmount = normalizeAdvance(advance);
+  const balanceDue = calculateBalanceDue(total, advanceAmount);
+  const advanceExceedsTotal = advanceAmount > total;
+
   // Save Document
   const handleSaveDoc = async () => {
     if (!activeProfile) return;
@@ -568,6 +589,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
     if (items.length === 0) {
       alert('Please add at least one line item.');
+      return;
+    }
+    if (advanceExceedsTotal) {
+      alert('Advance cannot be greater than the Grand Total.');
       return;
     }
     const isB2PInternational = activeProfile.name.toLowerCase().includes('international');
@@ -640,6 +665,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         tax_total: taxTotal,
         discount_total: discountTotal,
         total,
+        // Always set explicitly (never omitted) so clearing an existing
+        // advance back to 0 actually updates the stored row instead of
+        // silently leaving the previous value in place.
+        advance: advanceAmount,
         notes,
         terms,
         status: 'pending_approval' // Reset status to pending_approval on edit/save (amendment)
@@ -1174,6 +1203,46 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 {total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
+
+            {/* Optional Advance - same input pattern as "Apply Discount"
+                above. Empty/0 means "no advance"; the Advance/Balance Due
+                rows below (and the equivalent rows in the PDF/WhatsApp
+                share) only render once an amount is actually entered. */}
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Advance ({activeProfile?.currency || '₹'})</label>
+              <input
+                type="number"
+                value={advance || ''}
+                onChange={(e) => setAdvance(normalizeAdvance(e.target.value))}
+                placeholder="Enter advance amount"
+                style={{ textAlign: 'right' }}
+              />
+              {advanceExceedsTotal && (
+                <span style={{ display: 'block', marginTop: '0.3rem', fontSize: '0.75rem', color: 'var(--accent-danger)' }}>
+                  Advance cannot be greater than the Grand Total.
+                </span>
+              )}
+            </div>
+
+            {advanceAmount > 0 && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Advance:</span>
+                  <span className="mono" style={{ fontWeight: 600 }}>
+                    {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                    {advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600 }}>Balance Due:</span>
+                  <span className="mono" style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent-warning)' }}>
+                    {activeProfile?.currency === 'INR' ? '₹' : '$'}
+                    {balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Terms & Notes */}
@@ -1254,6 +1323,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             setItems([]);
             setNotes('');
             setDiscountTotal(0);
+            setAdvance(0);
             setSelectedCustomerId('');
             setCustomerName('');
             setCustomerEmail('');

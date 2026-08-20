@@ -36,7 +36,19 @@ const CONFIG = {
     'tax_total',            // N
     'total',                // O
     'items_summary',        // P - human-readable line items, one cell
-    'last_synced_at'        // Q
+    'last_synced_at',       // Q
+    // 'advance' (optional payment received against `total`) is
+    // appended here, AFTER every pre-existing column, rather than
+    // inserted next to the other financial columns above. upsertDocumentRow
+    // below always rewrites a matched row's full width starting at
+    // column A - inserting a new column in the MIDDLE of this array
+    // would silently shift every column after it, but only for rows
+    // that happen to get re-saved after this change ships. Untouched
+    // older rows would keep the old column positions, so the sheet
+    // would end up with two different column layouts mixed together.
+    // Appending at the end is the only positionally-safe way to add a
+    // column here without a one-time manual re-layout of the sheet.
+    'advance'                // R
   ]
 };
 
@@ -196,6 +208,12 @@ function upsertDocumentRow(data) {
       case 'taxable_amount': return data.taxable_amount || 0;
       case 'tax_total': return data.tax_total || 0;
       case 'total': return data.total || 0;
+      // Optional advance payment - the frontend always sends a plain
+      // number (0 when none was entered), but `|| 0` also covers an
+      // older payload_version replayed from google_sync_log, or the
+      // field being omitted entirely, the same way every other numeric
+      // field above does.
+      case 'advance': return data.advance || 0;
       case 'items_summary':
         return (data.items || []).map(function (it) {
           return (it.description || '') + ' x' + (it.qty || 1) + ' @ ' + (it.rate || 0);
@@ -282,8 +300,23 @@ function getOrCreateDataSheet(ss) {
   if (!sheet) {
     sheet = ss.insertSheet(CONFIG.DATA_SHEET_NAME);
     sheet.appendRow(CONFIG.COLUMNS);
+  } else {
+    // Backfills the header row for any CONFIG.COLUMNS entries added
+    // after this sheet was first created (e.g. 'advance' above). Only
+    // ever writes cells strictly beyond the sheet's current last
+    // column, so an existing header row - and every existing data row
+    // below it - is never touched or shifted. No-op once the header
+    // row already has every configured column.
+    ensureHeaderColumns(sheet);
   }
   return sheet;
+}
+
+function ensureHeaderColumns(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol >= CONFIG.COLUMNS.length) return;
+  const missing = CONFIG.COLUMNS.slice(lastCol);
+  sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
 }
 
 /**

@@ -12,7 +12,7 @@ import {
   Check 
 } from 'lucide-react';
 import type { Document, DocumentItem, CompanyProfile } from '../types';
-import { calculateDocumentTotals } from '../utils/calculations';
+import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
 
 export interface DocumentSuccessDialogProps {
   isOpen: boolean;
@@ -100,6 +100,8 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
 
   // Calculations
   const totals = calculateDocumentTotals(items || [], document.discount_total || 0, rawDocType as any);
+  const advanceAmount = normalizeAdvance(document.advance);
+  const balanceDue = calculateBalanceDue(totals.total, advanceAmount);
 
   // Dates & Metadata
   const now = new Date();
@@ -336,6 +338,28 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
               {currencySymbol}{totals.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
+
+          {/* Advance / Balance Due - only rendered when an advance was
+              actually entered, per requirement (no blank Advance row). */}
+          {advanceAmount > 0 && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <span>Advance</span>
+                <span className="mono" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {currencySymbol}{advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Balance Due
+                </span>
+                <span className="mono" style={{ fontSize: '1.1rem', fontWeight: 800, color: '#f59e0b' }}>
+                  {currencySymbol}{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </>
+          )}
 
           {/* Amount in Words */}
           <div style={{

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { CompanyProfile, Document, DocumentItem } from '../types';
 import { dbService } from '../services/db';
 import { ArrowLeft, Printer, AlertTriangle, Download } from 'lucide-react';
-import { calculateDocumentTotals } from '../utils/calculations';
+import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
 import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
 
 interface DocumentPreviewProps {
@@ -220,6 +220,11 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   }
 
   const totals = calculateDocumentTotals(items, document.discount_total, document.document_type);
+  // Optional Advance / Balance Due - document.advance is undefined/null
+  // for any document saved before this feature existed, which
+  // normalizeAdvance safely treats as "no advance" (0).
+  const advanceAmount = normalizeAdvance(document.advance);
+  const balanceDue = calculateBalanceDue(totals.total, advanceAmount);
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -535,6 +540,35 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   {totals.total.toFixed(2)}
                 </td>
               </tr>
+
+              {/* Advance / Balance Due Rows - entirely hidden (no blank
+                  "Advance" row) unless an advance was actually entered,
+                  per requirement. Grand Total above is never affected. */}
+              {advanceAmount > 0 && (
+                <>
+                  <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>Advance</td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td className="mono" style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                      {advanceAmount.toFixed(2)}
+                    </td>
+                  </tr>
+
+                  <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.5rem', textAlign: 'right' }}>Balance Due</td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
+                    <td className="mono" style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.85rem' }}>
+                      {balanceDue.toFixed(2)}
+                    </td>
+                  </tr>
+                </>
+              )}
             </tbody>
           </table>
 
