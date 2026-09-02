@@ -203,8 +203,8 @@ export const Settings: React.FC<SettingsProps> = ({
       setQuotationStart(activeProfile.quotation_start_number || 1001);
       setWorkOrderPrefix(activeProfile.work_order_prefix || 'WO/');
       setWorkOrderStart(activeProfile.work_order_start_number || 1001);
-      setNonTaxPrefix(activeProfile.non_tax_prefix || 'NT/');
-      setNonTaxStart(activeProfile.non_tax_start_number || 1001);
+      setNonTaxPrefix(activeProfile.non_tax_prefix || activeProfile.invoice_prefix || 'INV/');
+      setNonTaxStart(activeProfile.non_tax_start_number || activeProfile.invoice_start_number || 1001);
       setGoogleSheetsUrl(activeProfile.google_sheets_url || '');
     }
   }, [activeProfile]);

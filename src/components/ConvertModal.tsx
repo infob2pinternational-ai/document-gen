@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, FileText, ArrowRight, ShieldAlert } from 'lucide-react';
 import type { Document, CompanyProfile, DocumentType } from '../types';
 
@@ -17,13 +17,24 @@ export const ConvertModal: React.FC<ConvertModalProps> = ({
   onClose,
   onConfirm
 }) => {
-  // Default selection: 'invoice' (Tax Invoice)
-  const [selectedType, setSelectedType] = useState<DocumentType>('invoice');
-
-  if (!isOpen || !document) return null;
-
   const lowerName = (activeProfile?.name || '').toLowerCase();
   const isInterMedia = lowerName.includes('inter media') || lowerName.includes('inter-media');
+  const isInternational = lowerName.includes('international');
+
+  // Default selection: 'non_tax_invoice' for International, else 'invoice'
+  const [selectedType, setSelectedType] = useState<DocumentType>(
+    isInternational ? 'non_tax_invoice' : 'invoice'
+  );
+
+  useEffect(() => {
+    if (isInternational) {
+      setSelectedType('non_tax_invoice');
+    } else if (isInterMedia) {
+      setSelectedType('invoice');
+    }
+  }, [isInternational, isInterMedia]);
+
+  if (!isOpen || !document) return null;
 
   const getSourceDocLabel = (type: string) => {
     switch (type) {
@@ -109,36 +120,53 @@ export const ConvertModal: React.FC<ConvertModalProps> = ({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {/* Tax Invoice Option */}
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '1rem',
-              borderRadius: 'var(--radius-md)',
-              border: `2px solid ${selectedType === 'invoice' ? 'var(--accent-primary)' : 'var(--border-color)'}`,
-              background: selectedType === 'invoice' ? 'rgba(37, 99, 235, 0.05)' : 'transparent',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <input
-                  type="radio"
-                  name="convertType"
-                  value="invoice"
-                  checked={selectedType === 'invoice'}
-                  onChange={() => setSelectedType('invoice')}
-                  style={{ accentColor: 'var(--accent-primary)' }}
-                />
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-                    Tax Invoice
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    Standard Tax Invoice with GST calculations
+            {!isInternational ? (
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '1rem',
+                borderRadius: 'var(--radius-md)',
+                border: `2px solid ${selectedType === 'invoice' ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                background: selectedType === 'invoice' ? 'rgba(37, 99, 235, 0.05)' : 'transparent',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <input
+                    type="radio"
+                    name="convertType"
+                    value="invoice"
+                    checked={selectedType === 'invoice'}
+                    onChange={() => setSelectedType('invoice')}
+                    style={{ accentColor: 'var(--accent-primary)' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+                      Tax Invoice
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Standard Tax Invoice with GST calculations
+                    </div>
                   </div>
                 </div>
+              </label>
+            ) : (
+              <div style={{
+                padding: '0.75rem 1rem',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(239, 68, 68, 0.05)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.8rem',
+                color: '#ef4444'
+              }}>
+                <ShieldAlert size={16} />
+                <span>Tax Invoices are not issued for B2P International.</span>
               </div>
-            </label>
+            )}
 
             {/* Non-Tax Invoice Option */}
             {!isInterMedia ? (
@@ -164,10 +192,10 @@ export const ConvertModal: React.FC<ConvertModalProps> = ({
                   />
                   <div>
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-                      Non-Tax Invoice
+                      Invoice
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      Invoice without GST tax applied
+                      Standard Invoice without GST tax applied
                     </div>
                   </div>
                 </div>
@@ -209,7 +237,7 @@ export const ConvertModal: React.FC<ConvertModalProps> = ({
           </button>
           <button
             onClick={() => {
-              onConfirm(isInterMedia ? 'invoice' : selectedType);
+              onConfirm(isInternational ? 'non_tax_invoice' : isInterMedia ? 'invoice' : selectedType);
             }}
             className="btn-primary"
             style={{ padding: '0.5rem 1.25rem', gap: '0.5rem' }}

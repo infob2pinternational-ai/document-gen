@@ -67,14 +67,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // established by the existing isB2PInternational check further down
   // this file, per the explicit instruction to reuse the existing
   // profile identification mechanism rather than add a new one.
-  const isB2PInterMediaSolutions = !!activeProfile?.name?.toLowerCase().includes('inter-media');
+  const lowerProfileName = (activeProfile?.name || '').toLowerCase();
+  const isB2PInterMediaSolutions = lowerProfileName.includes('inter-media') || lowerProfileName.includes('inter media');
+  const isB2PInternational = lowerProfileName.includes('international');
 
   // Database Libraries
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
 
   // Main Document States
-  const [docType, setDocType] = useState<DocumentType>('invoice');
+  const [docType, setDocType] = useState<DocumentType>(isB2PInternational ? 'non_tax_invoice' : 'invoice');
   const [docNumber, setDocNumber] = useState('');
   const [sequenceNumber, setSequenceNumber] = useState<number>(1001);
   const [date, setDate] = useState('');
@@ -471,7 +473,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       setCustomerGstin('');
 
       // Auto-sequence numbers
-      generateSequenceNumber(docType);
+      const initialType: DocumentType = isB2PInternational ? 'non_tax_invoice' : 'invoice';
+      setDocType(initialType);
+      generateSequenceNumber(initialType);
       hasInitializedRef.current = true;
     }
   }, [documentToEdit, activeProfile, draftToRestore, conversionPayload]);
@@ -545,8 +549,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       prefix = activeProfile.work_order_prefix || 'WO/';
       startSeq = Number(activeProfile.work_order_start_number) || 1001;
     } else if (type === 'non_tax_invoice') {
-      prefix = activeProfile.non_tax_prefix || 'NT/';
-      startSeq = Number(activeProfile.non_tax_start_number) || 1001;
+      prefix = activeProfile.non_tax_prefix || activeProfile.invoice_prefix || 'INV/';
+      startSeq = Number(activeProfile.non_tax_start_number) || Number(activeProfile.invoice_start_number) || 1001;
     }
 
     // Set immediate non-blank default - only if no newer request has
@@ -653,6 +657,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     // regardless of how docType ended up set to that value.
     if (isB2PInterMediaSolutions && docType === 'non_tax_invoice') {
       alert('Non-Tax Invoice is not available for B2P Inter-Media Solutions. This profile issues Tax Invoices only.');
+      return;
+    }
+    if (isB2PInternational && docType === 'invoice') {
+      alert('Tax Invoice is not available for B2P International. This profile issues Invoices only.');
       return;
     }
 
@@ -896,7 +904,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   }}
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
-                  <option value="invoice">Tax Invoice</option>
+                  {!isB2PInternational && (
+                    <option value="invoice">Tax Invoice</option>
+                  )}
                   {!isB2PInterMediaSolutions && (
                     <option value="non_tax_invoice">Invoice</option>
                   )}
