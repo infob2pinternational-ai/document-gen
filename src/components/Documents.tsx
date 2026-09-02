@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../types';
-import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X, Download, RefreshCw } from 'lucide-react';
+import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X, Download, RefreshCw, Repeat } from 'lucide-react';
 import { dbService } from '../services/db';
 import { retryDocument, type SyncQueueRow } from '../services/sheetsSyncQueue';
 import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
@@ -16,6 +16,7 @@ interface DocumentsProps {
   onViewDocument: (doc: Document) => void;
   onDeleteDocument: (id: string) => void;
   onRefreshDocs?: () => void;
+  onConvertDocument?: (doc: Document) => void;
 }
 
 export const Documents: React.FC<DocumentsProps> = ({
@@ -28,7 +29,8 @@ export const Documents: React.FC<DocumentsProps> = ({
   onEditDocument,
   onViewDocument,
   onDeleteDocument,
-  onRefreshDocs
+  onRefreshDocs,
+  onConvertDocument
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -502,7 +504,17 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 </button>
                               </>
                             )}
-                            <button
+                             {doc.status === 'approved' && ['quotation', 'proforma_invoice', 'work_order'].includes(doc.document_type) && onConvertDocument && (
+                               <button
+                                 onClick={() => onConvertDocument(doc)}
+                                 className="btn-secondary"
+                                 style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-primary)' }}
+                                 title="Convert to Invoice"
+                               >
+                                 <Repeat size={14} />
+                               </button>
+                             )}
+                             <button
                               onClick={() => onViewDocument(doc)}
                               className="btn-secondary"
                               style={{ padding: '0.35rem', borderRadius: '4px' }}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile } from '../types';
 import { dbService, SQL_SCHEMA, isSupabaseConfigured } from '../services/db';
+import { getErrorMessage } from '../utils/error';
 import { getFCMToken, isFirebaseConfigured } from '../services/fcm';
 import { sendGenericNotification } from '../services/push';
 import { 
@@ -306,7 +307,7 @@ export const Settings: React.FC<SettingsProps> = ({
       alert('Company Profile saved successfully!');
     } catch (err) {
       console.error('Error saving profile:', err);
-      alert('Failed to save profile details.');
+      alert(`Failed to save profile details: ${getErrorMessage(err)}`);
     } finally {
       setSaving(false);
     }
@@ -325,7 +326,7 @@ export const Settings: React.FC<SettingsProps> = ({
         onRefreshProfiles();
       } catch (err) {
         console.error('Error deleting profile:', err);
-        alert('Failed to delete profile.');
+        alert(`Failed to delete profile: ${getErrorMessage(err)}`);
       }
     }
   };

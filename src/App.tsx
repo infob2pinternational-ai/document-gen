@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { CompanyProfile, Document, Customer, Service } from './types';
+import type { CompanyProfile, Document, Customer, Service, DocumentItem, DocumentType } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
 import { Sidebar } from './components/Sidebar';
@@ -14,6 +14,7 @@ import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
 import { ComparisonEditor } from './components/comparison/ComparisonEditor';
 import { ComparisonPreview } from './components/comparison/ComparisonPreview';
+import { ConvertModal } from './components/ConvertModal';
 import { Building, Menu, Moon, Sun, Download, Cloud } from 'lucide-react';
 import { getRecoverableDrafts, deleteDraft, type DraftSummary } from './utils/drafts';
 
@@ -83,6 +84,8 @@ function App() {
   const [documentToPreview, setDocumentToPreview] = useState<Document | null>(null);
   const [recoverableDrafts, setRecoverableDrafts] = useState<DraftSummary[]>([]);
   const [draftToRestore, setDraftToRestore] = useState<any>(null);
+  const [documentToConvert, setDocumentToConvert] = useState<Document | null>(null);
+  const [conversionPayload, setConversionPayload] = useState<any>(null);
   
   // Modals
   const [showAddProfileModal, setShowAddProfileModal] = useState(false);
@@ -722,8 +725,7 @@ function App() {
     setEditorOpen(false);
     setComparisonEditorActive(false);
     setDraftToRestore(null);
-    // Drafts are NOT deleted on close (Phase A2/A4) - just refresh the
-    // registry in case a new draft was created during this session.
+    setConversionPayload(null);
     refreshRecoverableDrafts();
   };
 
@@ -744,14 +746,90 @@ function App() {
   // Document management actions
   const handleEditDocument = (doc: Document) => {
     setDocumentToEdit(doc);
+    setConversionPayload(null);
     setCurrentTab('documents');
     setEditorOpen(true);
   };
 
   const handleCreateDocument = () => {
     setDocumentToEdit(null);
+    setConversionPayload(null);
     setCurrentTab('documents');
     setEditorOpen(true);
+  };
+
+  const handleConvertDocumentToInvoice = async (srcDoc: Document, targetType: DocumentType) => {
+    if (!srcDoc || srcDoc.status !== 'approved') {
+      alert('Only approved documents can be converted to an invoice.');
+      return;
+    }
+
+    try {
+      const fullData = await dbService.getDocumentById(srcDoc.id);
+      if (!fullData) {
+        alert('Source document details could not be loaded.');
+        return;
+      }
+      const { document: originalDoc, items: originalItems } = fullData;
+
+      let srcLabel = 'Document';
+      if (originalDoc.document_type === 'quotation') srcLabel = 'Quotation';
+      else if (originalDoc.document_type === 'proforma_invoice') srcLabel = 'Proforma Invoice';
+      else if (originalDoc.document_type === 'work_order') srcLabel = 'Work Order';
+
+      const conversionRef = `Converted from ${srcLabel} ${originalDoc.document_number}`;
+      const updatedNotes = originalDoc.notes && originalDoc.notes.trim()
+        ? `${originalDoc.notes.trim()}\n\n${conversionRef}`
+        : conversionRef;
+
+      const clonedItems: DocumentItem[] = (originalItems || []).map(it => ({
+        id: crypto.randomUUID(),
+        document_id: '',
+        service_id: it.service_id || undefined,
+        description: it.description,
+        quantity: Number(it.quantity) || 1,
+        days: Number(it.days) || 1,
+        rate: Number(it.rate) || 0,
+        unit: it.unit || 'nos',
+        hsn_sac: it.hsn_sac || undefined,
+        gst_percentage: targetType === 'non_tax_invoice' ? 0 : (Number(it.gst_percentage) || 0),
+        amount: Number(it.amount) || 0,
+        sort_order: Number(it.sort_order) || 0,
+        discount_amount: it.discount_amount ? Number(it.discount_amount) : undefined,
+        discount_percent: it.discount_percent ? Number(it.discount_percent) : undefined
+      }));
+
+      setConversionPayload({
+        targetType,
+        customer_id: originalDoc.customer_id,
+        customer_name: originalDoc.customer_name,
+        customer_email: originalDoc.customer_email,
+        customer_phone: originalDoc.customer_phone,
+        customer_address: originalDoc.customer_address,
+        customer_gstin: originalDoc.customer_gstin,
+        col_name_description: originalDoc.col_name_description,
+        col_name_quantity: originalDoc.col_name_quantity,
+        col_name_unit: originalDoc.col_name_unit,
+        col_name_rate: originalDoc.col_name_rate,
+        col_name_amount: originalDoc.col_name_amount,
+        notes: updatedNotes,
+        terms: originalDoc.terms || activeProfile?.default_terms || '',
+        discount_total: Number(originalDoc.discount_total) || 0,
+        items: clonedItems
+      });
+
+      setDocumentToConvert(null);
+      setDocumentToEdit(null);
+      if (previewOpen) {
+        setPreviewOpen(false);
+        setDocumentToPreview(null);
+      }
+      setCurrentTab('documents');
+      setEditorOpen(true);
+    } catch (err) {
+      console.error('Error initiating document conversion:', err);
+      alert('Failed to initiate document conversion.');
+    }
   };
 
   const [comparisonEditorType, setComparisonEditorType] = useState<'comparison_quotation' | 'comparison_invoice'>('comparison_quotation');
@@ -1381,6 +1459,7 @@ function App() {
               activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
               document={documentToPreview}
               onClose={() => setPreviewOpen(false)}
+              onConvertDocument={(doc) => setDocumentToConvert(doc)}
             />
           )
         ) : (
@@ -1426,6 +1505,7 @@ function App() {
                       if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
                     }}
                     draftToRestore={draftToRestore}
+                    conversionPayload={conversionPayload}
                   />
                 )}
               </div>
@@ -1443,6 +1523,7 @@ function App() {
                 onViewDocument={handleViewDocument}
                 onDeleteDocument={handleDeleteDocument}
                 onRefreshDocs={() => loadData(activeProfile?.id)}
+                onConvertDocument={(doc) => setDocumentToConvert(doc)}
               />
             )}
 
@@ -1585,6 +1666,19 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Convert to Invoice Modal */}
+      <ConvertModal
+        isOpen={!!documentToConvert}
+        document={documentToConvert}
+        activeProfile={activeProfile}
+        onClose={() => setDocumentToConvert(null)}
+        onConfirm={(targetType) => {
+          if (documentToConvert) {
+            handleConvertDocumentToInvoice(documentToConvert, targetType);
+          }
+        }}
+      />
 
     </div>
   );

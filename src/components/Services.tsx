@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Service } from '../types';
 import { dbService } from '../services/db';
+import { getErrorMessage } from '../utils/error';
 import { Search, Plus, Edit, Trash2, ShieldAlert } from 'lucide-react';
 
 interface ServicesProps {
@@ -79,7 +80,7 @@ export const Services: React.FC<ServicesProps> = ({
       setShowModal(false);
     } catch (err) {
       console.error('Error saving service:', err);
-      alert('Failed to save service.');
+      alert(`Failed to save service: ${getErrorMessage(err)}`);
     } finally {
       setLoading(false);
     }
@@ -93,7 +94,7 @@ export const Services: React.FC<ServicesProps> = ({
         onRefreshStats();
       } catch (err) {
         console.error('Error deleting service:', err);
-        alert('Failed to delete service.');
+        alert(`Failed to delete service: ${getErrorMessage(err)}`);
       }
     }
   };

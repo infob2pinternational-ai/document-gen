@@ -7,6 +7,7 @@ import { LineItemModal } from './LineItemModal';
 import { DocumentSuccessDialog } from './DocumentSuccessDialog';
 import { DocumentPreview } from './DocumentPreview';
 import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
+import { getErrorMessage } from '../utils/error';
 import {
   getDraftKey,
   getTabId,
@@ -31,6 +32,24 @@ interface DocumentEditorProps {
   // as a fallback if the new draft system finds nothing (e.g. a draft
   // left over from immediately before this change shipped).
   draftToRestore?: any;
+  conversionPayload?: {
+    targetType: DocumentType;
+    customer_id?: string;
+    customer_name: string;
+    customer_email?: string;
+    customer_phone?: string;
+    customer_address?: string;
+    customer_gstin?: string;
+    col_name_description?: string;
+    col_name_quantity?: string;
+    col_name_unit?: string;
+    col_name_rate?: string;
+    col_name_amount?: string;
+    notes?: string;
+    terms?: string;
+    discount_total?: number;
+    items: DocumentItem[];
+  } | null;
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({
@@ -38,7 +57,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   documentToEdit,
   onClose,
   onRefreshDocs,
-  draftToRestore
+  draftToRestore,
+  conversionPayload
 }) => {
   // Profile-specific rule: B2P Inter-Media Solutions only issues Tax
   // Invoices - Non-Tax Invoice is not a valid document type for this
@@ -400,6 +420,31 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         }
       };
       loadDocData();
+    } else if (conversionPayload) {
+      // Conversion Initialization Mode
+      setDocType(conversionPayload.targetType);
+      const today = new Date().toISOString().split('T')[0];
+      setDate(today);
+      setNotes(conversionPayload.notes || '');
+      setTerms(conversionPayload.terms || '');
+      setDiscountTotal(conversionPayload.discount_total || 0);
+
+      setSelectedCustomerId(conversionPayload.customer_id || '');
+      setCustomerName(conversionPayload.customer_name || '');
+      setCustomerEmail(conversionPayload.customer_email || '');
+      setCustomerPhone(conversionPayload.customer_phone || '');
+      setCustomerAddress(conversionPayload.customer_address || '');
+      setCustomerGstin(conversionPayload.customer_gstin || '');
+
+      setColDesc(conversionPayload.col_name_description || activeProfile.col_name_description || 'Description');
+      setColQty(conversionPayload.col_name_quantity || activeProfile.col_name_quantity || 'Quantity');
+      setColUnit(conversionPayload.col_name_unit || activeProfile.col_name_unit || 'Unit');
+      setColRate(conversionPayload.col_name_rate || activeProfile.col_name_rate || 'Rate');
+      setColAmt(conversionPayload.col_name_amount || activeProfile.col_name_amount || 'Amount');
+
+      setItems(conversionPayload.items || []);
+
+      generateSequenceNumber(conversionPayload.targetType);
     } else {
       // Create Mode
       const today = new Date().toISOString().split('T')[0];
@@ -429,7 +474,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       generateSequenceNumber(docType);
       hasInitializedRef.current = true;
     }
-  }, [documentToEdit, activeProfile, draftToRestore]);
+  }, [documentToEdit, activeProfile, draftToRestore, conversionPayload]);
 
   // Handle document type change -> update sequence
   useEffect(() => {
@@ -712,7 +757,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         isEditMode: Boolean(documentToEdit)
       });
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = getErrorMessage(err);
       alert(`Failed to save document: ${errorMsg}\n\n(Please ensure you have executed the SQL migration scripts in your Supabase SQL Editor under "SQL Editor")`);
     } finally {
       setLoading(false);
@@ -852,12 +897,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
                   <option value="invoice">Tax Invoice</option>
-                  {/* Profile-specific rule: B2P Inter-Media Solutions only
-                      issues Tax Invoices - Non-Tax Invoice is not a valid
-                      document type for this profile, so it's not offered
-                      as a choice. Backed up by a hard save-time check
-                      below (handleSaveDoc) - this UI hiding alone is not
-                      the enforcement mechanism. */}
                   {!isB2PInterMediaSolutions && (
                     <option value="non_tax_invoice">Invoice</option>
                   )}

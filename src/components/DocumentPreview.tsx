@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { CompanyProfile, Document, DocumentItem } from '../types';
 import { dbService } from '../services/db';
-import { ArrowLeft, Printer, AlertTriangle, Download } from 'lucide-react';
+import { ArrowLeft, Printer, AlertTriangle, Download, FileText } from 'lucide-react';
 import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
 import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
 
@@ -10,13 +10,15 @@ interface DocumentPreviewProps {
   document: Document;
   onClose: () => void;
   isPublicShare?: boolean;
+  onConvertDocument?: (doc: Document) => void;
 }
 
 export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   activeProfile: propProfile,
   document,
   onClose,
-  isPublicShare = false
+  isPublicShare = false,
+  onConvertDocument
 }) => {
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +251,17 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
           </button>
         )}
         <div className="preview-actions" style={{ width: isPublicShare ? '100%' : 'auto', justifyContent: 'center' }}>
+          {!isPublicShare && document.status === 'approved' && ['quotation', 'proforma_invoice', 'work_order'].includes(document.document_type) && onConvertDocument && (
+            <button 
+              onClick={() => onConvertDocument(document)} 
+              className="btn-secondary" 
+              style={{ color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)', fontWeight: 600 }}
+              title="Convert this approved document into a new Invoice"
+            >
+              <FileText size={16} />
+              <span>Convert to Invoice</span>
+            </button>
+          )}
           {document.customer_phone && !isPublicShare && document.status === 'approved' && (
             <button onClick={handleWhatsAppSend} className="btn-secondary" style={{ color: '#25D366', borderColor: '#25D366' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '6px' }}>

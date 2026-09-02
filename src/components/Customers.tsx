@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Customer } from '../types';
 import { dbService } from '../services/db';
+import { getErrorMessage } from '../utils/error';
 import { Search, Plus, Edit, Trash2, ShieldAlert } from 'lucide-react';
 
 interface CustomersProps {
@@ -75,7 +76,7 @@ export const Customers: React.FC<CustomersProps> = ({
       setShowModal(false);
     } catch (err) {
       console.error('Error saving customer:', err);
-      alert('Failed to save customer.');
+      alert(`Failed to save customer: ${getErrorMessage(err)}`);
     } finally {
       setLoading(false);
     }
@@ -89,7 +90,7 @@ export const Customers: React.FC<CustomersProps> = ({
         onRefreshStats();
       } catch (err) {
         console.error('Error deleting customer:', err);
-        alert('Failed to delete customer.');
+        alert(`Failed to delete customer: ${getErrorMessage(err)}`);
       }
     }
   };

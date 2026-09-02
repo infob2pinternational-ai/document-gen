@@ -15,6 +15,7 @@ import {
   duplicateOption 
 } from './ComparisonUtils';
 import { dbService } from '../../services/db';
+import { getErrorMessage } from '../../utils/error';
 import { sendApprovalNotification } from '../../services/push';
 import { DocumentSuccessDialog } from '../DocumentSuccessDialog';
 import {
@@ -652,7 +653,8 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
       });
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to save ${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'}: ` + err.message);
+      const errorMsg = getErrorMessage(err);
+      alert(`Failed to save ${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'}: ${errorMsg}`);
     } finally {
       setIsSaving(false);
     }
