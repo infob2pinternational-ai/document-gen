@@ -20,6 +20,11 @@ ALTER TABLE IF EXISTS documents DROP CONSTRAINT IF EXISTS documents_document_typ
 ALTER TABLE IF EXISTS documents ADD CONSTRAINT documents_document_type_check 
   CHECK (document_type IN ('invoice', 'proforma_invoice', 'quotation', 'work_order', 'non_tax_invoice', 'comparison_quotation', 'comparison_invoice'));
 
+-- Fix legacy INV/1014 for B2P International to plain Invoice (non_tax_invoice)
+UPDATE documents 
+SET document_type = 'non_tax_invoice' 
+WHERE document_number = 'INV/1014' AND document_type = 'invoice';
+
 -- Add missing columns to profiles
 ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS non_tax_prefix TEXT DEFAULT 'INV/';
 ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS non_tax_start_number INT DEFAULT 1001;
@@ -531,9 +536,27 @@ export const dbService = {
       }
       const { data, error } = await query.order('date', { ascending: false }).order('created_at', { ascending: false });
       if (error) throw error;
+      if (data) {
+        data.forEach(d => {
+          if (d.document_number === 'INV/1014' && d.document_type === 'invoice') {
+            d.document_type = 'non_tax_invoice';
+            supabase?.from('documents').update({ document_type: 'non_tax_invoice' }).eq('id', d.id).then(() => {});
+          }
+        });
+      }
       return data || [];
     } else {
       const docs = getLocal<Document[]>('documents', []);
+      let updatedLocal = false;
+      docs.forEach(d => {
+        if (d.document_number === 'INV/1014' && d.document_type === 'invoice') {
+          d.document_type = 'non_tax_invoice';
+          updatedLocal = true;
+        }
+      });
+      if (updatedLocal) {
+        setLocal('documents', docs);
+      }
       if (companyId) {
         return docs.filter(d => d.company_id === companyId);
       }
@@ -560,6 +583,10 @@ export const dbService = {
       try {
         const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
         if (!docError && document) {
+          if (document.document_number === 'INV/1014' && document.document_type === 'invoice') {
+            document.document_type = 'non_tax_invoice';
+            supabase?.from('documents').update({ document_type: 'non_tax_invoice' }).eq('id', document.id).then(() => {});
+          }
           const { data: items, error: itemsError } = await supabase
             .from('document_items')
             .select('*')
@@ -576,15 +603,19 @@ export const dbService = {
     }
     const docs = getLocal<Document[]>('documents', []);
     const doc = docs.find(d => d.id === id);
-      if (!doc) {
-        if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
-        return null;
-      }
-      const items = getLocal<DocumentItem[]>('document_items', []);
-      const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
-      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
-      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
-      return { document: doc, items: docItems };
+    if (!doc) {
+      if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
+      return null;
+    }
+    if (doc.document_number === 'INV/1014' && doc.document_type === 'invoice') {
+      doc.document_type = 'non_tax_invoice';
+      setLocal('documents', docs);
+    }
+    const items = getLocal<DocumentItem[]>('document_items', []);
+    const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
+    if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
+    if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
+    return { document: doc, items: docItems };
   },
 
   // Public/anonymous document lookup (share links only, both /doc/:id
