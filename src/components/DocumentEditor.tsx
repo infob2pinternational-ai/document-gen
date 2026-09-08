@@ -322,7 +322,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
       if (found) {
         const f = found.draft.fields;
-        setDocType(f.docType);
+        let restoredType: DocumentType = f.docType;
+        if (isB2PInterMediaSolutions && restoredType === 'non_tax_invoice') {
+          restoredType = 'invoice';
+        } else if (isB2PInternational && restoredType === 'invoice') {
+          restoredType = 'non_tax_invoice';
+        }
+        setDocType(restoredType);
         setDocNumber(f.docNumber);
         setSequenceNumber(f.sequenceNumber);
         setDate(f.date);
@@ -354,7 +360,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       // Backward-compat fallback: a draft handed down via the old prop
       // path (see interface comment above) and not yet migrated/found
       // by the new system.
-      setDocType(draftToRestore.docType);
+      let restoredType: DocumentType = draftToRestore.docType;
+      if (isB2PInterMediaSolutions && restoredType === 'non_tax_invoice') {
+        restoredType = 'invoice';
+      } else if (isB2PInternational && restoredType === 'invoice') {
+        restoredType = 'non_tax_invoice';
+      }
+      setDocType(restoredType);
       setDocNumber(draftToRestore.docNumber);
       setSequenceNumber(draftToRestore.sequenceNumber);
       setDate(draftToRestore.date);
@@ -383,7 +395,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           const res = await dbService.getDocumentById(documentToEdit.id);
           if (res) {
             const { document, items: docItems } = res;
-            setDocType(document.document_type);
+            let editType: DocumentType = document.document_type;
+            if (isB2PInterMediaSolutions && editType === 'non_tax_invoice') {
+              editType = 'invoice';
+            } else if (isB2PInternational && editType === 'invoice') {
+              editType = 'non_tax_invoice';
+            }
+            setDocType(editType);
             setDocNumber(document.document_number);
             setSequenceNumber(document.sequence_number);
             setDate(document.date || '');
@@ -791,6 +809,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     setDraggedIndex(null);
   };
 
+  const getDocTypeDisplayLabel = (type: DocumentType) => {
+    switch (type) {
+      case 'invoice': return 'Tax Invoice';
+      case 'non_tax_invoice': return 'Invoice';
+      case 'proforma_invoice': return 'Proforma Invoice';
+      case 'quotation': return 'Quotation';
+      case 'work_order': return 'Work Order';
+      default: return (type as string).replace(/_/g, ' ');
+    }
+  };
+
   if (previewDoc) {
     return (
       <DocumentPreview
@@ -815,7 +844,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           </button>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-              {documentToEdit ? `Edit ${docType.replace('_', ' ')}` : `Create ${docType.replace('_', ' ')}`}
+              {documentToEdit ? `Edit ${getDocTypeDisplayLabel(docType)}` : `Create ${getDocTypeDisplayLabel(docType)}`}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '2px 0 0 0' }}>
               Sequence details and custom branding will be locked upon save.

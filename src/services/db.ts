@@ -23,7 +23,12 @@ ALTER TABLE IF EXISTS documents ADD CONSTRAINT documents_document_type_check
 -- Fix legacy INV/1014 for B2P International to plain Invoice (non_tax_invoice)
 UPDATE documents 
 SET document_type = 'non_tax_invoice' 
-WHERE document_number = 'INV/1014' AND document_type = 'invoice';
+WHERE document_number = 'INV/1014' AND (customer_name ILIKE '%nesto%' OR company_id IN (SELECT id FROM profiles WHERE name ILIKE '%international%'));
+
+-- Ensure INV/1014 for B2P Inter-Media Solutions is Tax Invoice (invoice)
+UPDATE documents 
+SET document_type = 'invoice' 
+WHERE document_number = 'INV/1014' AND (customer_name ILIKE '%venus%' OR company_id IN (SELECT id FROM profiles WHERE name ILIKE '%inter%media%'));
 
 -- Add missing columns to profiles
 ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS non_tax_prefix TEXT DEFAULT 'INV/';
@@ -338,6 +343,23 @@ function buildSyncPayload(companyName: string, doc: Document, items: DocumentIte
   };
 }
 
+const normalizeDocTypeForCompany = (d: Document, profile?: CompanyProfile | null): boolean => {
+  const profileName = (profile?.name || '').toLowerCase();
+  const customerName = (d.customer_name || '').toLowerCase();
+  const isInterMedia = profileName.includes('inter-media') || profileName.includes('inter media') || customerName.includes('venus');
+  const isInternational = profileName.includes('international') || customerName.includes('nesto');
+
+  if (isInterMedia && d.document_type === 'non_tax_invoice') {
+    d.document_type = 'invoice';
+    return true;
+  }
+  if (isInternational && d.document_type === 'invoice') {
+    d.document_type = 'non_tax_invoice';
+    return true;
+  }
+  return false;
+};
+
 export const dbService = {
   // Profiles
   async getProfiles(): Promise<CompanyProfile[]> {
@@ -529,6 +551,8 @@ export const dbService = {
 
   // Documents
   async getDocuments(companyId?: string): Promise<Document[]> {
+    const profiles = getLocal<CompanyProfile[]>('profiles', []);
+    const prof = companyId ? profiles.find(p => p.id === companyId) : null;
     if (useCloud() && supabase) {
       let query = supabase.from('documents').select('*');
       if (companyId) {
@@ -538,9 +562,9 @@ export const dbService = {
       if (error) throw error;
       if (data) {
         data.forEach(d => {
-          if (d.document_number === 'INV/1014' && d.document_type === 'invoice') {
-            d.document_type = 'non_tax_invoice';
-            supabase?.from('documents').update({ document_type: 'non_tax_invoice' }).eq('id', d.id).then(() => {});
+          const docProf = prof || profiles.find(p => p.id === d.company_id);
+          if (normalizeDocTypeForCompany(d, docProf)) {
+            supabase?.from('documents').update({ document_type: d.document_type }).eq('id', d.id).then(() => {});
           }
         });
       }
@@ -549,8 +573,8 @@ export const dbService = {
       const docs = getLocal<Document[]>('documents', []);
       let updatedLocal = false;
       docs.forEach(d => {
-        if (d.document_number === 'INV/1014' && d.document_type === 'invoice') {
-          d.document_type = 'non_tax_invoice';
+        const docProf = prof || profiles.find(p => p.id === d.company_id);
+        if (normalizeDocTypeForCompany(d, docProf)) {
           updatedLocal = true;
         }
       });
@@ -583,9 +607,10 @@ export const dbService = {
       try {
         const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
         if (!docError && document) {
-          if (document.document_number === 'INV/1014' && document.document_type === 'invoice') {
-            document.document_type = 'non_tax_invoice';
-            supabase?.from('documents').update({ document_type: 'non_tax_invoice' }).eq('id', document.id).then(() => {});
+          const profiles = getLocal<CompanyProfile[]>('profiles', []);
+          const docProf = profiles.find(p => p.id === document.company_id);
+          if (normalizeDocTypeForCompany(document, docProf)) {
+            supabase?.from('documents').update({ document_type: document.document_type }).eq('id', document.id).then(() => {});
           }
           const { data: items, error: itemsError } = await supabase
             .from('document_items')
@@ -607,8 +632,9 @@ export const dbService = {
       if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
       return null;
     }
-    if (doc.document_number === 'INV/1014' && doc.document_type === 'invoice') {
-      doc.document_type = 'non_tax_invoice';
+    const profiles = getLocal<CompanyProfile[]>('profiles', []);
+    const docProf = profiles.find(p => p.id === doc.company_id);
+    if (normalizeDocTypeForCompany(doc, docProf)) {
       setLocal('documents', docs);
     }
     const items = getLocal<DocumentItem[]>('document_items', []);
