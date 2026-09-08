@@ -777,6 +777,16 @@ function App() {
       else if (originalDoc.document_type === 'proforma_invoice') srcLabel = 'Proforma Invoice';
       else if (originalDoc.document_type === 'work_order') srcLabel = 'Work Order';
 
+      const isInterMedia = activeProfile?.name?.toLowerCase().includes('inter-media') || activeProfile?.name?.toLowerCase().includes('inter media');
+      const isInternational = activeProfile?.name?.toLowerCase().includes('international');
+
+      let effectiveTargetType = targetType;
+      if (isInternational) {
+        effectiveTargetType = 'non_tax_invoice';
+      } else if (isInterMedia) {
+        effectiveTargetType = 'invoice';
+      }
+
       const conversionRef = `Converted from ${srcLabel} ${originalDoc.document_number}`;
       const updatedNotes = originalDoc.notes && originalDoc.notes.trim()
         ? `${originalDoc.notes.trim()}\n\n${conversionRef}`
@@ -792,7 +802,7 @@ function App() {
         rate: Number(it.rate) || 0,
         unit: it.unit || 'nos',
         hsn_sac: it.hsn_sac || undefined,
-        gst_percentage: targetType === 'non_tax_invoice' ? 0 : (Number(it.gst_percentage) || 0),
+        gst_percentage: effectiveTargetType === 'non_tax_invoice' ? 0 : (Number(it.gst_percentage) || 0),
         amount: Number(it.amount) || 0,
         sort_order: Number(it.sort_order) || 0,
         discount_amount: it.discount_amount ? Number(it.discount_amount) : undefined,
@@ -800,7 +810,7 @@ function App() {
       }));
 
       setConversionPayload({
-        targetType,
+        targetType: effectiveTargetType,
         customer_id: originalDoc.customer_id,
         customer_name: originalDoc.customer_name,
         customer_email: originalDoc.customer_email,

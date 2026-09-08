@@ -209,8 +209,12 @@ export const Documents: React.FC<DocumentsProps> = ({
               style={{ width: '180px' }}
             >
               <option value="all">All Documents</option>
-              <option value="invoice">Tax Invoices</option>
-              <option value="non_tax_invoice">Invoices</option>
+              {!(activeProfile?.name?.toLowerCase().includes('international')) && (
+                <option value="invoice">Tax Invoices</option>
+              )}
+              {!(activeProfile?.name?.toLowerCase().includes('inter-media') || activeProfile?.name?.toLowerCase().includes('inter media')) && (
+                <option value="non_tax_invoice">Invoices</option>
+              )}
               <option value="proforma_invoice">Proforma Invoices</option>
               <option value="quotation">Quotations</option>
               <option value="comparison_quotation">Comparison Quotations</option>
