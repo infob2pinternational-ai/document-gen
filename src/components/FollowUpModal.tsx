@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { FollowUp, Lead } from '../types';
 import { X, Clock, CheckCircle2 } from 'lucide-react';
 import { officeService } from '../services/officeService';
 import { leadService } from '../services/leadService';
+import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
 
 interface FollowUpModalProps {
   followUp: FollowUp | null;
@@ -26,15 +27,20 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedLeadId, setSelectedLeadId] = useState('');
-  const [assignedStaff, setAssignedStaff] = useState(userEmail || 'telecaller@b2p.com');
+  const [assignedStaff, setAssignedStaff] = useState(userEmail || '');
   const [dueDate, setDueDate] = useState('');
   const [dueTime, setDueTime] = useState('11:00');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
   const [completionNote, setCompletionNote] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const allLeads = leadService.getLeads();
+
+  const availableStaff = useMemo(() => {
+    return getAvailableStaffList(userEmail, allLeads, officeService.getFollowUps('all'));
+  }, [userEmail, isOpen]);
 
   useEffect(() => {
     if (followUp) {
@@ -42,7 +48,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       setCompanyName(followUp.company_name || '');
       setPhone(followUp.phone || '');
       setSelectedLeadId(followUp.lead_id || '');
-      setAssignedStaff(followUp.assigned_staff_email || userEmail);
+      setAssignedStaff(followUp.assigned_staff_email || userEmail || '');
       setDueDate(followUp.due_date);
       setDueTime(followUp.due_time || '11:00');
       setReason(followUp.reason);
@@ -54,7 +60,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       setCompanyName(prefilledLead.company_name || '');
       setPhone(prefilledLead.phone || '');
       setSelectedLeadId(prefilledLead.id);
-      setAssignedStaff(prefilledLead.assigned_telecaller_email || userEmail);
+      setAssignedStaff(prefilledLead.assigned_telecaller_email || userEmail || '');
       setDueDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
       setDueTime('11:00');
       setReason(`Follow up on ${prefilledLead.service_required || 'campaign inquiry'}`);
@@ -66,7 +72,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       setCompanyName('');
       setPhone('');
       setSelectedLeadId('');
-      setAssignedStaff(userEmail || 'telecaller@b2p.com');
+      setAssignedStaff(userEmail || '');
       setDueDate(new Date().toISOString().split('T')[0]);
       setDueTime('11:00');
       setReason('');
@@ -233,13 +239,20 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Assigned Telecaller</label>
-                  <input
-                    type="text"
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Assigned Staff</label>
+                  <select
                     value={assignedStaff}
                     onChange={(e) => setAssignedStaff(e.target.value)}
                     style={{ fontSize: '0.8125rem' }}
-                  />
+                  >
+                    {availableStaff.map(s => (
+                      <option key={s.email} value={s.email}>{s.label}</option>
+                    ))}
+                    {assignedStaff && !availableStaff.some(s => s.email === assignedStaff) && (
+                      <option value={assignedStaff}>{formatStaffDisplayName(assignedStaff)} ({assignedStaff})</option>
+                    )}
+                    <option value="">Unassigned</option>
+                  </select>
                 </div>
               </div>
 

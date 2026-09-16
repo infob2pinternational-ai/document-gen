@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Lead, CrmQuotation, LeadSource } from '../types';
 import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
 import { metricsService } from '../services/metricsService';
+import { getAvailableStaffList } from '../utils/staffUtils';
 import { 
   BarChart3, 
   Users
@@ -32,6 +33,14 @@ export const Reports: React.FC<ReportsProps> = ({
     return unsub;
   }, []);
 
+  const availableStaff = useMemo(() => {
+    return getAvailableStaffList(userEmail, leads);
+  }, [userEmail, leads]);
+
+  const scopedLeads = staffFilter === 'all'
+    ? leads
+    : leads.filter(l => (l.assigned_telecaller_email || '').toLowerCase().trim() === staffFilter.toLowerCase().trim());
+
   // 1. Source Breakdown
   const sources: LeadSource[] = [
     'instagram',
@@ -46,20 +55,20 @@ export const Reports: React.FC<ReportsProps> = ({
   ];
 
   const sourceData = sources.map(src => {
-    const matching = leads.filter(l => l.lead_source === src);
+    const matching = scopedLeads.filter(l => l.lead_source === src);
     const confirmed = matching.filter(l => l.status === 'confirmed').length;
     return {
       source: src.replace(/_/g, ' '),
       count: matching.length,
       confirmed,
-      percentage: leads.length > 0 ? Math.round((matching.length / leads.length) * 100) : 0
+      percentage: scopedLeads.length > 0 ? Math.round((matching.length / scopedLeads.length) * 100) : 0
     };
   }).sort((a, b) => b.count - a.count);
 
   // 2. Priority Breakdown
-  const hotCount = leads.filter(l => l.priority === 'HOT').length;
-  const warmCount = leads.filter(l => l.priority === 'WARM').length;
-  const coldCount = leads.filter(l => l.priority === 'COLD').length;
+  const hotCount = scopedLeads.filter(l => l.priority === 'HOT').length;
+  const warmCount = scopedLeads.filter(l => l.priority === 'WARM').length;
+  const coldCount = scopedLeads.filter(l => l.priority === 'COLD').length;
 
   // 3. Central Telecaller Metrics from metricsService
   const telecallerData = metricsService.getTelecallerMetrics(staffFilter === 'all' ? undefined : staffFilter);
@@ -67,7 +76,7 @@ export const Reports: React.FC<ReportsProps> = ({
   // 4. Quotation Financial Conversion
   const totalQuotedValue = quotations.reduce((sum, q) => sum + (q.total || 0), 0);
   const approvedQuotedValue = quotations.filter(q => q.approval_status === 'APPROVED' || q.approval_status === 'SENT').reduce((sum, q) => sum + (q.total || 0), 0);
-  const confirmedJobs = leads.filter(l => l.status === 'confirmed').length;
+  const confirmedJobs = scopedLeads.filter(l => l.status === 'confirmed').length;
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -101,12 +110,12 @@ export const Reports: React.FC<ReportsProps> = ({
             <select
               value={staffFilter}
               onChange={(e) => setStaffFilter(e.target.value)}
-              style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', width: '210px' }}
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', minWidth: '220px' }}
             >
               <option value="all">All Telecallers & Staff</option>
-              <option value="telecaller@b2p.com">Anjali (telecaller@b2p.com)</option>
-              <option value="rahul@b2p.com">Rahul (rahul@b2p.com)</option>
-              <option value="priya@b2p.com">Priya (priya@b2p.com)</option>
+              {availableStaff.map(s => (
+                <option key={s.email} value={s.email}>{s.label}</option>
+              ))}
             </select>
           </div>
         )}
@@ -133,7 +142,7 @@ export const Reports: React.FC<ReportsProps> = ({
         <div className="glass-panel" style={{ padding: '1rem 1.25rem' }}>
           <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Lead-to-Quote Velocity</span>
           <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 700, color: '#d97706', marginTop: '0.15rem' }}>
-            {leads.length > 0 ? Math.round((quotations.length / leads.length) * 100) : 0}%
+            {scopedLeads.length > 0 ? Math.round((quotations.length / scopedLeads.length) * 100) : 0}%
           </div>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Inquiries reaching quotation stage</span>
         </div>

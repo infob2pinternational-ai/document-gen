@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Customer, Lead, LeadStatus } from '../types';
 import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
 import { metricsService } from '../services/metricsService';
+import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
 import { LeadModal } from './LeadModal';
 import { LeadDetailModal } from './LeadDetailModal';
 import { QuotationModal } from './QuotationModal';
@@ -41,7 +42,7 @@ const STATUS_CONFIG: Record<LeadStatus, { label: string; dotClass: string }> = {
 
 export const Leads: React.FC<LeadsProps> = ({
   role: _role,
-  userEmail = 'telecaller@b2p.com',
+  userEmail = '',
   customers,
   companyId = 'default'
 }) => {
@@ -51,6 +52,10 @@ export const Leads: React.FC<LeadsProps> = ({
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [telecallerFilter, setTelecallerFilter] = useState<string>('all');
+
+  const availableStaff = useMemo(() => {
+    return getAvailableStaffList(userEmail, leads);
+  }, [userEmail, leads]);
 
   // Modals state
   const [modalOpen, setModalOpen] = useState(false);
@@ -122,7 +127,12 @@ export const Leads: React.FC<LeadsProps> = ({
     const matchStatus = statusFilter === 'all' || l.status === statusFilter;
     const matchPriority = priorityFilter === 'all' || l.priority === priorityFilter;
     const matchSource = sourceFilter === 'all' || l.lead_source === sourceFilter;
-    const matchTelecaller = telecallerFilter === 'all' || l.assigned_telecaller_email === telecallerFilter;
+    const matchTelecaller = 
+      telecallerFilter === 'all' 
+        ? true 
+        : telecallerFilter === 'unassigned' 
+          ? !l.assigned_telecaller_email 
+          : (l.assigned_telecaller_email || '').toLowerCase().trim() === telecallerFilter.toLowerCase().trim();
 
     return matchSearch && matchStatus && matchPriority && matchSource && matchTelecaller;
   });
@@ -207,9 +217,9 @@ export const Leads: React.FC<LeadsProps> = ({
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
                     <strong>{item.service_required}</strong> · {item.campaign_location || item.location} · {item.number_of_days || 1}d
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                    Staff: {item.assigned_telecaller_email ? item.assigned_telecaller_email.split('@')[0] : 'Unassigned'}
-                  </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                      Staff: {formatStaffDisplayName(item.assigned_telecaller_email)}
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
@@ -315,13 +325,13 @@ export const Leads: React.FC<LeadsProps> = ({
           <select
             value={telecallerFilter}
             onChange={(e) => setTelecallerFilter(e.target.value)}
-            style={{ width: '160px', fontSize: '0.8125rem' }}
+            style={{ minWidth: '160px', fontSize: '0.8125rem' }}
           >
             <option value="all">All Staff</option>
-            <option value="rahul@b2p.com">Rahul</option>
-            <option value="priya@b2p.com">Priya</option>
-            <option value="telecaller@b2p.com">Telecaller</option>
-            <option value="admin@b2p.com">Admin</option>
+            {availableStaff.map(s => (
+              <option key={s.email} value={s.email}>{s.name}{s.email.toLowerCase() === (userEmail || '').toLowerCase().trim() ? ' (You)' : ''}</option>
+            ))}
+            <option value="unassigned">Unassigned Leads</option>
           </select>
 
           {/* Clear Filters Button */}
@@ -419,7 +429,7 @@ export const Leads: React.FC<LeadsProps> = ({
                     </td>
 
                     <td style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 500 }}>
-                      {lead.assigned_telecaller_email ? lead.assigned_telecaller_email.split('@')[0] : 'Unassigned'}
+                      {formatStaffDisplayName(lead.assigned_telecaller_email)}
                     </td>
 
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>

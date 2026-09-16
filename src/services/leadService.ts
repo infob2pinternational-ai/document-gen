@@ -35,13 +35,56 @@ const SEED_ACTIVITIES: LeadActivity[] = [];
 
 type CrmLeadsTable = 'leads' | 'lead_activities';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sanitizeLeadForSupabase(row: any) {
+  const payload = { ...row };
+  if (!payload.company_id || !UUID_REGEX.test(payload.company_id)) {
+    delete payload.company_id;
+  }
+  if (!payload.customer_id || !UUID_REGEX.test(payload.customer_id)) {
+    delete payload.customer_id;
+  }
+  if (!payload.required_date || typeof payload.required_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(payload.required_date)) {
+    delete payload.required_date;
+  }
+  if (!payload.next_follow_up_at) {
+    delete payload.next_follow_up_at;
+  }
+  if (payload.number_of_days === '' || payload.number_of_days === undefined || isNaN(Number(payload.number_of_days))) {
+    delete payload.number_of_days;
+  } else {
+    payload.number_of_days = Number(payload.number_of_days);
+  }
+  return payload;
+}
+
+function sanitizeActivityForSupabase(row: any) {
+  const payload = { ...row };
+  if (!payload.company_id || !UUID_REGEX.test(payload.company_id)) {
+    delete payload.company_id;
+  }
+  if (!payload.lead_id || !UUID_REGEX.test(payload.lead_id)) {
+    delete payload.lead_id;
+  }
+  return payload;
+}
+
 async function loadCrmTable<T>(storageKey: string, table: CrmLeadsTable, companyId?: string | null): Promise<T[]> {
   if (isCloudActive() && supabase) {
-    let query = supabase.from(table).select('*');
-    if (companyId) query = query.eq('company_id', companyId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []) as T[];
+    try {
+      let query = supabase.from(table).select('*');
+      if (companyId && UUID_REGEX.test(companyId)) {
+        query = query.eq('company_id', companyId);
+      }
+      const { data, error } = await query;
+      if (!error && data) return data as T[];
+      if (error) {
+        console.warn(`[leadService] Failed to query ${table} from Supabase:`, error.message || error);
+      }
+    } catch (err) {
+      console.warn(`[leadService] Error querying ${table} from Supabase:`, err);
+    }
   }
   try {
     const raw = localStorage.getItem(storageKey);
@@ -52,38 +95,84 @@ async function loadCrmTable<T>(storageKey: string, table: CrmLeadsTable, company
 }
 
 async function persistCrmRow<T extends { id: string }>(storageKey: string, table: CrmLeadsTable, fullLocalArray: T[], changedRow: T): Promise<void> {
-  if (isCloudActive() && supabase) {
-    const { error } = await supabase.from(table).upsert(changedRow as any);
-    if (error) throw error;
-  } else {
+  // 1. ALWAYS persist to local cache first so it is synchronous, reliable and instant
+  try {
     localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
+  } catch (storageErr) {
+    console.error(`[leadService] Failed to write to localStorage for ${storageKey}:`, storageErr);
   }
   metricsService.notifyChange();
+
+  // 2. If cloud is active, try to sync to Supabase (best-effort write-through)
+  if (isCloudActive() && supabase) {
+    try {
+      const sanitized = table === 'leads'
+        ? sanitizeLeadForSupabase(changedRow)
+        : sanitizeActivityForSupabase(changedRow);
+      const { error } = await supabase.from(table).upsert(sanitized as any);
+      if (error) {
+        console.warn(`[leadService] Supabase upsert failed for ${table} (saved in local cache):`, error.message || error);
+      }
+    } catch (err) {
+      console.warn(`[leadService] Could not reach Supabase for ${table} (saved in local cache):`, err);
+    }
+  }
 }
 
 async function persistCrmRowDeleted(storageKey: string, table: CrmLeadsTable, fullLocalArray: any[], deletedId: string): Promise<void> {
-  if (isCloudActive() && supabase) {
-    const { error } = await supabase.from(table).delete().eq('id', deletedId);
-    if (error) throw error;
-  } else {
+  // 1. ALWAYS persist deletion to local cache first
+  try {
     localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
+  } catch (storageErr) {
+    console.error(`[leadService] Failed to delete from localStorage for ${storageKey}:`, storageErr);
   }
   metricsService.notifyChange();
+
+  // 2. If cloud is active, try to delete from Supabase
+  if (isCloudActive() && supabase) {
+    try {
+      const { error } = await supabase.from(table).delete().eq('id', deletedId);
+      if (error) {
+        console.warn(`[leadService] Supabase delete failed for ${table}:`, error.message || error);
+      }
+    } catch (err) {
+      console.warn(`[leadService] Could not reach Supabase for ${table} delete:`, err);
+    }
+  }
 }
 
 /** Pulls this company's leads + lead activities down from Supabase and
- * overwrites the local cache, exactly mirroring
- * financeService.hydrateFromCloud(). A no-op (existing local cache left
- * untouched) when no cloud session is active. */
+ * merges into the local cache, never wiping existing local records. */
 export async function hydrateLeadsFromCloud(companyId?: string): Promise<void> {
   if (!isCloudActive() || !supabase) return;
   try {
-    const [leads, activities] = await Promise.all([
+    const [cloudLeads, cloudActivities] = await Promise.all([
       loadCrmTable<Lead>(LEADS_KEY, 'leads', companyId),
       loadCrmTable<LeadActivity>(ACTIVITIES_KEY, 'lead_activities', companyId)
     ]);
-    localStorage.setItem(LEADS_KEY, JSON.stringify(leads));
-    localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities));
+
+    if (cloudLeads && cloudLeads.length > 0) {
+      const localLeads = getStoredLeads();
+      const merged = [...cloudLeads];
+      for (const loc of localLeads) {
+        if (!merged.some(c => c.id === loc.id)) {
+          merged.push(loc);
+        }
+      }
+      localStorage.setItem(LEADS_KEY, JSON.stringify(merged));
+    }
+
+    if (cloudActivities && cloudActivities.length > 0) {
+      const localActs = getStoredActivities();
+      const mergedActs = [...cloudActivities];
+      for (const act of localActs) {
+        if (!mergedActs.some(c => c.id === act.id)) {
+          mergedActs.push(act);
+        }
+      }
+      localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(mergedActs));
+    }
+
     metricsService.notifyChange();
   } catch (e) {
     console.error('[leadService] hydrateLeadsFromCloud failed - continuing with existing local cache:', e);
@@ -255,13 +344,14 @@ export const leadService = {
     const updated = leads.filter(l => l.id !== id);
     await persistCrmRowDeleted(LEADS_KEY, 'leads', updated, id);
 
-    // Cloud: ON DELETE CASCADE on lead_activities.lead_id handles this
-    // server-side. Local cache still needs the equivalent manual purge.
-    if (!isCloudActive()) {
-      const activities = getStoredActivities();
-      const updatedActs = activities.filter(a => a.lead_id !== id);
+    // Clean up local activities cache for this lead
+    const activities = getStoredActivities();
+    const updatedActs = activities.filter(a => a.lead_id !== id);
+    try {
       localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(updatedActs));
       metricsService.notifyChange();
+    } catch (e) {
+      console.error('[leadService] Failed to update activities cache on lead delete:', e);
     }
   },
 

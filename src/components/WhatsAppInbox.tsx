@@ -45,7 +45,7 @@ const QUICK_TEMPLATES = [
 
 export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   userRole: _userRole,
-  userEmail = 'telecaller@b2p.com',
+  userEmail = '',
   onOpenLead
 }) => {
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);

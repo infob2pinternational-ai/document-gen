@@ -13,6 +13,7 @@ import {
   Edit
 } from 'lucide-react';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
+import { formatStaffDisplayName } from '../utils/staffUtils';
 
 interface FollowUpsProps {
   role?: string;
@@ -21,7 +22,7 @@ interface FollowUpsProps {
 }
 
 export const FollowUps: React.FC<FollowUpsProps> = ({
-  userEmail = 'telecaller@b2p.com',
+  userEmail = '',
   onOpenLead
 }) => {
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all'>('today');
@@ -298,7 +299,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
                     </td>
 
                     <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                      {item.assigned_staff_email.split('@')[0]}
+                      {formatStaffDisplayName(item.assigned_staff_email)}
                     </td>
 
                     <td style={{ textAlign: 'right' }}>

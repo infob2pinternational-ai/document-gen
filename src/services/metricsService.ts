@@ -8,6 +8,7 @@ import type {
   Resource,
   LeadActivity 
 } from '../types';
+import { formatStaffDisplayName, isDummyStaffEmail } from '../utils/staffUtils';
 
 export type DateFilterType = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom';
 
@@ -572,27 +573,20 @@ export const metricsService = {
 
     const emailsSet = new Set<string>();
     leads.forEach(l => {
-      if (l.assigned_telecaller_email) emailsSet.add(l.assigned_telecaller_email);
-    });
-    followUps.forEach(f => {
-      if (f.assigned_staff_email && f.assigned_staff_email !== 'owner@b2p.com' && f.assigned_staff_email.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
-        emailsSet.add(f.assigned_staff_email);
+      if (l.assigned_telecaller_email && !isDummyStaffEmail(l.assigned_telecaller_email)) {
+        emailsSet.add(l.assigned_telecaller_email.toLowerCase().trim());
       }
     });
-
-    const formatStaffName = (email: string) => {
-      if (!email || email === 'unassigned') return 'Unassigned Queue';
-      const local = email.split('@')[0];
-      return local
-        .split(/[._-]/)
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-        .join(' ');
-    };
+    followUps.forEach(f => {
+      if (f.assigned_staff_email && !isDummyStaffEmail(f.assigned_staff_email)) {
+        emailsSet.add(f.assigned_staff_email.toLowerCase().trim());
+      }
+    });
 
     const staffEmails = Array.from(emailsSet);
     const staffList = staffEmails.map(email => ({
       email,
-      name: formatStaffName(email)
+      name: formatStaffDisplayName(email)
     }));
 
     const unassignedCount = leads.filter(l => !l.assigned_telecaller_email).length;
@@ -605,12 +599,12 @@ export const metricsService = {
         if (staff.email === 'unassigned') {
           return !l.assigned_telecaller_email;
         }
-        return l.assigned_telecaller_email === staff.email;
+        return (l.assigned_telecaller_email || '').toLowerCase().trim() === staff.email;
       });
 
       const staffFollowUps = followUps.filter(f => {
         if (staff.email === 'unassigned') return false;
-        return f.assigned_staff_email === staff.email;
+        return (f.assigned_staff_email || '').toLowerCase().trim() === staff.email;
       });
 
       const assignedLeads = staffLeads.length;
@@ -640,8 +634,8 @@ export const metricsService = {
       };
     });
 
-    if (staffFilter && staffFilter !== 'owner@b2p.com' && staffFilter !== 'admin@b2p.com' && staffFilter.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffFilter.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
-      return rows.filter(r => r.email === staffFilter);
+    if (staffFilter && staffFilter !== 'all') {
+      return rows.filter(r => r.email.toLowerCase() === staffFilter.toLowerCase());
     }
 
     return rows;

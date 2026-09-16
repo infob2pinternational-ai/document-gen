@@ -159,17 +159,37 @@ function setLocal<T>(key: string, data: T): void {
 
 type CrmOfficeTable = 'resources' | 'bookings' | 'follow_ups' | 'crm_quotations';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sanitizeOfficeRowForSupabase(_table: CrmOfficeTable, row: any) {
+  const payload = { ...row };
+  if (payload.company_id && !UUID_REGEX.test(payload.company_id)) {
+    delete payload.company_id;
+  }
+  if (payload.customer_id && !UUID_REGEX.test(payload.customer_id)) {
+    delete payload.customer_id;
+  }
+  if (payload.lead_id && !UUID_REGEX.test(payload.lead_id)) {
+    delete payload.lead_id;
+  }
+  return payload;
+}
+
 async function loadOfficeTable<T>(storageKey: string, table: CrmOfficeTable, companyId?: string | null): Promise<T[]> {
   if (isCloudActive() && supabase) {
-    let query = supabase.from(table).select('*');
-    // `resources` has no company_id filter applied here deliberately -
-    // like the finance chart of accounts, the fleet catalog is shared
-    // across this single organization's company profiles, not scoped
-    // per-profile.
-    if (companyId && table !== 'resources') query = query.eq('company_id', companyId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []) as T[];
+    try {
+      let query = supabase.from(table).select('*');
+      if (companyId && table !== 'resources' && UUID_REGEX.test(companyId)) {
+        query = query.eq('company_id', companyId);
+      }
+      const { data, error } = await query;
+      if (!error && data) return data as T[];
+      if (error) {
+        console.warn(`[officeService] Failed to query ${table} from Supabase:`, error.message || error);
+      }
+    } catch (err) {
+      console.warn(`[officeService] Error querying ${table} from Supabase:`, err);
+    }
   }
   try {
     const raw = localStorage.getItem(storageKey);
@@ -180,28 +200,53 @@ async function loadOfficeTable<T>(storageKey: string, table: CrmOfficeTable, com
 }
 
 async function persistOfficeRow<T extends { id: string }>(storageKey: string, table: CrmOfficeTable, fullLocalArray: T[], changedRow: T): Promise<void> {
-  if (isCloudActive() && supabase) {
-    const { error } = await supabase.from(table).upsert(changedRow as any);
-    if (error) throw error;
-  } else {
+  // 1. ALWAYS persist to local cache first so it is synchronous, reliable and instant
+  try {
     localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
+  } catch (storageErr) {
+    console.error(`[officeService] Failed to write to localStorage for ${storageKey}:`, storageErr);
   }
   metricsService.notifyChange();
+
+  // 2. If cloud is active, try to sync to Supabase (best-effort write-through)
+  if (isCloudActive() && supabase) {
+    try {
+      const sanitized = sanitizeOfficeRowForSupabase(table, changedRow);
+      const { error } = await supabase.from(table).upsert(sanitized as any);
+      if (error) {
+        console.warn(`[officeService] Supabase upsert failed for ${table} (saved in local cache):`, error.message || error);
+      }
+    } catch (err) {
+      console.warn(`[officeService] Could not reach Supabase for ${table} (saved in local cache):`, err);
+    }
+  }
 }
 
 async function persistOfficeRowDeleted(storageKey: string, table: CrmOfficeTable, fullLocalArray: any[], deletedId: string): Promise<void> {
-  if (isCloudActive() && supabase) {
-    const { error } = await supabase.from(table).delete().eq('id', deletedId);
-    if (error) throw error;
-  } else {
+  // 1. ALWAYS persist deletion to local cache first
+  try {
     localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
+  } catch (storageErr) {
+    console.error(`[officeService] Failed to delete from localStorage for ${storageKey}:`, storageErr);
   }
   metricsService.notifyChange();
+
+  // 2. If cloud is active, try to delete from Supabase
+  if (isCloudActive() && supabase) {
+    try {
+      const { error } = await supabase.from(table).delete().eq('id', deletedId);
+      if (error) {
+        console.warn(`[officeService] Supabase delete failed for ${table}:`, error.message || error);
+      }
+    } catch (err) {
+      console.warn(`[officeService] Could not reach Supabase for ${table} delete:`, err);
+    }
+  }
 }
 
 /** Pulls this company's resources/bookings/follow-ups/CRM quotations
  * (plus leads/lead activities, via leadService's own hydrator) down from
- * Supabase and overwrites the local cache. A no-op when no cloud session
+ * Supabase and merges into the local cache. A no-op when no cloud session
  * is active. Call once on login and again on company switch, exactly
  * like financeService.hydrateFromCloud(). */
 export async function hydrateCrmFromCloud(companyId?: string): Promise<void> {
@@ -214,13 +259,33 @@ export async function hydrateCrmFromCloud(companyId?: string): Promise<void> {
       loadOfficeTable<FollowUp>(FOLLOW_UPS_KEY, 'follow_ups', companyId),
       loadOfficeTable<CrmQuotation>(QUOTATIONS_KEY, 'crm_quotations', companyId)
     ]);
-    // Empty cloud result for resources means "not seeded yet", not
-    // "delete the fleet catalog" - same seed-on-empty behavior
-    // financeService.hydrateFromCloud() already uses for its defaults.
-    localStorage.setItem(RESOURCES_KEY, JSON.stringify(resources.length ? resources : SEED_RESOURCES));
-    localStorage.setItem(BOOKINGS_KEY, JSON.stringify(bookings));
-    localStorage.setItem(FOLLOW_UPS_KEY, JSON.stringify(followUps));
-    localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(quotations));
+    if (resources && resources.length > 0) {
+      localStorage.setItem(RESOURCES_KEY, JSON.stringify(resources));
+    }
+    if (bookings && bookings.length > 0) {
+      const localBookings = getLocal<Booking[]>(BOOKINGS_KEY, SEED_BOOKINGS);
+      const merged = [...bookings];
+      for (const loc of localBookings) {
+        if (!merged.some(b => b.id === loc.id)) merged.push(loc);
+      }
+      localStorage.setItem(BOOKINGS_KEY, JSON.stringify(merged));
+    }
+    if (followUps && followUps.length > 0) {
+      const localFollowUps = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
+      const merged = [...followUps];
+      for (const loc of localFollowUps) {
+        if (!merged.some(f => f.id === loc.id)) merged.push(loc);
+      }
+      localStorage.setItem(FOLLOW_UPS_KEY, JSON.stringify(merged));
+    }
+    if (quotations && quotations.length > 0) {
+      const localQuotations = getLocal<CrmQuotation[]>(QUOTATIONS_KEY, SEED_QUOTATIONS);
+      const merged = [...quotations];
+      for (const loc of localQuotations) {
+        if (!merged.some(q => q.id === loc.id)) merged.push(loc);
+      }
+      localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(merged));
+    }
     metricsService.notifyChange();
   } catch (e) {
     console.error('[officeService] hydrateCrmFromCloud failed - continuing with existing local cache:', e);
@@ -312,7 +377,7 @@ export const officeService = {
       if (followUpRecord.lead_id) {
         await leadService.addLeadActivity({
           lead_id: followUpRecord.lead_id,
-          company_id: 'default',
+          company_id: followUpRecord.company_id || leadService.getActiveCompany() || 'default',
           user_email: userEmail,
           action: 'Follow-up Scheduled',
           note: `Follow-up set for ${followUpRecord.due_date} ${followUpRecord.due_time}: ${followUpRecord.reason}`
@@ -344,7 +409,7 @@ export const officeService = {
     if (current.lead_id) {
       await leadService.addLeadActivity({
         lead_id: current.lead_id,
-        company_id: 'default',
+        company_id: current.company_id || leadService.getActiveCompany() || 'default',
         user_email: userEmail,
         action: 'Follow-up Completed',
         note: `Completed follow-up: "${current.reason}". Note: ${completionNote || 'No completion remarks.'}`
@@ -371,7 +436,7 @@ export const officeService = {
     if (current.lead_id) {
       await leadService.addLeadActivity({
         lead_id: current.lead_id,
-        company_id: 'default',
+        company_id: current.company_id || leadService.getActiveCompany() || 'default',
         user_email: userEmail,
         action: 'Follow-up Snoozed',
         note: `Snoozed for ${minutes} minutes until ${current.due_time}.`

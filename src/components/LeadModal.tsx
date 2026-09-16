@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { Customer, Lead, LeadPriority, LeadSource } from '../types';
 import { X, UserCheck } from 'lucide-react';
 import { leadService } from '../services/leadService';
+import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
 
 interface LeadModalProps {
   lead: Lead | null;
@@ -81,12 +82,17 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [numberOfDays, setNumberOfDays] = useState<number | ''>(1);
   
   const [priority, setPriority] = useState<LeadPriority>('WARM');
-  const [assignedTelecaller, setAssignedTelecaller] = useState(userEmail || 'telecaller@b2p.com');
+  const [assignedTelecaller, setAssignedTelecaller] = useState(userEmail || '');
   const [notes, setNotes] = useState('');
   const [remarks, setRemarks] = useState('');
   
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const availableStaff = useMemo(() => {
+    return getAvailableStaffList(userEmail, leadService.getLeads());
+  }, [userEmail, isOpen]);
 
   useEffect(() => {
     if (lead) {
@@ -105,7 +111,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setCampaignLocation(lead.campaign_location || '');
       setNumberOfDays(lead.number_of_days !== undefined ? lead.number_of_days : 1);
       setPriority(lead.priority || 'WARM');
-      setAssignedTelecaller(lead.assigned_telecaller_email || userEmail || 'telecaller@b2p.com');
+      setAssignedTelecaller(lead.assigned_telecaller_email || userEmail || '');
       setNotes(lead.notes || '');
       setRemarks(lead.remarks || '');
     } else {
@@ -124,7 +130,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setCampaignLocation('');
       setNumberOfDays(1);
       setPriority('WARM');
-      setAssignedTelecaller(userEmail || 'telecaller@b2p.com');
+      setAssignedTelecaller(userEmail || '');
       setNotes('');
       setRemarks('');
       setMatchedCustomer(null);
@@ -155,6 +161,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+
     if (!customerName.trim()) {
       alert('Please enter a customer name.');
       return;
@@ -164,32 +172,40 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       return;
     }
 
-    const saved = await leadService.saveLead({
-      id: lead?.id,
-      company_id: companyId,
-      customer_name: customerName.trim(),
-      company_name: companyName.trim() || undefined,
-      phone: phone.trim(),
-      whatsapp_number: whatsappNumber.trim() || phone.trim(),
-      location: location.trim(),
-      address: address.trim() || undefined,
-      business_type: businessType.trim() || undefined,
-      lead_source: leadSource,
-      source_details: sourceDetails.trim() || undefined,
-      service_required: serviceRequired,
-      vehicle_service_type: vehicleServiceType.trim() || undefined,
-      required_date: requiredDate || undefined,
-      campaign_location: campaignLocation.trim() || undefined,
-      number_of_days: numberOfDays === '' ? 1 : Number(numberOfDays),
-      priority: priority,
-      assigned_telecaller_email: assignedTelecaller,
-      notes: notes.trim() || undefined,
-      remarks: remarks.trim() || undefined,
-      status: lead?.status || 'new'
-    }, userEmail);
+    try {
+      setIsSaving(true);
+      const saved = await leadService.saveLead({
+        id: lead?.id,
+        company_id: companyId,
+        customer_name: customerName.trim(),
+        company_name: companyName.trim() || undefined,
+        phone: phone.trim(),
+        whatsapp_number: whatsappNumber.trim() || phone.trim(),
+        location: location.trim(),
+        address: address.trim() || undefined,
+        business_type: businessType.trim() || undefined,
+        lead_source: leadSource,
+        source_details: sourceDetails.trim() || undefined,
+        service_required: serviceRequired,
+        vehicle_service_type: vehicleServiceType.trim() || undefined,
+        required_date: requiredDate || undefined,
+        campaign_location: campaignLocation.trim() || undefined,
+        number_of_days: numberOfDays === '' ? 1 : Number(numberOfDays),
+        priority: priority,
+        assigned_telecaller_email: assignedTelecaller,
+        notes: notes.trim() || undefined,
+        remarks: remarks.trim() || undefined,
+        status: lead?.status || 'new'
+      }, userEmail);
 
-    onSaved(saved);
-    onClose();
+      onSaved(saved);
+      onClose();
+    } catch (err: any) {
+      console.error('[LeadModal] Failed to save lead:', err);
+      alert('Failed to save lead: ' + (err?.message || 'Unknown error occurred.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -412,15 +428,34 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Campaign Venue / Location</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Thrissur Round & Guruvayur Temple Road"
-                  value={campaignLocation}
-                  onChange={(e) => setCampaignLocation(e.target.value)}
-                  style={{ fontSize: '0.8125rem' }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '0.65rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Campaign Venue / Location</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Thrissur Round & Guruvayur Temple Road"
+                    value={campaignLocation}
+                    onChange={(e) => setCampaignLocation(e.target.value)}
+                    style={{ fontSize: '0.8125rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Assigned Staff</label>
+                  <select
+                    value={assignedTelecaller}
+                    onChange={(e) => setAssignedTelecaller(e.target.value)}
+                    style={{ fontSize: '0.8125rem' }}
+                  >
+                    {availableStaff.map(s => (
+                      <option key={s.email} value={s.email}>{s.label}</option>
+                    ))}
+                    {assignedTelecaller && !availableStaff.some(s => s.email === assignedTelecaller) && (
+                      <option value={assignedTelecaller}>{formatStaffDisplayName(assignedTelecaller)} ({assignedTelecaller})</option>
+                    )}
+                    <option value="">Unassigned</option>
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -488,10 +523,16 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               className="btn-primary"
-              style={{ fontSize: '0.8125rem', padding: '0.45rem 1.25rem' }}
+              style={{
+                fontSize: '0.8125rem',
+                padding: '0.45rem 1.25rem',
+                opacity: isSaving ? 0.7 : 1,
+                cursor: isSaving ? 'not-allowed' : 'pointer'
+              }}
             >
-              {lead ? 'Update Lead Record' : 'Create & Save Lead'}
+              {isSaving ? 'Saving Lead...' : lead ? 'Update Lead Record' : 'Create & Save Lead'}
             </button>
           </div>
 

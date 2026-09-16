@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
+import { formatStaffDisplayName } from '../utils/staffUtils';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { FollowUpModal } from './FollowUpModal';
 import { QuotationModal } from './QuotationModal';
@@ -505,7 +506,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   Assigned Staff
                 </span>
                 <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--brand-blue)' }}>
-                  {lead.assigned_telecaller_email ? lead.assigned_telecaller_email.split('@')[0] : 'Unassigned'}
+                  {lead.assigned_telecaller_email ? `${formatStaffDisplayName(lead.assigned_telecaller_email)} (${lead.assigned_telecaller_email})` : 'Unassigned'}
                 </div>
               </div>
 
