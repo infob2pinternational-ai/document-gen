@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "build:mobile": "tsc -b && vite build --config vite.mobile.config.ts",
     "cap:sync": "npm run build:mobile && npx cap sync android",
-    "cap:open": "npx cap open android"
+    "cap:open": "npx cap open android",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

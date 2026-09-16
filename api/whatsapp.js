@@ -1,5 +1,28 @@
+import { requireUser, requireCompanyAccess } from '../server/auth.js';
 import https from 'https';
 import crypto from 'crypto';
+
+
+// Read the original bytes through Vercel's restored request stream. Do not
+// reconstruct JSON from req.body: whitespace changes invalidate Meta's HMAC.
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', chunk => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.length;
+      if (size > 1024 * 1024) {
+        reject(new Error('Request body too large'));
+        return;
+      }
+      chunks.push(buffer);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+    req.on('aborted', () => reject(new Error('Request aborted')));
+  });
+}
 
 // Helper to make HTTPS requests using Node's native module
 function httpsRequest(url, options, bodyContent) {
@@ -14,7 +37,7 @@ function httpsRequest(url, options, bodyContent) {
           json: () => {
             try {
               return JSON.parse(data);
-            } catch (e) {
+            } catch {
               return { error: 'Failed to parse JSON response', raw: data };
             }
           },
@@ -73,7 +96,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || 'b2p_wa_verify_token_secure';
+  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
@@ -83,12 +106,45 @@ export default async function handler(req, res) {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    if (mode === 'subscribe' && token === verifyToken) {
+    if (verifyToken && mode === 'subscribe' && token === verifyToken) {
       console.log('[WhatsApp Webhook] Verification successful');
       return res.status(200).send(challenge);
     } else {
       console.warn('[WhatsApp Webhook] Verification failed, token mismatch');
       return res.status(403).json({ error: 'Verification failed' });
+    }
+  }
+
+  let auth;
+  if (req.method === 'POST') {
+    if (req.query.action === 'send-message') {
+      auth = await requireUser(req, res);
+      if (!auth) return;
+    } else if (req.query.action) {
+      return res.status(400).json({ error: 'Unknown action.' });
+    } else if (!process.env.WHATSAPP_APP_SECRET) {
+      return res.status(503).json({ error: 'Webhook verification is not configured.' });
+    }
+
+    let rawBody;
+    try {
+      rawBody = await readBody(req);
+    } catch {
+      return res.status(400).json({ error: 'Unable to read request body.' });
+    }
+    if (!auth) {
+      const signature = req.headers?.['x-hub-signature-256'];
+      const expected = crypto.createHmac('sha256', process.env.WHATSAPP_APP_SECRET).update(rawBody).digest();
+      if (typeof signature !== 'string' || !/^sha256=[0-9a-f]{64}$/i.test(signature) ||
+          !crypto.timingSafeEqual(expected, Buffer.from(signature.slice(7), 'hex'))) {
+        return res.status(401).json({ error: 'Invalid webhook signature.' });
+      }
+    }
+    try {
+      req.body = JSON.parse(rawBody.toString('utf8'));
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw new Error('Invalid body');
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON body.' });
     }
   }
 
@@ -103,11 +159,10 @@ export default async function handler(req, res) {
       template_components = [],
       media_url,
       media_filename,
-      company_id,
-      conversation_id,
-      sender_name = 'B2P Team',
-      sender_email
+      company_id
     } = req.body || {};
+
+    if (!await requireCompanyAccess(auth, company_id, res)) return;
 
     if (!phone) {
       return res.status(400).json({ error: 'Missing target phone number' });
@@ -118,13 +173,7 @@ export default async function handler(req, res) {
 
     // Check if Meta API credentials are configured
     if (!phoneNumberId || !accessToken) {
-      console.log('[WhatsApp API] Credentials not configured in .env. Returning simulated success.');
-      return res.status(200).json({
-        success: true,
-        simulated: true,
-        messageId: `sim_${Date.now()}`,
-        note: 'WhatsApp API credentials not set. Simulated delivery recorded.'
-      });
+      return res.status(503).json({ success: false, error: 'WhatsApp API credentials are not configured.' });
     }
 
     // Build Meta Graph API message payload
@@ -177,32 +226,10 @@ export default async function handler(req, res) {
         });
       }
 
-      const waMsgId = resData?.messages?.[0]?.id || `wamid.${Date.now()}`;
+      const waMsgId = resData?.messages?.[0]?.id;
+      if (!waMsgId) return res.status(502).json({ success: false, error: 'Meta did not confirm message acceptance.' });
 
-      // Persist to Supabase if conversation_id provided
-      if (conversation_id) {
-        await supabaseRest('whatsapp_messages', 'POST', {
-          conversation_id,
-          company_id: company_id || null,
-          wa_message_id: waMsgId,
-          sender_type: 'staff',
-          sender_name: sender_name,
-          sender_email: sender_email || null,
-          message_type: type,
-          text: text || (template_name ? `[Template: ${template_name}]` : ''),
-          status: 'sent',
-          attachment_url: media_url || null,
-          attachment_type: type === 'document' ? 'pdf' : null,
-          attachment_name: media_filename || null
-        });
-
-        // Update conversation last message snippet
-        await supabaseRest(`whatsapp_conversations?id=eq.${conversation_id}`, 'PATCH', {
-          last_message: text || (template_name ? `Template: ${template_name}` : 'Document shared'),
-          last_message_at: new Date().toISOString()
-        });
-      }
-
+      // The authenticated client persists the message once, with its local ID.
       return res.status(200).json({
         success: true,
         messageId: waMsgId
@@ -218,7 +245,7 @@ export default async function handler(req, res) {
     const payload = req.body;
 
     // Log raw webhook event
-    supabaseRest('whatsapp_webhooks_log', 'POST', {
+    await supabaseRest('whatsapp_webhooks_log', 'POST', {
       event_type: 'meta_webhook',
       payload: payload || {},
       processed: true

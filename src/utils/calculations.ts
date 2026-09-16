@@ -15,10 +15,11 @@ export interface CalculationResult {
  * Example: 35400 -> "Thirty-Five Thousand Four Hundred Rupees Only"
  */
 export function numberToWordsIndian(num: number): string {
-  if (isNaN(num) || num <= 0) return 'Zero Rupees Only';
+  if (!Number.isFinite(num) || num <= 0) return 'Zero Rupees Only';
 
-  const rupees = Math.floor(num);
-  const paise = Math.round((num - rupees) * 100);
+  const roundedPaise = Math.round((num + Number.EPSILON) * 100);
+  const rupees = Math.floor(roundedPaise / 100);
+  const paise = roundedPaise % 100;
 
   const units = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',

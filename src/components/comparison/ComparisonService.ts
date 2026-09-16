@@ -2,7 +2,7 @@ import { supabase } from '../../services/db';
 import type { ComparisonConfig, ComparisonTemplate } from './ComparisonTypes';
 
 // Helper to check if we should read/write to Supabase or local storage
-const useCloud = (): boolean => {
+const isCloudEnabled = (): boolean => {
   if (!supabase) return false;
   const storedUser = localStorage.getItem('supabase_user');
   return !!storedUser;
@@ -23,7 +23,7 @@ export const ComparisonService = {
    * Fetches the options data for a specific comparison quotation document.
    */
   async getComparisonData(documentId: string): Promise<ComparisonConfig | null> {
-    if (useCloud() && supabase) {
+    if (isCloudEnabled() && supabase) {
       const { data, error } = await supabase
         .from('comparison_document_data')
         .select('options_data')
@@ -51,7 +51,7 @@ export const ComparisonService = {
     // Always mirror to local storage as automatic local system backup
     setLocal(`comparison_doc_${documentId}`, optionsData);
 
-    if (useCloud() && supabase) {
+    if (isCloudEnabled() && supabase) {
       // Check if data already exists for this document_id
       const { data: existing, error: checkError } = await supabase
         .from('comparison_document_data')
@@ -91,7 +91,7 @@ export const ComparisonService = {
    * Deletes comparison quotation options data when the document is deleted.
    */
   async deleteComparisonData(documentId: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudEnabled() && supabase) {
       const { error } = await supabase
         .from('comparison_document_data')
         .delete()
@@ -107,7 +107,7 @@ export const ComparisonService = {
    * Fetches all comparison templates for a given company profile.
    */
   async getComparisonTemplates(companyId: string): Promise<ComparisonTemplate[]> {
-    if (useCloud() && supabase) {
+    if (isCloudEnabled() && supabase) {
       const { data, error } = await supabase
         .from('comparison_templates')
         .select('*')
@@ -131,7 +131,7 @@ export const ComparisonService = {
     const userStr = localStorage.getItem('supabase_user');
     const userId = userStr ? JSON.parse(userStr).id : null;
     
-    if (useCloud() && supabase) {
+    if (isCloudEnabled() && supabase) {
       const payload = {
         user_id: userId,
         company_id: companyId,
@@ -169,7 +169,7 @@ export const ComparisonService = {
    * Deletes a comparison template by ID.
    */
   async deleteComparisonTemplate(companyId: string, templateId: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudEnabled() && supabase) {
       const { error } = await supabase
         .from('comparison_templates')
         .delete()

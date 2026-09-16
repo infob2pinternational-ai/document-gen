@@ -626,19 +626,12 @@ function App() {
     }
   };
 
-  // Phase 1 (data-loading consolidation): single source of truth for
-  // fetching documents, customers, and services for a given company
-  // profile, plus the previewDocId deep-link handling that used to live
-  // only inside the [activeProfile] effect below. loadData() and the
-  // [activeProfile] effect both now call this instead of each keeping
-  // their own copy of the same fetch logic. Behavior is intentionally
-  // unchanged in this phase, including the pre-existing getServices()
-  // call with no company id (kept as-is; scoping this is a later phase).
+  // Load all company-scoped data together.
   const refreshCompanyData = async (profileId: string) => {
     const [docs, custs, servs, queue] = await Promise.all([
       dbService.getDocuments(profileId),
       dbService.getCustomers(profileId),
-      dbService.getServices(),
+      dbService.getServices(profileId),
       getQueueStatusForCompany(profileId)
     ]);
     setDocuments(docs);

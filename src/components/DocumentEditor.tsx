@@ -239,8 +239,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // init, setter never called), so listing it here never causes this
   // effect to re-run - it still only fires its cleanup on unmount.
   useEffect(() => {
+    const flushDraft = () => draftSaver.flush();
+    window.addEventListener('pagehide', flushDraft);
     return () => {
+      window.removeEventListener('pagehide', flushDraft);
       draftSaver.flush();
+      draftSaver.cancel();
     };
   }, [draftSaver]);
 
