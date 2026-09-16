@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { WhatsAppConversation, WhatsAppMessage } from '../types';
 import { whatsappService } from '../services/whatsappService';
 import { leadService } from '../services/leadService';
@@ -59,17 +59,17 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   // Modals
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
 
-  const refreshConversations = async () => {
+  const refreshConversations = useCallback(async () => {
     const list = await whatsappService.getConversations();
     setConversations(list);
     if (!activeConvId && list.length > 0) {
       setActiveConvId(list[0].id);
     }
-  };
+  }, [activeConvId]);
 
   useEffect(() => {
     refreshConversations();
-  }, []);
+  }, [refreshConversations]);
 
   useEffect(() => {
     if (activeConvId) {
@@ -107,7 +107,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
     return () => {
       unsubscribe();
     };
-  }, [activeConvId]);
+  }, [activeConvId, refreshConversations]);
 
   // Scroll to bottom when messages change
   useEffect(() => {

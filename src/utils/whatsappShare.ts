@@ -43,10 +43,11 @@ export function buildWhatsAppDocumentMessage(
   const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
   const shareLink = baseUrl + '/doc/' + doc.id;
 
+  const isIntl = (companyName || '').toLowerCase().includes('international');
   let docTypeLabel = 'Document';
   let docNoLabel = 'Doc';
   if (doc.document_type === 'invoice') {
-    docTypeLabel = 'Tax Invoice';
+    docTypeLabel = isIntl ? 'Invoice' : 'Tax Invoice';
     docNoLabel = 'Invoice';
   } else if (doc.document_type === 'non_tax_invoice') {
     docTypeLabel = 'Invoice';

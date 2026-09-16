@@ -62,7 +62,7 @@ export const OwnerApp: React.FC = () => {
   // component's early returns, so it can't wait until after them).
   const isDesignatedApprover = (profile: CompanyProfile | null, currentUser: any): boolean => {
     const email = (currentUser?.email || '').toLowerCase().trim();
-    if (email === 'fransonputhukkara@gmail.com' || email === 'owner@b2p.com') return true;
+    if (email === 'sarathjohnpanegdan@gmail.com' || email === 'fransonputhukkara@gmail.com' || email === 'owner@b2p.com') return true;
     return canAccessModule(currentUser?.user_metadata?.role, 'pending_approval', currentUser?.email) && (
       !profile?.approver_email ||
       email === profile.approver_email.toLowerCase()

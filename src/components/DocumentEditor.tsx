@@ -41,21 +41,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   onRefreshDocs,
   draftToRestore
 }) => {
-  // Profile-specific rule: B2P Inter-Media Solutions only issues Tax
-  // Invoices - Non-Tax Invoice is not a valid document type for this
-  // profile (see the Document Type dropdown and handleSaveDoc below).
-  // Uses the same name-substring identification pattern already
-  // established by the existing isB2PInternational check further down
-  // this file, per the explicit instruction to reuse the existing
-  // profile identification mechanism rather than add a new one.
-  const isB2PInterMediaSolutions = !!activeProfile?.name?.toLowerCase().includes('inter-media');
+  // Profile-specific rules:
+  // B2P Inter-Media Solutions only issues Tax Invoices (invoice)
+  // B2P International only issues plain Invoices (non_tax_invoice, 0% tax)
+  const lowerProfileName = (activeProfile?.name || '').toLowerCase();
+  const isB2PInterMediaSolutions = lowerProfileName.includes('inter-media') || lowerProfileName.includes('inter media');
+  const isB2PInternational = lowerProfileName.includes('international');
 
   // Database Libraries
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
 
   // Main Document States
-  const [docType, setDocType] = useState<DocumentType>('invoice');
+  const [docType, setDocType] = useState<DocumentType>(isB2PInternational ? 'non_tax_invoice' : 'invoice');
   const [docNumber, setDocNumber] = useState('');
   const [sequenceNumber, setSequenceNumber] = useState<number>(1001);
   const [date, setDate] = useState('');
@@ -301,7 +299,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
       if (found) {
         const f = found.draft.fields;
-        setDocType(f.docType);
+        let restoredType: DocumentType = f.docType;
+        if (isB2PInterMediaSolutions && restoredType === 'non_tax_invoice') {
+          restoredType = 'invoice';
+        } else if (isB2PInternational && restoredType === 'invoice') {
+          restoredType = 'non_tax_invoice';
+        }
+        setDocType(restoredType);
         setDocNumber(f.docNumber);
         setSequenceNumber(f.sequenceNumber);
         setDate(f.date);
@@ -333,7 +337,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       // Backward-compat fallback: a draft handed down via the old prop
       // path (see interface comment above) and not yet migrated/found
       // by the new system.
-      setDocType(draftToRestore.docType);
+      let restoredType: DocumentType = draftToRestore.docType;
+      if (isB2PInterMediaSolutions && restoredType === 'non_tax_invoice') {
+        restoredType = 'invoice';
+      } else if (isB2PInternational && restoredType === 'invoice') {
+        restoredType = 'non_tax_invoice';
+      }
+      setDocType(restoredType);
       setDocNumber(draftToRestore.docNumber);
       setSequenceNumber(draftToRestore.sequenceNumber);
       setDate(draftToRestore.date);
@@ -362,7 +372,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           const res = await dbService.getDocumentById(documentToEdit.id);
           if (res) {
             const { document, items: docItems } = res;
-            setDocType(document.document_type);
+            let editType: DocumentType = document.document_type;
+            if (isB2PInterMediaSolutions && editType === 'non_tax_invoice') {
+              editType = 'invoice';
+            } else if (isB2PInternational && editType === 'invoice') {
+              editType = 'non_tax_invoice';
+            }
+            setDocType(editType);
             setDocNumber(document.document_number);
             setSequenceNumber(document.sequence_number);
             setDate(document.date || '');
@@ -427,7 +443,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       setCustomerGstin('');
 
       // Auto-sequence numbers
-      generateSequenceNumber(docType);
+      const initialType: DocumentType = isB2PInternational ? 'non_tax_invoice' : 'invoice';
+      setDocType(initialType);
+      generateSequenceNumber(initialType);
       hasInitializedRef.current = true;
     }
   }, [documentToEdit, activeProfile, draftToRestore]);
@@ -501,8 +519,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       prefix = activeProfile.work_order_prefix || 'WO/';
       startSeq = Number(activeProfile.work_order_start_number) || 1001;
     } else if (type === 'non_tax_invoice') {
-      prefix = activeProfile.non_tax_prefix || 'NT/';
-      startSeq = Number(activeProfile.non_tax_start_number) || 1001;
+      prefix = activeProfile.non_tax_prefix || activeProfile.invoice_prefix || 'INV/';
+      startSeq = Number(activeProfile.non_tax_start_number) || Number(activeProfile.invoice_start_number) || 1001;
     }
 
     // Set immediate non-blank default - only if no newer request has
@@ -573,7 +591,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   };
 
   // Shared Document Totals calculations
-  const { subtotal, taxableAmount, taxTotal, total, effectiveGstRate } = calculateDocumentTotals(items, discountTotal, docType);
+  const { subtotal, taxableAmount, taxTotal, total, effectiveGstRate } = calculateDocumentTotals(
+    items,
+    discountTotal,
+    isB2PInternational ? 'non_tax_invoice' : docType
+  );
 
   // Optional Advance / Balance Due (kept out of calculateDocumentTotals -
   // an advance payment must never change the Grand Total above).
@@ -611,6 +633,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       alert('Non-Tax Invoice is not available for B2P Inter-Media Solutions. This profile issues Tax Invoices only.');
       return;
     }
+    if (isB2PInternational && docType === 'invoice') {
+      alert('Tax Invoice is not available for B2P International. This profile issues Invoices only.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -618,45 +644,46 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
       // Check if this is a new customer and auto-save to CRM list if it doesn't exist (match by name or phone)
       let finalCustomerId = selectedCustomerId;
-      if (customerName.trim()) {
-        const trimmedPhone = customerPhone.trim();
-        const existingCust = customers.find(c => {
-          const nameMatch = c.name.trim().toLowerCase() === customerName.trim().toLowerCase();
-          const phoneMatch = trimmedPhone && c.phone && c.phone.trim() === trimmedPhone;
-          return nameMatch || phoneMatch;
-        });
+      if (!finalCustomerId && customerName.trim()) {
+        const existingCust = customers.find(c => 
+          c.name.toLowerCase().trim() === customerName.toLowerCase().trim() ||
+          (customerPhone && c.phone && c.phone.trim() === customerPhone.trim())
+        );
 
         if (existingCust) {
           finalCustomerId = existingCust.id;
         } else {
-          const newCustId = crypto.randomUUID();
-          const newCust: Customer = {
-            id: newCustId,
-            company_id: activeProfile.id,
-            name: customerName.trim(),
-            email: customerEmail.trim() || undefined,
-            phone: customerPhone.trim() || undefined,
-            address: customerAddress.trim() || undefined,
-            gstin: customerGstin.trim() || undefined
-          };
-          await dbService.saveCustomer(newCust);
-          finalCustomerId = newCustId;
+          // Auto create customer in background
+          try {
+            const newCust = await dbService.saveCustomer({
+              id: crypto.randomUUID(),
+              company_id: activeProfile.id,
+              name: customerName.trim(),
+              email: customerEmail.trim() || undefined,
+              phone: customerPhone.trim() || undefined,
+              address: customerAddress.trim() || undefined,
+              gstin: isB2PInternational ? undefined : (customerGstin.trim() || undefined)
+            });
+            finalCustomerId = newCust.id;
+          } catch (custErr) {
+            console.warn('Could not auto-save customer to CRM list:', custErr);
+          }
         }
       }
-      
+
       const docPayload: Document = {
         id: docId,
         company_id: activeProfile.id,
         document_type: docType,
         document_number: docNumber,
         sequence_number: sequenceNumber,
+        date,
         customer_id: finalCustomerId || undefined,
         customer_name: customerName,
         customer_email: customerEmail || undefined,
         customer_phone: customerPhone || undefined,
         customer_address: customerAddress || undefined,
-        customer_gstin: customerGstin || undefined,
-        date,
+        customer_gstin: isB2PInternational ? undefined : (customerGstin || undefined),
         col_name_description: colDesc,
         col_name_quantity: colQty,
         col_name_unit: colUnit,
@@ -679,7 +706,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       const itemsPayload = items.map(it => ({
         ...it,
         document_id: docId,
-        gst_percentage: docType === 'non_tax_invoice' ? 0 : it.gst_percentage
+        gst_percentage: (isB2PInternational || docType === 'non_tax_invoice') ? 0 : it.gst_percentage
       }));
 
       await dbService.saveDocument(docPayload, itemsPayload);
@@ -739,6 +766,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     setDraggedIndex(null);
   };
 
+  const getDocTypeDisplayLabel = (type: DocumentType) => {
+    switch (type) {
+      case 'invoice': return 'Tax Invoice';
+      case 'non_tax_invoice': return 'Invoice';
+      case 'proforma_invoice': return 'Proforma Invoice';
+      case 'quotation': return 'Quotation';
+      case 'work_order': return 'Work Order';
+      default: return (type as string).replace(/_/g, ' ');
+    }
+  };
+
   if (previewDoc) {
     return (
       <DocumentPreview
@@ -763,7 +801,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           </button>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-              {documentToEdit ? `Edit ${docType.replace('_', ' ')}` : `Create ${docType.replace('_', ' ')}`}
+              {documentToEdit ? `Edit ${getDocTypeDisplayLabel(docType)}` : `Create ${getDocTypeDisplayLabel(docType)}`}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '2px 0 0 0' }}>
               Sequence details and custom branding will be locked upon save.
@@ -852,7 +890,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   }}
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
-                  <option value="invoice">Tax Invoice</option>
+                  {!isB2PInternational && (
+                    <option value="invoice">Tax Invoice</option>
+                  )}
                   {/* Profile-specific rule: B2P Inter-Media Solutions only
                       issues Tax Invoices - Non-Tax Invoice is not a valid
                       document type for this profile, so it's not offered
@@ -944,7 +984,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       <th style={{ width: '80px', textAlign: 'center' }}>{colQty}</th>
                       <th style={{ width: '70px', textAlign: 'center' }}>{colUnit}</th>
                       <th style={{ width: '100px', textAlign: 'right' }}>{colRate}</th>
-                      {docType !== 'non_tax_invoice' && (
+                      {!isB2PInternational && docType !== 'non_tax_invoice' && (
                         <th style={{ width: '75px', textAlign: 'center' }}>Tax</th>
                       )}
                       <th style={{ width: '110px', textAlign: 'right' }}>{colAmt}</th>
@@ -956,7 +996,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       const matchedSrv = services.find(s => s.id === item.service_id);
                       const serviceName = matchedSrv ? matchedSrv.name : (item.service_id ? 'Preset Service' : 'Custom');
                       const currSymbol = activeProfile?.currency === 'INR' ? '₹' : (activeProfile?.currency === 'USD' ? '$' : (activeProfile?.currency || '₹') + ' ');
-                      const lineTaxAmt = docType === 'non_tax_invoice' ? 0 : ((item.amount || 0) * (item.gst_percentage || 0) / 100);
+                      const lineTaxAmt = (isB2PInternational || docType === 'non_tax_invoice') ? 0 : ((item.amount || 0) * (item.gst_percentage || 0) / 100);
                       const lineTotalWithTax = (item.amount || 0) + lineTaxAmt;
 
                       return (
@@ -995,7 +1035,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                           <td style={{ textAlign: 'right' }} className="mono">
                             {currSymbol}{(item.rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
-                          {docType !== 'non_tax_invoice' && (
+                          {!isB2PInternational && docType !== 'non_tax_invoice' && (
                             <td style={{ textAlign: 'center' }}>
                               <span style={{ padding: '2px 6px', background: 'rgba(59,130,246,0.1)', color: 'var(--accent-primary)', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
                                 {item.gst_percentage || 0}%
@@ -1068,7 +1108,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           itemToEdit={itemToEdit}
           services={services}
           currency={activeProfile?.currency || 'INR'}
-          isTaxableDoc={docType !== 'non_tax_invoice'}
+          isTaxableDoc={!isB2PInternational && docType !== 'non_tax_invoice'}
           colDesc={colDesc}
           colQty={colQty}
           colUnit={colUnit}
@@ -1104,15 +1144,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">GSTIN (Optional)</label>
-              <input 
-                type="text" 
-                value={customerGstin} 
-                onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())} 
-                placeholder="07AAAAA1111A1Z1"
-              />
-            </div>
+            {!isB2PInternational && docType !== 'non_tax_invoice' && (
+              <div className="form-group">
+                <label className="form-label">GSTIN (Optional)</label>
+                <input 
+                  type="text" 
+                  value={customerGstin} 
+                  onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())} 
+                  placeholder="07AAAAA1111A1Z1"
+                />
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">Billing Address</label>
@@ -1183,7 +1225,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </div>
             )}
 
-            {docType !== 'non_tax_invoice' && (
+            {!isB2PInternational && docType !== 'non_tax_invoice' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>
                   GST {effectiveGstRate > 0 ? `(${effectiveGstRate.toFixed(0)}%)` : ''}:

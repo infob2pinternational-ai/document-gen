@@ -186,7 +186,12 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     shareDocumentViaWhatsApp(document, companyName, userEmail);
   };
 
+  const isIntlProfile = !!activeProfile?.name?.toLowerCase().includes('international');
+
   const getDocTitle = (type: string) => {
+    if (isIntlProfile && (type === 'invoice' || type === 'non_tax_invoice')) {
+      return 'INVOICE';
+    }
     switch (type) {
       case 'invoice': return 'TAX INVOICE';
       case 'non_tax_invoice': return 'INVOICE';
@@ -219,7 +224,8 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
     );
   }
 
-  const totals = calculateDocumentTotals(items, document.discount_total, document.document_type);
+  const effectiveDocType = isIntlProfile ? 'non_tax_invoice' : document.document_type;
+  const totals = calculateDocumentTotals(items, document.discount_total, effectiveDocType);
   // Optional Advance / Balance Due - document.advance is undefined/null
   // for any document saved before this feature existed, which
   // normalizeAdvance safely treats as "no advance" (0).
@@ -355,7 +361,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               {activeProfile.phone && <p style={{ margin: '0 0 2px 0' }}>Phone: {activeProfile.phone}</p>}
               {activeProfile.email && <p style={{ margin: '0 0 2px 0' }}>Email: {activeProfile.email}</p>}
               {activeProfile.website && <p style={{ margin: '0 0 2px 0' }}>Web: {activeProfile.website}</p>}
-              {activeProfile.gstin && (
+              {activeProfile.gstin && !isIntlProfile && (
                 <p style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#0f172a' }}>
                   GSTIN: <span className="mono">{activeProfile.gstin}</span>
                 </p>
@@ -389,7 +395,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
               <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem', color: '#334155', lineHeight: '1.4' }}>
                 {document.customer_address}
               </div>
-              {document.customer_gstin && (
+              {document.customer_gstin && !isIntlProfile && (
                 <div style={{ marginTop: '0.35rem', color: '#334155', fontWeight: 500 }}>
                   GSTIN: <span style={{ fontWeight: 600 }} className="mono">{document.customer_gstin}</span>
                 </div>
@@ -514,7 +520,7 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   where no GST was actually applied (taxTotal is 0), per the
                   business rule that non-GST documents must show no GST row
                   or a ₹0 GST amount at all. */}
-              {document.document_type !== 'non_tax_invoice' && totals.taxTotal > 0 && (
+              {!isIntlProfile && document.document_type !== 'non_tax_invoice' && totals.taxTotal > 0 && (
                 <tr style={{ fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
                   <td style={{ borderRight: '1px solid #cbd5e1' }}></td>
                   <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.4rem 0.5rem', textAlign: 'right' }}>

@@ -259,6 +259,23 @@ function buildSyncPayload(companyName: string, doc: Document, items: DocumentIte
   };
 }
 
+const normalizeDocTypeForCompany = (d: Document, profile?: CompanyProfile | null): boolean => {
+  const profileName = (profile?.name || '').toLowerCase();
+  const customerName = (d.customer_name || '').toLowerCase();
+  const isInterMedia = profileName.includes('inter-media') || profileName.includes('inter media') || customerName.includes('venus');
+  const isInternational = profileName.includes('international') || customerName.includes('nesto');
+
+  if (isInterMedia && d.document_type === 'non_tax_invoice') {
+    d.document_type = 'invoice';
+    return true;
+  }
+  if (isInternational && d.document_type === 'invoice') {
+    d.document_type = 'non_tax_invoice';
+    return true;
+  }
+  return false;
+};
+
 export const dbService = {
   // Profiles
   async getProfiles(): Promise<CompanyProfile[]> {
@@ -450,6 +467,8 @@ export const dbService = {
 
   // Documents
   async getDocuments(companyId?: string): Promise<Document[]> {
+    const profiles = getLocal<CompanyProfile[]>('profiles', []);
+    const prof = companyId ? profiles.find(p => p.id === companyId) : null;
     if (isCloudActive() && supabase) {
       let query = supabase.from('documents').select('*');
       if (companyId) {
@@ -457,9 +476,27 @@ export const dbService = {
       }
       const { data, error } = await query.order('date', { ascending: false }).order('created_at', { ascending: false });
       if (error) throw error;
+      if (data) {
+        data.forEach(d => {
+          const docProf = prof || profiles.find(p => p.id === d.company_id);
+          if (normalizeDocTypeForCompany(d, docProf)) {
+            supabase?.from('documents').update({ document_type: d.document_type }).eq('id', d.id).then(() => {});
+          }
+        });
+      }
       return data || [];
     } else {
       const docs = getLocal<Document[]>('documents', []);
+      let updatedLocal = false;
+      docs.forEach(d => {
+        const docProf = prof || profiles.find(p => p.id === d.company_id);
+        if (normalizeDocTypeForCompany(d, docProf)) {
+          updatedLocal = true;
+        }
+      });
+      if (updatedLocal) {
+        setLocal('documents', docs);
+      }
       if (companyId) {
         return docs.filter(d => d.company_id === companyId);
       }
@@ -486,6 +523,11 @@ export const dbService = {
       try {
         const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
         if (!docError && document) {
+          const profiles = getLocal<CompanyProfile[]>('profiles', []);
+          const docProf = profiles.find(p => p.id === document.company_id);
+          if (normalizeDocTypeForCompany(document, docProf)) {
+            supabase?.from('documents').update({ document_type: document.document_type }).eq('id', document.id).then(() => {});
+          }
           const { data: items, error: itemsError } = await supabase
             .from('document_items')
             .select('*')
@@ -502,15 +544,20 @@ export const dbService = {
     }
     const docs = getLocal<Document[]>('documents', []);
     const doc = docs.find(d => d.id === id);
-      if (!doc) {
-        if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
-        return null;
-      }
-      const items = getLocal<DocumentItem[]>('document_items', []);
-      const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
-      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
-      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
-      return { document: doc, items: docItems };
+    if (!doc) {
+      if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
+      return null;
+    }
+    const profiles = getLocal<CompanyProfile[]>('profiles', []);
+    const docProf = profiles.find(p => p.id === doc.company_id);
+    if (normalizeDocTypeForCompany(doc, docProf)) {
+      setLocal('documents', docs);
+    }
+    const items = getLocal<DocumentItem[]>('document_items', []);
+    const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
+    if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
+    if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
+    return { document: doc, items: docItems };
   },
 
   // Public/anonymous document lookup (share links only, both /doc/:id
@@ -552,6 +599,14 @@ export const dbService = {
   },
 
   async saveDocument(doc: Document, items: DocumentItem[]): Promise<Document> {
+    // Normalize type based on company profile
+    const profiles = getLocal<CompanyProfile[]>('profiles', []);
+    const docProf = profiles.find(p => p.id === doc.company_id);
+    normalizeDocTypeForCompany(doc, docProf);
+    if (doc.document_type === 'non_tax_invoice') {
+      items.forEach(it => { it.gst_percentage = 0; });
+    }
+
     // Always mirror to LocalStorage as automatic local system backup
     const docs = getLocal<Document[]>('documents', []);
     const docIdx = docs.findIndex(d => d.id === doc.id);

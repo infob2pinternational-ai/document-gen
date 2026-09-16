@@ -84,22 +84,27 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
   };
 
   // Format labels & type text
+  const isIntlProfile = !!safeProfile.name?.toLowerCase().includes('international');
+
   const docTypeLabels: Record<string, string> = {
-    invoice: 'Tax Invoice',
+    invoice: isIntlProfile ? 'Invoice' : 'Tax Invoice',
     proforma_invoice: 'Proforma Invoice',
     quotation: 'Quotation',
     work_order: 'Work Order',
-    non_tax_invoice: 'Non-Tax Invoice',
+    non_tax_invoice: 'Invoice',
     comparison_quotation: 'Comparison Quote',
     comparison_invoice: 'Comparison Invoice'
   };
 
-  const rawDocType = document.document_type || 'invoice';
-  const docTypeLabel = docTypeLabels[rawDocType] || (rawDocType ? String(rawDocType).replace(/_/g, ' ').toUpperCase() : 'DOCUMENT');
+  const rawDocType = document.document_type || (isIntlProfile ? 'non_tax_invoice' : 'invoice');
+  const docTypeLabel = (isIntlProfile && (rawDocType === 'invoice' || rawDocType === 'non_tax_invoice'))
+    ? 'Invoice'
+    : (docTypeLabels[rawDocType] || (rawDocType ? String(rawDocType).replace(/_/g, ' ').toUpperCase() : 'DOCUMENT'));
   const currencySymbol = (safeProfile.currency === 'INR' || !safeProfile.currency) ? '₹' : (safeProfile.currency === 'USD' ? '$' : `${safeProfile.currency} `);
 
   // Calculations
-  const totals = calculateDocumentTotals(items || [], document.discount_total || 0, rawDocType as any);
+  const effectiveType = isIntlProfile ? 'non_tax_invoice' : rawDocType;
+  const totals = calculateDocumentTotals(items || [], document.discount_total || 0, effectiveType as any);
   const advanceAmount = normalizeAdvance(document.advance);
   const balanceDue = calculateBalanceDue(totals.total, advanceAmount);
 
@@ -318,7 +323,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
               where no GST was actually applied (taxTotal is 0), per the
               business rule that non-GST documents must show no GST row
               or a ₹0 GST amount at all. */}
-          {document.document_type !== 'non_tax_invoice' && totals.taxTotal > 0 && (
+          {!isIntlProfile && document.document_type !== 'non_tax_invoice' && totals.taxTotal > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               <span>GST {totals.effectiveGstRate > 0 ? `(${totals.effectiveGstRate.toFixed(0)}%)` : ''}</span>
               <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>

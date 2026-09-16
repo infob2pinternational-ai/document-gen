@@ -208,8 +208,8 @@ export const Settings: React.FC<SettingsProps> = ({
       setQuotationStart(activeProfile.quotation_start_number || 1001);
       setWorkOrderPrefix(activeProfile.work_order_prefix || 'WO/');
       setWorkOrderStart(activeProfile.work_order_start_number || 1001);
-      setNonTaxPrefix(activeProfile.non_tax_prefix || 'NT/');
-      setNonTaxStart(activeProfile.non_tax_start_number || 1001);
+      setNonTaxPrefix(activeProfile.non_tax_prefix || activeProfile.invoice_prefix || 'INV/');
+      setNonTaxStart(activeProfile.non_tax_start_number || activeProfile.invoice_start_number || 1001);
       setGoogleSheetsUrl(activeProfile.google_sheets_url || '');
     }
   }, [activeProfile]);
@@ -295,16 +295,16 @@ export const Settings: React.FC<SettingsProps> = ({
         col_name_rate: colRate,
         col_name_amount: colAmt,
 
-        invoice_prefix: invoicePrefix,
-        invoice_start_number: Number(invoiceStart),
+        invoice_prefix: isIntl ? (nonTaxPrefix || invoicePrefix || 'INV/') : invoicePrefix,
+        invoice_start_number: isIntl ? (Number(nonTaxStart) || Number(invoiceStart) || 1001) : Number(invoiceStart),
         proforma_prefix: proformaPrefix,
         proforma_start_number: Number(proformaStart),
         quotation_prefix: quotationPrefix,
         quotation_start_number: Number(quotationStart),
         work_order_prefix: workOrderPrefix,
         work_order_start_number: Number(workOrderStart),
-        non_tax_prefix: nonTaxPrefix,
-        non_tax_start_number: Number(nonTaxStart)
+        non_tax_prefix: isIntl ? (nonTaxPrefix || invoicePrefix || 'INV/') : nonTaxPrefix,
+        non_tax_start_number: isIntl ? (Number(nonTaxStart) || Number(invoiceStart) || 1001) : Number(nonTaxStart)
       };
 
       await dbService.saveProfile(updated);
@@ -938,16 +938,18 @@ export const Settings: React.FC<SettingsProps> = ({
               <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.1rem' }}>Unified Prefix & Auto-Sequencing</h3>
                 
-                <div className="grid-2">
-                  <div className="form-group">
-                    <label className="form-label">Invoice Prefix</label>
-                    <input type="text" value={invoicePrefix} onChange={(e) => setInvoicePrefix(e.target.value)} />
+                {!((name || activeProfile?.name || '').toLowerCase().includes('international')) && (
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Tax Invoice Prefix</label>
+                      <input type="text" value={invoicePrefix} onChange={(e) => setInvoicePrefix(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Tax Invoice Start Number</label>
+                      <input type="number" value={invoiceStart} onChange={(e) => setInvoiceStart(Number(e.target.value))} />
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Invoice Start Number</label>
-                    <input type="number" value={invoiceStart} onChange={(e) => setInvoiceStart(Number(e.target.value))} />
-                  </div>
-                </div>
+                )}
 
                 <div className="grid-2">
                   <div className="form-group">
@@ -982,16 +984,18 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                 </div>
 
-                <div className="grid-2">
-                  <div className="form-group">
-                    <label className="form-label">Non-Tax Invoice Prefix</label>
-                    <input type="text" value={nonTaxPrefix} onChange={(e) => setNonTaxPrefix(e.target.value)} />
+                {!((name || activeProfile?.name || '').toLowerCase().includes('inter-media') || (name || activeProfile?.name || '').toLowerCase().includes('inter media')) && (
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">{((name || activeProfile?.name || '').toLowerCase().includes('international')) ? 'Invoice Prefix' : 'Non-Tax Invoice Prefix'}</label>
+                      <input type="text" value={nonTaxPrefix} onChange={(e) => setNonTaxPrefix(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">{((name || activeProfile?.name || '').toLowerCase().includes('international')) ? 'Invoice Start Number' : 'Non-Tax Invoice Start Number'}</label>
+                      <input type="number" value={nonTaxStart} onChange={(e) => setNonTaxStart(Number(e.target.value))} />
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Non-Tax Invoice Start Number</label>
-                    <input type="number" value={nonTaxStart} onChange={(e) => setNonTaxStart(Number(e.target.value))} />
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Submit Buttons */}

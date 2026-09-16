@@ -146,14 +146,15 @@ function App() {
   // every production build, with zero changes needed at any of its ~50
   // existing call sites below.
   const isItAdmin = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
-  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('admin');
+  const isOwner = (user?.email || '').toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' || (user?.email || '').toLowerCase().trim() === 'owner@b2p.com';
+  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('owner');
   const normalizeAppRole = (raw: string | null | undefined, email?: string | null): UserRole => {
     const userEmail = (email || '').toLowerCase().trim();
+    if (userEmail === 'sarathjohnpanegdan@gmail.com' || userEmail === 'owner@b2p.com') {
+      return 'owner';
+    }
     if (userEmail === 'fransonputhukkara@gmail.com') {
       return 'admin';
-    }
-    if (userEmail === 'owner@b2p.com') {
-      return 'owner';
     }
     const r = (raw || '').toLowerCase().trim();
     if (r === 'owner' || r === 'admin' || r === 'manager' || r === 'telecaller' || r === 'accounts') return r as UserRole;
@@ -162,9 +163,9 @@ function App() {
     return 'telecaller';
   };
   const authRole: UserRole = normalizeAppRole(user?.user_metadata?.role, user?.email);
-  const simulatedRole: UserRole = import.meta.env.DEV ? (isItAdmin ? 'admin' : devSimulatedRole) : authRole;
+  const simulatedRole: UserRole = import.meta.env.DEV ? (isOwner ? 'owner' : isItAdmin ? 'admin' : devSimulatedRole) : authRole;
   const currentUserEmail = user?.email || `${simulatedRole}@b2p.com`;
-  const hasFinanceAccess = simulatedRole === 'owner' || simulatedRole === 'admin' || simulatedRole === 'accounts' || isItAdmin;
+  const hasFinanceAccess = simulatedRole === 'owner' || simulatedRole === 'admin' || simulatedRole === 'accounts' || isItAdmin || isOwner;
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1600,7 +1601,7 @@ function App() {
                     {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
                   </span>
                   <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                    {isItAdmin ? 'IT Admin' : simulatedRole === 'admin' ? 'IT Admin' : (user?.user_metadata?.role || simulatedRole)}
+                    {isOwner ? 'Owner' : isItAdmin ? 'IT Admin' : simulatedRole === 'admin' ? 'IT Admin' : (user?.user_metadata?.role || simulatedRole)}
                   </span>
                 </div>
               </div>

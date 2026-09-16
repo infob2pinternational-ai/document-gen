@@ -409,7 +409,7 @@ export const SalesReceivables: React.FC<SalesReceivablesProps> = ({
                       <Receipt size={36} style={{ color: '#cbd5e1', margin: '0 auto 0.5rem auto' }} />
                       <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#334155' }}>No Sales Invoices Found</div>
                       <div style={{ fontSize: '0.75rem', marginTop: '0.2rem' }}>
-                        Create tax invoices in the Document Generator to post them into accounts receivable.
+                        Create invoices in the Document Generator to post them into accounts receivable.
                       </div>
                     </td>
                   </tr>
@@ -422,7 +422,7 @@ export const SalesReceivables: React.FC<SalesReceivablesProps> = ({
                           <span>{inv.document_number}</span>
                         </div>
                         <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'capitalize' }}>
-                          {inv.document_type === 'non_tax_invoice' ? 'Non-Tax Invoice' : 'Tax Invoice'}
+                          {inv.document_type === 'non_tax_invoice' ? 'Invoice' : 'Tax Invoice'}
                         </div>
                       </td>
 

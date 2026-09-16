@@ -226,8 +226,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 style={{ width: '150px', fontSize: '0.8rem' }}
               >
                 <option value="all">All Types</option>
-                <option value="invoice">Tax Invoices</option>
-                <option value="non_tax_invoice">Invoices</option>
+                {!(activeProfile?.name?.toLowerCase().includes('international')) && (
+                  <option value="invoice">Tax Invoices</option>
+                )}
+                {!(activeProfile?.name?.toLowerCase().includes('inter-media') || activeProfile?.name?.toLowerCase().includes('inter media')) && (
+                  <option value="non_tax_invoice">Invoices</option>
+                )}
                 <option value="proforma_invoice">Proforma Invoices</option>
                 <option value="quotation">Quotations</option>
                 <option value="work_order">Work Orders</option>
@@ -255,7 +259,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <td className="mono" data-label="Doc Number" style={{ fontWeight: 600 }}>{doc.document_number}</td>
                         <td data-label="Customer">{doc.customer_name}</td>
                         <td data-label="Type" style={{ textTransform: 'capitalize', fontSize: '0.75rem', fontWeight: 500 }}>
-                          {doc.document_type === 'non_tax_invoice' ? 'Invoice' : doc.document_type === 'invoice' ? 'Tax Invoice' : doc.document_type.replace('_', ' ')}
+                          {(activeProfile?.name?.toLowerCase().includes('international') && (doc.document_type === 'invoice' || doc.document_type === 'non_tax_invoice')) ? 'Invoice' : doc.document_type === 'non_tax_invoice' ? 'Invoice' : doc.document_type === 'invoice' ? 'Tax Invoice' : doc.document_type.replace('_', ' ')}
                         </td>
                         <td className="mono" data-label="Total" style={{ fontWeight: 600 }}>
                           {formatCurrency(doc.total, activeProfile?.currency || 'INR')}
