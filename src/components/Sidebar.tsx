@@ -142,8 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'SALES',
       items: [
-        { id: 'documents', label: 'Quotations', icon: FileText, badge: waitingApprovalCount > 0 ? waitingApprovalCount : undefined },
-        { id: 'invoices', label: 'Invoices', icon: Receipt }
+        { id: 'documents', label: 'Doc Gen', icon: FileText, badge: waitingApprovalCount > 0 ? waitingApprovalCount : undefined }
       ]
     },
     {
@@ -519,8 +518,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {sec.items.map(item => {
               const Icon = item.icon;
               const isActive = currentTab === item.id || 
-                (item.id === 'documents' && (currentTab === 'documents_quotation' || currentTab === 'documents')) ||
-                (item.id === 'invoices' && currentTab === 'documents_invoice');
+                (item.id === 'documents' && (currentTab === 'documents_quotation' || currentTab === 'documents'));
 
               return (
                 <button
