@@ -131,6 +131,129 @@ textarea:focus-visible {
 }
 
 /* ============================================================
+   Dark Theme Design Tokens & Overrides
+   ============================================================ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Core Surface & UI Tokens */
+  --bg-card: #1e293b;
+  --bg-canvas: #0f172a;
+  --bg-input: #1e293b;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-color-light: rgba(255, 255, 255, 0.08);
+  --accent-primary: #3b82f6;
+  --accent-success: #22c55e;
+  --accent-danger: #ef4444;
+  --accent-warning: #f59e0b;
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+
+  /* Brand Tokens */
+  --brand-blue: #3b82f6;
+  --brand-navy: #1e3a8a;
+  --brand-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  --brand-glow: rgba(59, 130, 246, 0.3);
+
+  /* Glass Surface Tokens */
+  --glass-bg: rgba(30, 41, 59, 0.82);
+  --glass-bg-subtle: rgba(30, 41, 59, 0.62);
+  --glass-bg-elevated: rgba(30, 41, 59, 0.94);
+  --glass-bg-hover: rgba(51, 65, 85, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-subtle: rgba(255, 255, 255, 0.08);
+
+  /* Text Tokens */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-light: #64748b;
+
+  /* Elevation Shadows */
+  --shadow-glass: 0 10px 30px -5px rgba(0, 0, 0, 0.45), 0 4px 12px -2px rgba(0, 0, 0, 0.25);
+  --shadow-glass-hover: 0 14px 36px -4px rgba(0, 0, 0, 0.55), 0 6px 16px -2px rgba(0, 0, 0, 0.35);
+  --shadow-floating: 0 20px 40px -10px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.45);
+  --shadow-drawer: -12px 0 40px -5px rgba(0, 0, 0, 0.65);
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  background-color: #0b0f19;
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] body {
+  background: 
+    radial-gradient(circle at 10% 15%, rgba(30, 58, 138, 0.32) 0%, transparent 40%),
+    radial-gradient(circle at 85% 10%, rgba(49, 46, 129, 0.28) 0%, transparent 35%),
+    radial-gradient(circle at 50% 60%, rgba(15, 23, 42, 0.55) 0%, transparent 50%),
+    radial-gradient(circle at 90% 85%, rgba(14, 116, 144, 0.22) 0%, transparent 40%),
+    #0b0f19;
+  background-attachment: fixed;
+}
+
+[data-theme="dark"] .sidebar {
+  background: rgba(15, 23, 42, 0.88) !important;
+  border-right-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .card {
+  background-color: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="email"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="tel"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="date"],
+[data-theme="dark"] input[type="datetime-local"],
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  color: var(--text-primary);
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus {
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+[data-theme="dark"] .glass-pill {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="dark"] .table th {
+  background: rgba(30, 41, 59, 0.95);
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .table td {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .service-dropdown-item:hover {
+  background-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+[data-theme="dark"] .btn-secondary {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .btn-secondary:hover {
+  background: rgba(51, 65, 85, 0.95);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================================
    Typography Utilities
    ============================================================ */
 .mono {

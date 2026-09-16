@@ -26,10 +26,13 @@ import {
   Landmark,
   Plus,
   Check,
-  LogOut
+  LogOut,
+  Sun,
+  Moon
 } from 'lucide-react';
 import type { CompanyProfile } from '../types';
 import { metricsService } from '../services/metricsService';
+import { officeService } from '../services/officeService';
 
 interface SidebarProps {
   currentTab: string;
@@ -56,6 +59,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeProfile,
   setActiveProfile,
   onAddProfileClick,
+  theme,
+  toggleTheme,
   isOpen,
   onClose,
   isCollapsed = false,
@@ -66,18 +71,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = React.useRef<HTMLDivElement>(null);
-  const [leadCount, setLeadCount] = useState(42);
-  const [followUpDueCount, setFollowUpDueCount] = useState(8);
-  const [waitingApprovalCount, setWaitingApprovalCount] = useState(3);
-  const [whatsAppUnreadCount] = useState(12);
+  const [leadCount, setLeadCount] = useState(0);
+  const [followUpDueCount, setFollowUpDueCount] = useState(0);
+  const [waitingApprovalCount, setWaitingApprovalCount] = useState(0);
+  const [whatsAppUnreadCount, setWhatsAppUnreadCount] = useState(0);
 
   const refreshBadges = () => {
     const leads = metricsService.getLeadCounts();
     const followUps = metricsService.getFollowUpCounts();
     const quotes = metricsService.getQuotationCounts();
-    setLeadCount(leads.total || 42);
-    setFollowUpDueCount(followUps.today + followUps.overdue || 8);
-    setWaitingApprovalCount(quotes.waitingApproval || 3);
+    const convs = officeService.getConversations();
+    const unreadWA = convs.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+
+    setLeadCount(leads.total || 0);
+    setFollowUpDueCount((followUps.today || 0) + (followUps.overdue || 0));
+    setWaitingApprovalCount(quotes.waitingApproval || 0);
+    setWhatsAppUnreadCount(unreadWA);
   };
 
   useEffect(() => {
@@ -120,15 +129,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: 'WORKSPACE',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'leads', label: 'Leads', icon: Target, badge: leadCount > 0 ? leadCount : 42 },
+        { id: 'leads', label: 'Leads', icon: Target, badge: leadCount > 0 ? leadCount : undefined },
         { id: 'customers', label: 'Customers', icon: Users },
-        { id: 'follow-ups', label: 'Follow-ups', icon: Clock, badge: followUpDueCount > 0 ? followUpDueCount : 8 }
+        { id: 'follow-ups', label: 'Follow-ups', icon: Clock, badge: followUpDueCount > 0 ? followUpDueCount : undefined }
       ]
     },
     {
       title: 'SALES',
       items: [
-        { id: 'documents', label: 'Quotations', icon: FileText, badge: waitingApprovalCount > 0 ? waitingApprovalCount : 3 },
+        { id: 'documents', label: 'Quotations', icon: FileText, badge: waitingApprovalCount > 0 ? waitingApprovalCount : undefined },
         { id: 'invoices', label: 'Invoices', icon: Receipt }
       ]
     },
@@ -142,7 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'COMMUNICATION',
       items: [
-        { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, badge: whatsAppUnreadCount }
+        { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, badge: whatsAppUnreadCount > 0 ? whatsAppUnreadCount : undefined }
       ]
     }
   ];
@@ -257,8 +266,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             gap: '0.6rem',
             padding: isCollapsed ? '0.45rem 0' : '0.5rem 0.65rem',
             borderRadius: '12px',
-            border: '1px solid rgba(226, 232, 240, 0.9)',
-            background: profileDropdownOpen ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.75)',
+            border: '1px solid var(--border-color)',
+            background: profileDropdownOpen ? 'var(--glass-bg-hover)' : 'var(--glass-bg-subtle)',
             boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)',
             cursor: 'pointer',
             textAlign: 'left',
@@ -315,10 +324,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span style={{
                   fontSize: '0.6875rem',
                   fontWeight: 500,
-                  color: '#64748b',
+                  color: 'var(--text-muted)',
                   lineHeight: 1.2
                 }}>
-                  {activeProfile?.currency || 'INR'} • Switch
+                  {activeProfile?.currency || 'INR'} • {profiles.length} Profiles
                 </span>
               </div>
             )}
@@ -327,8 +336,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!isCollapsed && (
             <ChevronDown
               size={14}
-              color="#64748b"
               style={{
+                color: 'var(--text-muted)',
                 transform: profileDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                 transition: 'transform 0.2s ease',
                 flexShrink: 0
@@ -337,19 +346,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </button>
 
-        {/* Dropdown Menu */}
+        {/* Profiles Dropdown Panel */}
         {profileDropdownOpen && (
           <div style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
             left: 0,
             width: isCollapsed ? '240px' : '100%',
-            background: 'rgba(255, 255, 255, 0.98)',
+            background: 'var(--bg-card)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(226, 232, 240, 0.95)',
+            border: '1px solid var(--border-color)',
             borderRadius: '14px',
-            boxShadow: '0 12px 32px -4px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.06)',
+            boxShadow: '0 12px 32px -4px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1)',
             zIndex: 1000,
             padding: '0.35rem',
             display: 'flex',
@@ -361,7 +370,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               fontWeight: 700,
               letterSpacing: '0.05em',
               textTransform: 'uppercase',
-              color: '#94a3b8',
+              color: 'var(--text-muted)',
               padding: '0.35rem 0.6rem 0.2rem'
             }}>
               Company Profiles
@@ -385,13 +394,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     padding: '0.5rem 0.6rem',
                     borderRadius: '8px',
                     border: 'none',
-                    background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                    background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'background 0.15s ease'
                   }}
                   onMouseEnter={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = 'rgba(241, 245, 249, 0.8)';
+                    if (!isSelected) e.currentTarget.style.background = 'var(--glass-bg-hover)';
                   }}
                   onMouseLeave={(e) => {
                     if (!isSelected) e.currentTarget.style.background = 'transparent';
@@ -409,7 +418,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         width: '22px',
                         height: '22px',
                         borderRadius: '5px',
-                        background: isSelected ? '#3b82f6' : '#cbd5e1',
+                        background: isSelected ? 'var(--brand-blue)' : '#94a3b8',
                         color: '#fff',
                         display: 'flex',
                         alignItems: 'center',
@@ -425,24 +434,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span style={{
                         fontSize: '0.8125rem',
                         fontWeight: isSelected ? 700 : 500,
-                        color: isSelected ? '#1e40af' : '#1e293b',
+                        color: isSelected ? 'var(--brand-blue)' : 'var(--text-primary)',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'
                       }}>
                         {p.name}
                       </span>
-                      <span style={{ fontSize: '0.6875rem', color: '#64748b' }}>
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
                         {p.currency || 'INR'}
                       </span>
                     </div>
                   </div>
-                  {isSelected && <Check size={14} color="#2563eb" style={{ flexShrink: 0 }} />}
+                  {isSelected && <Check size={14} color="var(--brand-blue)" style={{ flexShrink: 0 }} />}
                 </button>
               );
             })}
 
-            <div style={{ height: '1px', background: 'rgba(226, 232, 240, 0.8)', margin: '0.25rem 0' }} />
+            <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.25rem 0' }} />
 
             <button
               type="button"
@@ -576,16 +585,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div style={{
         marginTop: 'auto',
         paddingTop: '0.75rem',
-        borderTop: '1px solid rgba(226, 232, 240, 0.6)',
+        borderTop: '1px solid var(--border-color)',
         display: 'flex',
         flexDirection: 'column',
         gap: '0.5rem'
       }}>
         <div style={{
-          background: 'rgba(255, 255, 255, 0.8)',
+          background: 'var(--glass-bg-subtle)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255, 255, 255, 0.9)',
+          border: '1px solid var(--border-color)',
           borderRadius: '12px',
           padding: isCollapsed ? '0.4rem' : '0.45rem 0.65rem',
           display: 'flex',
@@ -603,7 +612,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   height: '30px',
                   borderRadius: '50%',
                   objectFit: 'cover',
-                  border: '1.5px solid #ffffff',
+                  border: '1.5px solid var(--border-color)',
                   boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
                   flexShrink: 0
                 }}
@@ -620,7 +629,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 justifyContent: 'center',
                 fontWeight: 700,
                 fontSize: '0.8rem',
-                border: '1.5px solid #ffffff',
+                border: '1.5px solid var(--border-color)',
                 boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
                 flexShrink: 0
               }}>
@@ -654,6 +663,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
+        {/* Theme Switcher button */}
+        {toggleTheme && (
+          <button
+            onClick={toggleTheme}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
+              gap: '0.6rem',
+              padding: '0.45rem 0.65rem',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'background 0.15s ease'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--glass-bg-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            title={isCollapsed ? (theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode') : undefined}
+          >
+            {theme === 'light' ? <Moon size={15} color="#64748b" /> : <Sun size={15} color="#f59e0b" />}
+            {!isCollapsed && <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>}
+          </button>
+        )}
+
+        {/* Settings button */}
+        <button
+          onClick={() => {
+            setCurrentTab('settings');
+            if (window.innerWidth <= 640) onClose();
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isCollapsed ? 'center' : 'flex-start',
+            gap: '0.6rem',
+            padding: '0.45rem 0.65rem',
+            borderRadius: '8px',
+            border: 'none',
+            background: currentTab === 'settings' ? 'var(--glass-bg-elevated)' : 'transparent',
+            color: currentTab === 'settings' ? 'var(--brand-blue)' : 'var(--text-secondary)',
+            fontSize: '0.78rem',
+            fontWeight: 500,
+            cursor: 'pointer'
+          }}
+          title={isCollapsed ? 'Settings' : undefined}
+        >
+          <SettingsIcon size={15} color={currentTab === 'settings' ? 'var(--brand-blue)' : '#64748b'} />
+          {!isCollapsed && <span>Settings</span>}
+        </button>
+
         {/* Sign Out button */}
         {onLogout && (
           <button
@@ -681,32 +744,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!isCollapsed && <span>Sign Out</span>}
           </button>
         )}
-
-        {/* Settings button */}
-        <button
-          onClick={() => {
-            setCurrentTab('settings');
-            if (window.innerWidth <= 640) onClose();
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: isCollapsed ? 'center' : 'flex-start',
-            gap: '0.6rem',
-            padding: '0.45rem 0.65rem',
-            borderRadius: '8px',
-            border: 'none',
-            background: currentTab === 'settings' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
-            color: currentTab === 'settings' ? 'var(--brand-blue)' : 'var(--text-secondary)',
-            fontSize: '0.78rem',
-            fontWeight: 500,
-            cursor: 'pointer'
-          }}
-          title={isCollapsed ? 'Settings' : undefined}
-        >
-          <SettingsIcon size={15} color={currentTab === 'settings' ? 'var(--brand-blue)' : '#64748b'} />
-          {!isCollapsed && <span>Settings</span>}
-        </button>
 
         {/* Desktop Collapse Toggle */}
         {onToggleCollapse && (

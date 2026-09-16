@@ -83,7 +83,7 @@ const playNotificationSound = () => {
 
 function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   
   // Profiles & Loading States
   const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
@@ -220,7 +220,7 @@ function App() {
   // Initialize Theme
   useEffect(() => {
     const savedTheme = localStorage.getItem('docgen_theme') as 'light' | 'dark' | null;
-    const initialTheme = savedTheme || 'dark';
+    const initialTheme = savedTheme || 'light';
     setTheme(initialTheme);
     document.documentElement.setAttribute('data-theme', initialTheme);
   }, []);
@@ -1397,15 +1397,15 @@ function App() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            background: 'rgba(255, 255, 255, 0.72)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255, 255, 255, 0.85)',
+            background: 'var(--glass-bg)',
+            backdropFilter: 'var(--glass-blur)',
+            WebkitBackdropFilter: 'var(--glass-blur)',
+            border: '1px solid var(--glass-border)',
             borderRadius: '16px',
             padding: '0.65rem 1.25rem',
             marginBottom: '1.5rem',
             gap: '1rem',
-            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.03)',
+            boxShadow: 'var(--shadow-glass)',
             flexWrap: 'wrap'
           }}>
             {/* Global Search Pill */}
@@ -1421,32 +1421,32 @@ function App() {
                 width: '380px',
                 maxWidth: '100%',
                 justifyContent: 'space-between',
-                background: 'rgba(255, 255, 255, 0.85)',
-                border: '1px solid rgba(226, 232, 240, 0.8)',
+                background: 'var(--glass-bg-subtle)',
+                border: '1px solid var(--border-color)',
                 borderRadius: '9999px',
                 boxShadow: '0 2px 6px rgba(0, 0, 0, 0.02)',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b' }}>
-                <Search size={15} color="#94a3b8" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+                <Search size={15} color="var(--text-muted)" />
                 <span>Search leads, customers, quotations...</span>
               </div>
               <span className="mono" style={{
                 fontSize: '0.6875rem',
-                background: '#ffffff',
+                background: 'var(--bg-card)',
                 padding: '0.1rem 0.4rem',
                 borderRadius: '6px',
-                border: '1px solid rgba(226, 232, 240, 0.9)',
-                color: '#64748b',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-muted)',
                 fontWeight: 600
               }}>
                 ⌘K
               </span>
             </button>
 
-            {/* Right Controls: Role Simulation Switcher + Notification Bell + Theme */}
+            {/* Right Controls: Role Simulation Switcher + Notification Bell + Theme Switcher + User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               
               {/* Role Simulation Switcher - REMEDIATION (2026-08-24):
@@ -1459,10 +1459,10 @@ function App() {
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                background: 'rgba(241, 245, 249, 0.8)',
+                background: 'var(--glass-bg-subtle)',
                 padding: '0.2rem',
                 borderRadius: '9999px',
-                border: '1px solid rgba(226, 232, 240, 0.7)'
+                border: '1px solid var(--border-color)'
               }}>
                 {(['owner', 'accounts', 'admin', 'telecaller'] as const).map(r => {
                   const isActive = simulatedRole === r;
@@ -1478,8 +1478,8 @@ function App() {
                         borderRadius: '9999px',
                         border: 'none',
                         cursor: 'pointer',
-                        background: isActive ? '#ffffff' : 'transparent',
-                        color: isActive ? 'var(--brand-blue)' : '#64748b',
+                        background: isActive ? 'var(--bg-card)' : 'transparent',
+                        color: isActive ? 'var(--brand-blue)' : 'var(--text-muted)',
                         boxShadow: isActive ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
                         textTransform: 'capitalize',
                         transition: 'all 0.15s ease'
@@ -1507,13 +1507,36 @@ function App() {
                 }}
               />
 
+              {/* Desktop Theme Switcher */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '50%',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--glass-bg-subtle)',
+                  cursor: 'pointer',
+                  color: theme === 'light' ? '#64748b' : '#f59e0b',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+                  transition: 'all 0.15s ease'
+                }}
+                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              >
+                {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+              </button>
+
               {/* User Avatar Chip */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                background: 'rgba(255, 255, 255, 0.9)',
-                border: '1px solid rgba(226, 232, 240, 0.8)',
+                background: 'var(--glass-bg-subtle)',
+                border: '1px solid var(--border-color)',
                 padding: '0.25rem 0.65rem 0.25rem 0.35rem',
                 borderRadius: '9999px',
                 boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
