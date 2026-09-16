@@ -64,6 +64,18 @@ textarea:focus-visible {
    B2P Apple-Inspired Glassmorphism Design Tokens
    ============================================================ */
 :root {
+  /* Core Surface & UI Tokens */
+  --bg-card: #ffffff;
+  --bg-canvas: #f8fafc;
+  --bg-input: #ffffff;
+  --border-color: #e2e8f0;
+  --border-color-light: #f1f5f9;
+  --accent-primary: #2563eb;
+  --accent-success: #16a34a;
+  --accent-danger: #ef4444;
+  --accent-warning: #f59e0b;
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+
   /* Brand Tokens */
   --brand-blue: #2563eb;
   --brand-navy: #0f4c81;
@@ -1899,5 +1911,14 @@ div[style*="overflowX: auto"]::-webkit-scrollbar-thumb,
 }
 .spin {
   animation: spin 1s linear infinite;
+}
+
+/* Service preset command palette dropdown */
+.service-dropdown-item {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.service-dropdown-item:hover {
+  background-color: #f1f5f9 !important;
 }
 

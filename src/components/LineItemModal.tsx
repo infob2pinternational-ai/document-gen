@@ -256,16 +256,16 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
       }}
     >
       <div 
-        className="line-item-modal-container card"
+        className="line-item-modal-container"
         style={{
           width: '1000px',
           maxWidth: '95vw',
           height: '720px',
           maxHeight: '92vh',
-          backgroundColor: 'var(--bg-card, #1e293b)',
-          border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+          backgroundColor: '#ffffff',
+          border: '1px solid #e2e8f0',
           borderRadius: '16px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -275,19 +275,19 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
         {/* Header */}
         <div style={{
           padding: '1.25rem 1.5rem',
-          borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+          borderBottom: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'var(--bg-canvas, #0f172a)'
+          background: '#ffffff'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{
               width: '36px',
               height: '36px',
               borderRadius: '10px',
-              background: 'rgba(37, 99, 235, 0.15)',
-              color: 'var(--accent-primary, #3b82f6)',
+              background: 'rgba(37, 99, 235, 0.1)',
+              color: '#2563eb',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -295,10 +295,10 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
               <Sparkles size={18} />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #ffffff)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
                 {itemToEdit ? 'Edit Line Item' : 'Add Line Item'}
               </h3>
-              <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)' }}>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
                 {itemToEdit ? 'Update service specifications & rates' : 'Specify service details, pricing, and tax specifications'}
               </p>
             </div>
@@ -315,9 +315,10 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: '8px',
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-secondary)'
+              border: '1px solid #e2e8f0',
+              background: '#f8fafc',
+              color: '#64748b',
+              cursor: 'pointer'
             }}
             title="Close (Esc)"
           >
@@ -339,22 +340,23 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
             display: 'flex',
             flexDirection: 'column',
             gap: '1.25rem',
-            borderRight: '1px solid var(--border-color, rgba(255,255,255,0.1))'
+            backgroundColor: '#ffffff',
+            borderRight: '1px solid #e2e8f0'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent-primary, #3b82f6)' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#2563eb' }}>
                 Service Information
               </h4>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>* Required fields</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>* Required fields</span>
             </div>
 
             {/* Searchable Service Dropdown / Command Palette */}
             <div className="form-group" style={{ position: 'relative' }} ref={dropdownRef}>
-              <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>
                 Search & Select Service Preset
               </label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
+                <Search size={16} style={{ position: 'absolute', left: '12px', color: '#64748b' }} />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -369,7 +371,10 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
                     paddingLeft: '38px',
                     paddingRight: serviceSearchQuery ? '36px' : '12px',
                     height: '42px',
-                    fontSize: '0.875rem'
+                    fontSize: '0.875rem',
+                    backgroundColor: '#ffffff',
+                    color: '#0f172a',
+                    border: '1px solid #cbd5e1'
                   }}
                 />
                 {serviceSearchQuery && (
@@ -381,7 +386,7 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
                       right: '10px',
                       background: 'none',
                       border: 'none',
-                      color: 'var(--text-muted)',
+                      color: '#64748b',
                       cursor: 'pointer',
                       padding: '2px'
                     }}
@@ -398,54 +403,65 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
                   top: 'calc(100% + 4px)',
                   left: 0,
                   right: 0,
-                  maxHeight: '220px',
+                  maxHeight: '260px',
                   overflowY: 'auto',
-                  backgroundColor: 'var(--bg-card, #1e293b)',
-                  border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
                   borderRadius: '10px',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
+                  boxShadow: '0 12px 32px -4px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08)',
                   zIndex: 1000,
-                  padding: '0.35rem'
+                  padding: '0.4rem'
                 }}>
                   {filteredServices.length > 0 ? (
-                    filteredServices.map(srv => (
-                      <div
-                        key={srv.id}
-                        onClick={() => handleSelectService(srv)}
-                        style={{
-                          padding: '0.6rem 0.75rem',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          backgroundColor: selectedServiceId === srv.id ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                          transition: 'background-color 0.15s ease'
-                        }}
-                        className="service-dropdown-item"
-                      >
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                            {srv.name}
-                          </div>
-                          {srv.description && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                              {srv.description}
+                    filteredServices.map(srv => {
+                      const isSelected = selectedServiceId === srv.id;
+                      return (
+                        <div
+                          key={srv.id}
+                          onClick={() => handleSelectService(srv)}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f5f9';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                          }}
+                          style={{
+                            padding: '0.65rem 0.85rem',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
+                            border: isSelected ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid transparent',
+                            marginBottom: '2px',
+                            transition: 'all 0.15s ease'
+                          }}
+                          className="service-dropdown-item"
+                        >
+                          <div style={{ flex: 1, marginRight: '1rem' }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#0f172a' }}>
+                              {srv.name}
                             </div>
-                          )}
+                            {srv.description && (
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px', lineHeight: 1.3 }}>
+                                {srv.description}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }} className="mono">
+                            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#16a34a' }}>
+                              {currSymbol}{Number(srv.default_rate || 0).toLocaleString('en-IN')}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '4px' }}>
+                              /{srv.unit || 'Unit'}
+                            </span>
+                          </div>
                         </div>
-                        <div style={{ textAlign: 'right' }} className="mono">
-                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-success)' }}>
-                            {currSymbol}{Number(srv.default_rate || 0).toLocaleString('en-IN')}
-                          </span>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>
-                            /{srv.unit || 'Unit'}
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
-                    <div style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    <div style={{ padding: '0.85rem', fontSize: '0.825rem', color: '#64748b', textAlign: 'center' }}>
                       No preset services matching "{serviceSearchQuery}". You can enter custom description below.
                     </div>
                   )}
@@ -601,7 +617,7 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
                     type="text"
                     disabled
                     value="Non-GST Profile (0%)"
-                    style={{ height: '40px', fontSize: '0.85rem', background: 'var(--bg-canvas)', opacity: 0.7 }}
+                    style={{ height: '40px', fontSize: '0.85rem', background: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1' }}
                   />
                 </div>
               )}
@@ -680,7 +696,8 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
           {/* RIGHT SIDE (30%): Live Calculation Card */}
           <div style={{
             padding: '1.5rem',
-            backgroundColor: 'var(--bg-canvas, #0f172a)',
+            backgroundColor: '#f8fafc',
+            borderLeft: '1px solid #e2e8f0',
             display: 'flex',
             flexDirection: 'column',
             gap: '1.25rem',
@@ -692,37 +709,37 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
                 alignItems: 'center',
                 gap: '0.5rem',
                 paddingBottom: '0.75rem',
-                borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.1))'
+                borderBottom: '1px solid #e2e8f0'
               }}>
-                <Calculator size={18} style={{ color: 'var(--accent-primary, #3b82f6)' }} />
-                <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <Calculator size={18} style={{ color: '#2563eb' }} />
+                <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#0f172a' }}>
                   Live Item Summary
                 </h4>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1.25rem' }}>
                 {/* Quantity & Days */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#475569' }}>
                   <span>Quantity & Duration:</span>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <span style={{ fontWeight: 600, color: '#0f172a' }}>
                     {qtyNum} {unit} {daysNum > 1 ? `x ${daysNum} days` : ''}
                   </span>
                 </div>
 
                 {/* Rate */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#475569' }}>
                   <span>Rate:</span>
-                  <span className="mono" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <span className="mono" style={{ fontWeight: 600, color: '#0f172a' }}>
                     {currSymbol}{rateNum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
 
-                <hr style={{ border: 'none', borderTop: '1px dashed var(--border-color, rgba(255,255,255,0.15))', margin: '0.25rem 0' }} />
+                <hr style={{ border: 'none', borderTop: '1px dashed #cbd5e1', margin: '0.25rem 0' }} />
 
                 {/* Subtotal */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#475569' }}>
                   <span>Subtotal:</span>
-                  <span className="mono" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <span className="mono" style={{ fontWeight: 600, color: '#0f172a' }}>
                     {currSymbol}{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -738,39 +755,39 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
                 )}
 
                 {/* Taxable Amount */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#475569' }}>
                   <span>Taxable Amount:</span>
-                  <span className="mono" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <span className="mono" style={{ fontWeight: 600, color: '#0f172a' }}>
                     {currSymbol}{taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
                 {/* GST */}
                 {isTaxableDoc && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#475569' }}>
                     <span>GST ({gstPercentage}%):</span>
-                    <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
+                    <span className="mono" style={{ fontWeight: 600, color: '#2563eb' }}>
                       + {currSymbol}{gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 )}
 
-                <hr style={{ border: 'none', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.2))', margin: '0.5rem 0' }} />
+                <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1', margin: '0.5rem 0' }} />
 
                 {/* LINE TOTAL */}
                 <div style={{
-                  background: 'rgba(34, 197, 94, 0.08)',
-                  border: '1px solid rgba(34, 197, 94, 0.25)',
+                  background: 'rgba(22, 163, 74, 0.08)',
+                  border: '1px solid rgba(22, 163, 74, 0.25)',
                   borderRadius: '10px',
                   padding: '1rem',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '0.35rem'
                 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#22c55e' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#15803d' }}>
                     LINE ITEM TOTAL
                   </span>
-                  <span className="mono" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#22c55e', lineHeight: 1.1 }}>
+                  <span className="mono" style={{ fontSize: '1.6rem', fontWeight: 800, color: '#16a34a', lineHeight: 1.1 }}>
                     {currSymbol}{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -779,12 +796,12 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
 
             {/* Info Notice Card */}
             <div style={{
-              background: 'rgba(59, 130, 246, 0.08)',
-              border: '1px solid rgba(59, 130, 246, 0.2)',
+              background: 'rgba(37, 99, 235, 0.08)',
+              border: '1px solid rgba(37, 99, 235, 0.2)',
               borderRadius: '10px',
               padding: '0.85rem',
               fontSize: '0.78rem',
-              color: 'var(--text-secondary)',
+              color: '#334155',
               lineHeight: 1.4
             }}>
               This amount will be added to the document total after saving.
@@ -795,14 +812,14 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
         {/* Footer */}
         <div style={{
           padding: '1rem 1.5rem',
-          borderTop: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+          borderTop: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'var(--bg-canvas, #0f172a)'
+          background: '#ffffff'
         }}>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>Press <kbd style={{ padding: '2px 6px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.2)' }}>Ctrl</kbd> + <kbd style={{ padding: '2px 6px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.2)' }}>Enter</kbd> to save</span>
+          <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>Press <kbd style={{ padding: '2px 6px', background: '#f1f5f9', color: '#475569', borderRadius: '4px', border: '1px solid #cbd5e1' }}>Ctrl</kbd> + <kbd style={{ padding: '2px 6px', background: '#f1f5f9', color: '#475569', borderRadius: '4px', border: '1px solid #cbd5e1' }}>Enter</kbd> to save</span>
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem' }}>

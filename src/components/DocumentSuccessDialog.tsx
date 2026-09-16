@@ -153,10 +153,10 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
           maxWidth: '680px',
           maxHeight: '90vh',
           overflowY: 'auto',
-          backgroundColor: 'var(--bg-card, #1e293b)',
-          borderColor: 'var(--border-color, rgba(255,255,255,0.1))',
+          backgroundColor: 'var(--bg-card, #ffffff)',
+          borderColor: 'var(--border-color, #e2e8f0)',
           borderRadius: '16px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)',
           padding: '2rem',
           display: 'flex',
           flexDirection: 'column',
@@ -220,10 +220,10 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
           gap: '0.85rem',
-          backgroundColor: 'var(--bg-canvas, #0f172a)',
+          backgroundColor: 'var(--bg-canvas, #f8fafc)',
           borderRadius: '12px',
           padding: '1rem 1.25rem',
-          border: '1px solid var(--border-color)'
+          border: '1px solid var(--border-color, #e2e8f0)'
         }}>
           <div>
             <div style={{ fontSize: '0.725rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -273,9 +273,9 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
 
         {/* 3. Financial Breakdown Card */}
         <div style={{
-          backgroundColor: 'var(--bg-canvas, #0f172a)',
+          backgroundColor: 'var(--bg-canvas, #f8fafc)',
           borderRadius: '12px',
-          border: '1px solid var(--border-color)',
+          border: '1px solid var(--border-color, #e2e8f0)',
           padding: '1.15rem',
           display: 'flex',
           flexDirection: 'column',
@@ -327,7 +327,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
             </div>
           )}
 
-          <hr style={{ border: 'none', borderTop: '1px dashed var(--border-color)', margin: '0.25rem 0' }} />
+          <hr style={{ border: 'none', borderTop: '1px dashed var(--border-color, #e2e8f0)', margin: '0.25rem 0' }} />
 
           {/* Grand Total */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -368,7 +368,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
             color: 'var(--text-secondary)',
             marginTop: '0.25rem',
             paddingTop: '0.5rem',
-            borderTop: '1px solid rgba(255,255,255,0.05)'
+            borderTop: '1px solid rgba(0,0,0,0.06)'
           }}>
             <strong>Amount in Words:</strong> {totals.amountInWords}
           </div>
@@ -376,9 +376,9 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
 
         {/* 4. Timeline Section */}
         <div style={{
-          backgroundColor: 'var(--bg-canvas, #0f172a)',
+          backgroundColor: 'var(--bg-canvas, #f8fafc)',
           borderRadius: '12px',
-          border: '1px solid var(--border-color)',
+          border: '1px solid var(--border-color, #e2e8f0)',
           padding: '1.1rem'
         }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
