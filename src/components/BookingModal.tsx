@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Booking, BookingStatus, Lead } from '../types';
 import { officeService } from '../services/officeService';
 import { X, Calendar, AlertTriangle } from 'lucide-react';
@@ -137,9 +138,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   };
 
-  return (
-    <div className="modal-overlay" style={{ zIndex: 1200 }}>
-      <div className="modal-content animate-fade-in" style={{ maxWidth: '650px', width: '95%', padding: '1.75rem 2rem' }}>
+  if (!isOpen) return null;
+
+  const modalElement = (
+    <div className="modal-overlay" style={{ zIndex: 2000 }}>
+      <div className="modal-content animate-fade-in" style={{ maxWidth: '650px', width: '95%', padding: '1.75rem 2rem', margin: 'auto' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
@@ -315,4 +318,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalElement, document.body);
+  }
+  return modalElement;
 };

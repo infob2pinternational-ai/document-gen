@@ -28,9 +28,12 @@ import {
   Check,
   LogOut,
   Sun,
-  Moon
+  Moon,
+  Zap,
+  Coffee,
+  Sparkles
 } from 'lucide-react';
-import type { CompanyProfile } from '../types';
+import type { CompanyProfile, AppTheme } from '../types';
 import { metricsService } from '../services/metricsService';
 import { officeService } from '../services/officeService';
 
@@ -41,8 +44,9 @@ interface SidebarProps {
   activeProfile: CompanyProfile | null;
   setActiveProfile: (profile: CompanyProfile) => void;
   onAddProfileClick: () => void;
-  theme: 'light' | 'dark';
-  toggleTheme: () => void;
+  theme: AppTheme;
+  toggleTheme?: () => void;
+  onOpenThemeSelector?: () => void;
   user: any;
   onLogout: () => void;
   isOpen: boolean;
@@ -61,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onAddProfileClick,
   theme,
   toggleTheme,
+  onOpenThemeSelector,
   isOpen,
   onClose,
   isCollapsed = false,
@@ -664,9 +669,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Theme Switcher button */}
-        {toggleTheme && (
+        {(onOpenThemeSelector || toggleTheme) && (
           <button
-            onClick={toggleTheme}
+            onClick={onOpenThemeSelector || toggleTheme}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -684,10 +689,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--glass-bg-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-            title={isCollapsed ? (theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode') : undefined}
+            title={isCollapsed ? 'Change Theme' : undefined}
           >
-            {theme === 'light' ? <Moon size={15} color="#64748b" /> : <Sun size={15} color="#f59e0b" />}
-            {!isCollapsed && <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>}
+            {theme === 'light' ? (
+              <Sun size={15} color="#f59e0b" />
+            ) : theme === 'dark-amoled' ? (
+              <Zap size={15} color="#38bdf8" />
+            ) : theme === 'dark-mocha' ? (
+              <Coffee size={15} color="#d97706" />
+            ) : theme === 'dark-slate' ? (
+              <Sparkles size={15} color="#818cf8" />
+            ) : (
+              <Moon size={15} color="#60a5fa" />
+            )}
+            {!isCollapsed && (
+              <span>
+                {theme === 'light'
+                  ? 'Light Mode'
+                  : theme === 'dark-amoled'
+                  ? 'AMOLED Black'
+                  : theme === 'dark-mocha'
+                  ? 'Warm Mocha'
+                  : theme === 'dark-slate'
+                  ? 'Executive Slate'
+                  : 'Obsidian Dark'}
+              </span>
+            )}
           </button>
         )}
 

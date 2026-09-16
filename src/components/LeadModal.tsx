@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Customer, Lead, LeadPriority, LeadSource } from '../types';
 import { X, UserCheck } from 'lucide-react';
 import { leadService } from '../services/leadService';
@@ -191,20 +192,34 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '840px', width: '95%' }}>
+  if (!isOpen) return null;
+
+  const modalContent = (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
+      <div 
+        className="modal-content" 
+        onClick={(e) => e.stopPropagation()} 
+        style={{ 
+          maxWidth: '860px', 
+          width: '95%', 
+          maxHeight: 'min(92vh, 880px)',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          margin: 'auto'
+        }}
+      >
         
         <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
               {lead ? `Edit Lead: ${lead.lead_number || lead.id}` : 'New Lead Intake Form'}
             </h2>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
               Capture customer details, campaign specifications, and assign telecaller.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="btn-ghost" style={{ padding: '0.35rem' }}>
+          <button type="button" onClick={onClose} className="btn-ghost" style={{ padding: '0.35rem' }} title="Close Form">
             <X size={18} />
           </button>
         </div>
@@ -484,4 +499,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalContent, document.body);
+  }
+  return modalContent;
 };

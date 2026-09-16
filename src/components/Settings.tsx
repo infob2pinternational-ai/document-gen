@@ -16,8 +16,10 @@ import {
   RefreshCw,
   Download,
   CheckCircle,
-  Cloud
+  Cloud,
+  Palette
 } from 'lucide-react';
+import { THEME_OPTIONS, type AppTheme } from '../types';
 
 interface SettingsProps {
   role: string;
@@ -26,6 +28,8 @@ interface SettingsProps {
   onRefreshProfiles: (selectNewId?: string) => void;
   user: any;
   onTestSaturdayReminder?: () => void;
+  currentTheme?: AppTheme;
+  onSelectTheme?: (theme: AppTheme) => void;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -34,10 +38,12 @@ export const Settings: React.FC<SettingsProps> = ({
   activeProfile,
   onRefreshProfiles,
   user,
-  onTestSaturdayReminder
+  onTestSaturdayReminder,
+  currentTheme = 'dark-obsidian',
+  onSelectTheme
 }) => {
-  // Tabs: 'profile', 'sheets', 'database', 'notifications', 'backup'
-  const [activeTab, setActiveTab] = useState<'profile' | 'sheets' | 'database' | 'notifications' | 'backup'>('profile');
+  // Tabs: 'profile', 'appearance', 'sheets', 'database', 'notifications', 'backup'
+  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'sheets' | 'database' | 'notifications' | 'backup'>('profile');
   const isCloudConnected = isSupabaseConfigured() && !!user;
 
   // Local Backup States & Handlers
@@ -411,6 +417,22 @@ export const Settings: React.FC<SettingsProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('appearance')}
+          style={{
+            padding: '0.75rem 1rem',
+            border: 'none',
+            background: 'none',
+            color: activeTab === 'appearance' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+            borderBottom: activeTab === 'appearance' ? '2px solid var(--accent-primary)' : 'none',
+            fontWeight: 600,
+            borderRadius: 0,
+            cursor: 'pointer'
+          }}
+        >
+          Appearance & Themes
+        </button>
+
+        <button
           onClick={() => setActiveTab('sheets')}
           style={{
             padding: '0.75rem 1rem',
@@ -479,7 +501,160 @@ export const Settings: React.FC<SettingsProps> = ({
         </button>
       </div>
 
-      {!activeProfile ? (
+      {/* Appearance & Themes Tab */}
+      {activeTab === 'appearance' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                background: 'rgba(59, 130, 246, 0.1)',
+                color: 'var(--accent-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Palette size={20} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', margin: 0 }}>System Visual Themes</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.825rem', marginTop: '0.2rem' }}>
+                  Select from 5 hand-crafted themes. Changes take effect instantly across all screens and persist on this device.
+                </p>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '1.25rem',
+              marginTop: '0.5rem'
+            }}>
+              {THEME_OPTIONS.map((opt) => {
+                const isSelected = currentTheme === opt.id || (currentTheme === ('dark' as any) && opt.id === 'dark-obsidian');
+                return (
+                  <div
+                    key={opt.id}
+                    style={{
+                      borderRadius: '14px',
+                      border: isSelected ? `2px solid ${opt.accentColor}` : '1px solid var(--border-color)',
+                      background: 'var(--bg-canvas)',
+                      padding: '1.25rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '1rem',
+                      position: 'relative',
+                      boxShadow: isSelected ? `0 4px 18px -2px ${opt.accentColor}44` : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {/* Theme Mockup Preview Box */}
+                    <div style={{
+                      height: '110px',
+                      borderRadius: '10px',
+                      background: opt.bgPreview,
+                      border: '1px solid var(--border-color)',
+                      padding: '0.75rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      overflow: 'hidden',
+                      position: 'relative'
+                    }}>
+                      {/* Mini Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: opt.accentColor }} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: opt.category === 'light' ? '#1e293b' : '#f8fafc' }}>
+                            {opt.name}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <span style={{
+                            fontSize: '0.65rem',
+                            background: opt.accentColor,
+                            color: '#ffffff',
+                            padding: '0.1rem 0.45rem',
+                            borderRadius: '9999px',
+                            fontWeight: 700
+                          }}>
+                            Active
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Mini Metric Cards simulation */}
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <div style={{
+                          flex: 1,
+                          background: opt.cardPreview,
+                          borderRadius: '6px',
+                          padding: '0.4rem',
+                          border: `1px solid ${opt.accentColor}44`
+                        }}>
+                          <div style={{ width: '16px', height: '4px', background: opt.accentColor, borderRadius: '2px', marginBottom: '4px' }} />
+                          <div style={{ width: '28px', height: '6px', background: opt.category === 'light' ? '#334155' : '#e2e8f0', borderRadius: '2px' }} />
+                        </div>
+                        <div style={{
+                          flex: 1,
+                          background: opt.cardPreview,
+                          borderRadius: '6px',
+                          padding: '0.4rem',
+                          border: '1px solid rgba(128,128,128,0.2)'
+                        }}>
+                          <div style={{ width: '16px', height: '4px', background: '#10b981', borderRadius: '2px', marginBottom: '4px' }} />
+                          <div style={{ width: '24px', height: '6px', background: opt.category === 'light' ? '#334155' : '#e2e8f0', borderRadius: '2px' }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {opt.name}
+                        </h4>
+                        <span className="badge badge-neutral" style={{ fontSize: '0.68rem', textTransform: 'capitalize' }}>
+                          {opt.category}
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                        {opt.description}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectTheme && onSelectTheme(opt.id)}
+                      className={isSelected ? 'btn-primary' : 'btn-secondary'}
+                      style={{
+                        width: '100%',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        fontWeight: 600,
+                        padding: '0.55rem 1rem'
+                      }}
+                    >
+                      {isSelected ? (
+                        <>
+                          <Check size={15} />
+                          <span>Current Theme</span>
+                        </>
+                      ) : (
+                        <span>Activate Theme</span>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab !== 'appearance' && (!activeProfile ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
           <AlertCircle size={48} style={{ color: 'var(--accent-warning)', margin: '0 auto 1rem auto' }} />
           <h3>No Company Profiles</h3>
@@ -1460,7 +1635,7 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           )}
         </>
-      )}
+      ))}
     </div>
   );
 };

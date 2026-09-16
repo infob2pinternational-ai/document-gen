@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Lead, LeadActivity, LeadStatus } from '../types';
 import { 
   X, 
@@ -116,8 +117,10 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
   const currentStageIndex = PIPELINE_STAGES.findIndex(s => s.key === lead.status);
 
-  return (
-    <div className="drawer-overlay" onClick={onClose}>
+  if (!isOpen || !lead) return null;
+
+  const drawerElement = (
+    <div className="drawer-overlay" onClick={onClose} style={{ zIndex: 1900 }}>
       <div className="drawer-content" onClick={(e) => e.stopPropagation()}>
         
         {/* 1. Fixed Drawer Header */}
@@ -719,4 +722,9 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(drawerElement, document.body);
+  }
+  return drawerElement;
 };

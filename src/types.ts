@@ -1147,6 +1147,62 @@ export interface EWayBillPayload {
   status: 'draft' | 'ready_for_dispatch' | 'generated' | 'cancelled' | 'expired';
 }
 
+export type AppTheme = 'light' | 'dark' | 'dark-obsidian' | 'dark-amoled' | 'dark-mocha' | 'dark-slate';
 
+export interface ThemeOption {
+  id: AppTheme;
+  name: string;
+  category: 'light' | 'dark';
+  description: string;
+  accentColor: string;
+  bgPreview: string;
+  cardPreview: string;
+}
 
-
+export const THEME_OPTIONS: ThemeOption[] = [
+  {
+    id: 'light',
+    name: 'Clean Light',
+    category: 'light',
+    description: 'Crisp, airy white with modern sky-blue accents',
+    accentColor: '#2563eb',
+    bgPreview: '#f8fafc',
+    cardPreview: '#ffffff'
+  },
+  {
+    id: 'dark-obsidian',
+    name: 'Obsidian Charcoal',
+    category: 'dark',
+    description: 'Neutral matte dark (Linear / Vercel style) — no blue tint',
+    accentColor: '#3b82f6',
+    bgPreview: '#09090b',
+    cardPreview: '#141417'
+  },
+  {
+    id: 'dark-amoled',
+    name: 'AMOLED Pitch Black',
+    category: 'dark',
+    description: 'Pure 100% black canvas with vibrant high-contrast accents',
+    accentColor: '#38bdf8',
+    bgPreview: '#000000',
+    cardPreview: '#0c0c0e'
+  },
+  {
+    id: 'dark-mocha',
+    name: 'Warm Mocha',
+    category: 'dark',
+    description: 'Warm espresso chocolate with bronze & gold accents',
+    accentColor: '#d97706',
+    bgPreview: '#161311',
+    cardPreview: '#211c19'
+  },
+  {
+    id: 'dark-slate',
+    name: 'Executive Slate',
+    category: 'dark',
+    description: 'Deep frosted midnight navy with glassmorphism',
+    accentColor: '#3b82f6',
+    bgPreview: '#0b0f19',
+    cardPreview: '#1e293b'
+  }
+];

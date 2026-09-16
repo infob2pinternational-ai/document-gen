@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { CompanyProfile, Document, Customer, Service } from './types';
+import type { CompanyProfile, Document, Customer, Service, AppTheme } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
 import { Sidebar } from './components/Sidebar';
@@ -36,10 +36,11 @@ import { ProfitAndLoss } from './components/finance/ProfitAndLoss';
 import { FinancialReports } from './components/finance/FinancialReports';
 import { AccessRestricted } from './components/finance/AccessRestricted';
 import type { UserRole } from './types';
+import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { financeService } from './services/financeService';
 import { leadService } from './services/leadService';
 import { hydrateCrmFromCloud } from './services/officeService';
-import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, CheckCircle, X } from 'lucide-react';
+import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, CheckCircle, X, Zap, Coffee, Sparkles } from 'lucide-react';
 import { getRecoverableDrafts, deleteDraft, type DraftSummary } from './utils/drafts';
 
 const playNotificationSound = () => {
@@ -83,7 +84,8 @@ const playNotificationSound = () => {
 
 function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<AppTheme>('dark-obsidian');
+  const [themeModalOpen, setThemeModalOpen] = useState(false);
   
   // Profiles & Loading States
   const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
@@ -225,8 +227,13 @@ function App() {
 
   // Initialize Theme
   useEffect(() => {
-    const savedTheme = localStorage.getItem('docgen_theme') as 'light' | 'dark' | null;
-    const initialTheme = savedTheme || 'light';
+    const saved = localStorage.getItem('docgen_theme');
+    let initialTheme: AppTheme = 'dark-obsidian';
+    if (saved === 'light') initialTheme = 'light';
+    else if (saved === 'dark' || saved === 'dark-obsidian') initialTheme = 'dark-obsidian';
+    else if (saved === 'dark-amoled') initialTheme = 'dark-amoled';
+    else if (saved === 'dark-mocha') initialTheme = 'dark-mocha';
+    else if (saved === 'dark-slate') initialTheme = 'dark-slate';
     setTheme(initialTheme);
     document.documentElement.setAttribute('data-theme', initialTheme);
   }, []);
@@ -311,11 +318,14 @@ function App() {
     }
   }, []);
 
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
+  const handleSelectTheme = (newTheme: AppTheme) => {
     setTheme(newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
     localStorage.setItem('docgen_theme', newTheme);
+  };
+
+  const toggleTheme = () => {
+    setThemeModalOpen(true);
   };
 
   // Initialize Supabase User Session
@@ -1385,6 +1395,7 @@ function App() {
         onAddProfileClick={() => setShowAddProfileModal(true)}
         theme={theme}
         toggleTheme={toggleTheme}
+        onOpenThemeSelector={() => setThemeModalOpen(true)}
         user={user}
         onLogout={handleLogout}
         isOpen={mobileMenuOpen}
@@ -1516,7 +1527,7 @@ function App() {
               {/* Desktop Theme Switcher */}
               <button
                 type="button"
-                onClick={toggleTheme}
+                onClick={() => setThemeModalOpen(true)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1527,13 +1538,23 @@ function App() {
                   border: '1px solid var(--border-color)',
                   background: 'var(--glass-bg-subtle)',
                   cursor: 'pointer',
-                  color: theme === 'light' ? '#64748b' : '#f59e0b',
+                  color: theme === 'light' ? '#f59e0b' : theme === 'dark-amoled' ? '#38bdf8' : theme === 'dark-mocha' ? '#d97706' : theme === 'dark-slate' ? '#818cf8' : '#60a5fa',
                   boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
                   transition: 'all 0.15s ease'
                 }}
-                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                title={`Current Theme: ${theme}. Click to change theme.`}
               >
-                {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+                {theme === 'light' ? (
+                  <Sun size={16} />
+                ) : theme === 'dark-amoled' ? (
+                  <Zap size={16} />
+                ) : theme === 'dark-mocha' ? (
+                  <Coffee size={16} />
+                ) : theme === 'dark-slate' ? (
+                  <Sparkles size={16} />
+                ) : (
+                  <Moon size={16} />
+                )}
               </button>
 
               {/* User Avatar Chip */}
@@ -1976,6 +1997,8 @@ function App() {
                 onRefreshProfiles={loadData}
                 user={user}
                 onTestSaturdayReminder={() => setShowSaturdayBackupReminder(true)}
+                currentTheme={theme}
+                onSelectTheme={handleSelectTheme}
               />
             )}
           </>
@@ -2093,6 +2116,14 @@ function App() {
           userEmail={`${simulatedRole}@b2p.com`}
         />
       )}
+
+      {/* Theme Selector Modal */}
+      <ThemeSelectorModal
+        isOpen={themeModalOpen}
+        onClose={() => setThemeModalOpen(false)}
+        currentTheme={theme}
+        onSelectTheme={handleSelectTheme}
+      />
 
     </div>
   );

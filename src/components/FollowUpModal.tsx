@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { FollowUp, Lead } from '../types';
 import { X, Clock, CheckCircle2 } from 'lucide-react';
 import { officeService } from '../services/officeService';
@@ -133,9 +134,11 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px', width: '95%' }}>
+  if (!isOpen) return null;
+
+  const modalElement = (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000 }}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px', width: '95%', margin: 'auto' }}>
         
         {/* Header */}
         <div className="modal-header">
@@ -317,4 +320,9 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalElement, document.body);
+  }
+  return modalElement;
 };

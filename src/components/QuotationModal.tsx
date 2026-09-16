@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { CrmQuotation, Lead, QuotationLineItem, QuotationApprovalStatus } from '../types';
 import { officeService } from '../services/officeService';
 import { 
@@ -254,8 +255,8 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
   const isOwner = userRole === 'owner' || userRole === 'admin';
   const isApproved = approvalStatus === 'APPROVED' || approvalStatus === 'SENT';
 
-  return (
-    <div className="modal-overlay" style={{ zIndex: 1200 }}>
+  const modalElement = (
+    <div className="modal-overlay" style={{ zIndex: 2000 }}>
       <div 
         className="modal-content animate-fade-in" 
         style={{ 
@@ -263,7 +264,8 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
           width: '95%', 
           maxHeight: '92vh', 
           overflowY: 'auto',
-          padding: '1.75rem 2rem'
+          padding: '1.75rem 2rem',
+          margin: 'auto'
         }}
       >
         {/* Header */}
@@ -562,4 +564,9 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalElement, document.body);
+  }
+  return modalElement;
 };
