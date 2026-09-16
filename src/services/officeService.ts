@@ -11,6 +11,7 @@ import type {
 import { leadService, hydrateLeadsFromCloud } from './leadService';
 import { metricsService } from './metricsService';
 import { supabase, isCloudActive } from './db';
+import { generateUUID } from '../utils/uuid';
 
 const FOLLOW_UPS_KEY = 'docgen_follow_ups';
 const QUOTATIONS_KEY = 'docgen_crm_quotations';
@@ -352,7 +353,7 @@ export const officeService = {
     const isNew = !item.id;
 
     const followUpRecord: FollowUp = {
-      id: item.id || crypto.randomUUID(),
+      id: item.id || generateUUID(),
       company_id: item.company_id || leadService.getActiveCompany() || 'default',
       lead_id: item.lead_id,
       lead_number: item.lead_number,
@@ -680,7 +681,7 @@ export const officeService = {
     const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1);
 
     const record: Booking = {
-      id: booking.id || crypto.randomUUID(),
+      id: booking.id || generateUUID(),
       booking_number: bookingNumber!,
       company_id: booking.company_id || leadService.getActiveCompany() || 'default',
       customer_id: booking.customer_id,
@@ -747,7 +748,7 @@ export const officeService = {
     const msgs = all[conversationId] || [];
 
     const newMsg: WhatsAppMessage = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       conversation_id: conversationId,
       sender_type: senderType,
       sender_name: senderName,
@@ -796,7 +797,7 @@ export const officeService = {
     if (existing) return existing;
 
     const newConv: WhatsAppConversation = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       customer_id: lead.customer_id,
       customer_name: lead.customer_name,
       company_name: lead.company_name,
@@ -828,7 +829,7 @@ export const officeService = {
     const list = this.getNotifications();
     const newItem: NotificationItem = {
       ...item,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       is_read: false,
       created_at: new Date().toISOString()
     };

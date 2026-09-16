@@ -112,32 +112,42 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       return;
     }
 
-    if (isCompleting && followUp) {
-      const completed = await officeService.completeFollowUp(followUp.id, completionNote, userEmail);
-      if (completed) onSaved(completed);
+    if (isSaving) return;
+
+    try {
+      setIsSaving(true);
+      if (isCompleting && followUp) {
+        const completed = await officeService.completeFollowUp(followUp.id, completionNote, userEmail);
+        if (completed) onSaved(completed);
+        onClose();
+        return;
+      }
+
+      const linkedLead = allLeads.find(l => l.id === selectedLeadId);
+
+      const saved = await officeService.saveFollowUp({
+        id: followUp?.id,
+        lead_id: selectedLeadId || undefined,
+        lead_number: linkedLead?.lead_number,
+        customer_name: customerName.trim(),
+        company_name: companyName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        assigned_staff_email: assignedStaff,
+        due_date: dueDate,
+        due_time: dueTime,
+        reason: reason.trim(),
+        notes: notes.trim() || undefined,
+        status: followUp?.status || 'PENDING'
+      }, userEmail);
+
+      onSaved(saved);
       onClose();
-      return;
+    } catch (err: any) {
+      console.error('[FollowUpModal] Save follow up failed:', err);
+      alert('Failed to save follow-up: ' + (err?.message || 'Unknown error occurred.'));
+    } finally {
+      setIsSaving(false);
     }
-
-    const linkedLead = allLeads.find(l => l.id === selectedLeadId);
-
-    const saved = await officeService.saveFollowUp({
-      id: followUp?.id,
-      lead_id: selectedLeadId || undefined,
-      lead_number: linkedLead?.lead_number,
-      customer_name: customerName.trim(),
-      company_name: companyName.trim() || undefined,
-      phone: phone.trim() || undefined,
-      assigned_staff_email: assignedStaff,
-      due_date: dueDate,
-      due_time: dueTime,
-      reason: reason.trim(),
-      notes: notes.trim() || undefined,
-      status: followUp?.status || 'PENDING'
-    }, userEmail);
-
-    onSaved(saved);
-    onClose();
   };
 
   if (!isOpen) return null;
@@ -322,8 +332,18 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
               <button type="button" onClick={onClose} className="btn-secondary" style={{ fontSize: '0.8125rem' }}>
                 Cancel
               </button>
-              <button type="submit" className="btn-primary" style={{ fontSize: '0.8125rem', padding: '0.45rem 1.25rem' }}>
-                {isCompleting ? 'Log Outcome & Complete' : followUp ? 'Update Task' : 'Save Task'}
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="btn-primary"
+                style={{
+                  fontSize: '0.8125rem',
+                  padding: '0.45rem 1.25rem',
+                  opacity: isSaving ? 0.7 : 1,
+                  cursor: isSaving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isSaving ? 'Saving...' : isCompleting ? 'Log Outcome & Complete' : followUp ? 'Update Task' : 'Save Task'}
               </button>
             </div>
           </div>

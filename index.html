@@ -78,7 +78,10 @@
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/billing/sw.js')
-            .then(reg => console.log('ServiceWorker registered successfully:', reg.scope))
+            .then(reg => {
+              console.log('ServiceWorker registered successfully:', reg.scope);
+              reg.update().catch(() => {});
+            })
             .catch(err => console.log('ServiceWorker registration failed:', err));
         });
       }

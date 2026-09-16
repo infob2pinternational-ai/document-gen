@@ -1,4 +1,4 @@
-const CACHE_NAME = 'b2p-portal-cache-v3';
+const CACHE_NAME = 'b2p-portal-cache-v4';
 const urlsToCache = [
   '/billing/',
   '/billing/index.html',

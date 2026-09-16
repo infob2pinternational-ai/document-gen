@@ -1,6 +1,7 @@
 import type { Lead, LeadActivity, LeadStatus } from '../types';
 import { metricsService } from './metricsService';
 import { supabase, isCloudActive } from './db';
+import { generateUUID } from '../utils/uuid';
 
 const LEADS_KEY = 'docgen_leads';
 const ACTIVITIES_KEY = 'docgen_lead_activities';
@@ -275,7 +276,7 @@ export const leadService = {
     }
 
     const leadRecord: Lead = {
-      id: lead.id || crypto.randomUUID(),
+      id: lead.id || generateUUID(),
       lead_number: leadNumber,
       company_id: lead.company_id || activeCompanyId || 'default',
       customer_id: lead.customer_id,
@@ -366,7 +367,7 @@ export const leadService = {
     const activities = getStoredActivities();
     const newAct: LeadActivity = {
       ...activity,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       created_at: new Date().toISOString()
     };
     activities.unshift(newAct);
