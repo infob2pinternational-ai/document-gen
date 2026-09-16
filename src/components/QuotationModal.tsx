@@ -21,7 +21,7 @@ interface QuotationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: (q: CrmQuotation) => void;
-  userRole: 'owner' | 'admin' | 'telecaller';
+  userRole: 'owner' | 'admin' | 'manager' | 'telecaller';
   userEmail: string;
   companyName?: string;
 }
@@ -252,7 +252,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
     }
   };
 
-  const isOwner = userRole === 'owner' || userRole === 'admin';
+  const isOwner = userRole === 'owner' || userRole === 'admin' || userRole === 'manager';
   const isApproved = approvalStatus === 'APPROVED' || approvalStatus === 'SENT';
 
   const modalElement = (

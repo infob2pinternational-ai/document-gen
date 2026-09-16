@@ -145,21 +145,24 @@ function App() {
   // now resolves to devSimulatedRole in dev and to the real authRole in
   // every production build, with zero changes needed at any of its ~50
   // existing call sites below.
-  const isSuperOwner = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
-  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('owner');
+  const isFransonManager = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
+  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('manager');
   const normalizeAppRole = (raw: string | null | undefined, email?: string | null): UserRole => {
     const userEmail = (email || '').toLowerCase().trim();
-    if (userEmail === 'fransonputhukkara@gmail.com' || userEmail === 'owner@b2p.com') {
+    if (userEmail === 'fransonputhukkara@gmail.com') {
+      return 'manager';
+    }
+    if (userEmail === 'owner@b2p.com') {
       return 'owner';
     }
     const r = (raw || '').toLowerCase().trim();
-    if (r === 'owner' || r === 'admin' || r === 'telecaller' || r === 'accounts') return r as UserRole;
+    if (r === 'owner' || r === 'admin' || r === 'manager' || r === 'telecaller' || r === 'accounts') return r as UserRole;
     // Unset/unrecognized roles default to the MOST restrictive tier,
     // not 'owner' - the opposite of a silent full-access fallback.
     return 'telecaller';
   };
   const authRole: UserRole = normalizeAppRole(user?.user_metadata?.role, user?.email);
-  const simulatedRole: UserRole = import.meta.env.DEV ? (isSuperOwner ? 'owner' : devSimulatedRole) : authRole;
+  const simulatedRole: UserRole = import.meta.env.DEV ? (isFransonManager ? 'manager' : devSimulatedRole) : authRole;
   const currentUserEmail = user?.email || `${simulatedRole}@b2p.com`;
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
@@ -1481,7 +1484,7 @@ function App() {
                 borderRadius: '9999px',
                 border: '1px solid var(--border-color)'
               }}>
-                {(['owner', 'accounts', 'admin', 'telecaller'] as const).map(r => {
+                {(['owner', 'manager', 'accounts', 'admin', 'telecaller'] as const).map(r => {
                   const isActive = simulatedRole === r;
                   return (
                     <button
@@ -1596,7 +1599,7 @@ function App() {
                     {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
                   </span>
                   <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                    {isSuperOwner ? 'owner' : (user?.user_metadata?.role || simulatedRole)}
+                    {isFransonManager ? 'manager' : (user?.user_metadata?.role || simulatedRole)}
                   </span>
                 </div>
               </div>
@@ -1701,7 +1704,7 @@ function App() {
           /* Normal Tab routing rendering */
           <>
              {currentTab === 'dashboard' && (
-              simulatedRole === 'owner' ? (
+              (simulatedRole === 'owner' || simulatedRole === 'manager') ? (
                 <OwnerDashboard
                   userRole={simulatedRole}
                   userEmail={currentUserEmail}

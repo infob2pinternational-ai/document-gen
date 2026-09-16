@@ -334,25 +334,36 @@ export interface Booking {
 }
 
 // =====================================================================
-// WhatsApp Inbox (Phase 6)
+// WhatsApp Business API & Team Inbox
 // =====================================================================
+
+export type WhatsAppMessageStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+export type WhatsAppSenderType = 'customer' | 'staff' | 'system';
+export type WhatsAppMessageType = 'text' | 'template' | 'document' | 'image' | 'location' | 'interactive';
 
 export interface WhatsAppMessage {
   id: string;
   conversation_id: string;
-  sender_type: 'customer' | 'staff';
+  company_id?: string;
+  wa_message_id?: string;
+  sender_type: WhatsAppSenderType;
   sender_name: string;
   sender_email?: string;
+  message_type?: WhatsAppMessageType;
   text: string;
   timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
+  status: WhatsAppMessageStatus;
   attachment_url?: string;
-  attachment_type?: 'pdf' | 'image' | 'route_map';
+  attachment_type?: 'pdf' | 'image' | 'route_map' | 'document';
   attachment_name?: string;
+  error_message?: string;
+  raw_payload?: any;
+  created_at?: string;
 }
 
 export interface WhatsAppConversation {
   id: string;
+  company_id?: string;
   customer_id?: string;
   customer_name: string;
   company_name?: string;
@@ -363,6 +374,29 @@ export interface WhatsAppConversation {
   last_message_at: string;
   unread_count: number;
   assigned_staff_email?: string;
+  status?: 'open' | 'resolved' | 'pending';
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WhatsAppTemplate {
+  id: string;
+  company_id?: string;
+  template_name: string;
+  language: string;
+  category: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
+  meta_status: 'APPROVED' | 'PENDING' | 'REJECTED';
+  header_type?: 'NONE' | 'DOCUMENT' | 'IMAGE' | 'TEXT';
+  body_text: string;
+  variables?: string[];
+  created_at?: string;
+}
+
+export interface WhatsAppSendResult {
+  success: boolean;
+  messageId?: string;
+  simulated?: boolean;
+  error?: string;
 }
 
 // =====================================================================
@@ -384,7 +418,7 @@ export interface NotificationItem {
 // Accounts & Finance Module
 // =====================================================================
 
-export type UserRole = 'owner' | 'admin' | 'telecaller' | 'accounts';
+export type UserRole = 'owner' | 'admin' | 'manager' | 'telecaller' | 'accounts';
 export type PaymentMode = 'cash' | 'bank_transfer' | 'upi' | 'cheque' | 'card' | 'other';
 export type InvoicePaymentStatus = 'draft' | 'issued' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled';
 export type PurchaseStatus = 'draft' | 'posted' | 'recorded' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled';

@@ -519,7 +519,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                             >
                               <Edit size={14} />
                             </button>
-                            {(role === 'admin' || role === 'owner') && (
+                            {(role === 'admin' || role === 'owner' || role === 'manager') && (
                               <button
                                 onClick={() => {
                                   if (window.confirm(`Are you sure you want to delete ${doc.document_number}?`)) {

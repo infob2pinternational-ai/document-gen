@@ -66,7 +66,10 @@ const FALLBACK_ROLE: EmployeeRole = 'staff';
 
 export function normalizeRole(rawRole: string | undefined | null, email?: string | null): EmployeeRole {
   const userEmail = (email || '').toLowerCase().trim();
-  if (userEmail === 'fransonputhukkara@gmail.com' || userEmail === 'owner@b2p.com') {
+  if (userEmail === 'fransonputhukkara@gmail.com') {
+    return 'manager';
+  }
+  if (userEmail === 'owner@b2p.com') {
     return 'owner';
   }
   const r = (rawRole || '').toLowerCase().trim();
