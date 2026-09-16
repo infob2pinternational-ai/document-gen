@@ -272,8 +272,12 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
 
   // Flush any pending draft write immediately when the editor unmounts.
   useEffect(() => {
+    const flushDraft = () => draftSaver.flush();
+    window.addEventListener('pagehide', flushDraft);
     return () => {
+      window.removeEventListener('pagehide', flushDraft);
       draftSaver.flush();
+      draftSaver.cancel();
     };
   }, [draftSaver]);
 

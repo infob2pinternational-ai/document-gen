@@ -1,3 +1,5 @@
+import { generateUUID } from './uuid';
+
 /**
  * Draft Management — Hybrid Two-Layer Architecture
  *
@@ -60,7 +62,7 @@ const TAB_ID_KEY = 'docgen_tab_id';
 export function getTabId(): string {
   let tabId = sessionStorage.getItem(TAB_ID_KEY);
   if (!tabId) {
-    tabId = crypto.randomUUID();
+    tabId = generateUUID();
     sessionStorage.setItem(TAB_ID_KEY, tabId);
   }
   return tabId;
@@ -102,10 +104,9 @@ export function migrateOldNewDraftKeyFormat(): DraftPayload | null {
   const newKey = `new:${docType}:${getTabId()}`;
   const migrated: DraftPayload = { ...found.draft, draftKey: newKey };
 
-  saveRecoveryDraft(migrated);
-  if (found.source === 'session') {
-    saveSessionDraft(migrated);
-  }
+  // Keep the original until every required destination write succeeds.
+  if (!saveRecoveryDraft(migrated)) return null;
+  if (found.source === 'session' && !saveSessionDraft(migrated)) return null;
   deleteDraft(oldKey);
 
   return migrated;
@@ -193,6 +194,7 @@ function writeIndex(index: DraftSummary[]): void {
     localStorage.setItem(INDEX_KEY, JSON.stringify(index));
   } catch (err) {
     console.error('[Drafts] Failed to write index:', err);
+    throw err;
   }
 }
 
@@ -296,7 +298,7 @@ export function migrateLegacyDraft(): DraftSummary | null {
       tabId: getTabId(),
     };
 
-    saveRecoveryDraft(draft);
+    if (!saveRecoveryDraft(draft)) return null;
     localStorage.removeItem(LEGACY_KEY);
 
     return {
@@ -311,7 +313,6 @@ export function migrateLegacyDraft(): DraftSummary | null {
     };
   } catch (err) {
     console.error('[Drafts] Failed to migrate legacy draft:', err);
-    localStorage.removeItem(LEGACY_KEY);
     return null;
   }
 }
@@ -407,14 +408,14 @@ export function createDraftSaver(
     }, recoveryFloorMs);
   }
 
-  // Start the recovery floor timer immediately
-  scheduleRecoveryFloor();
+  // Start timers only when changes arrive; React may discard an initializer.
 
   return {
     /** Call on every state change (keystrokes, field edits). */
     markDirty(draft: DraftPayload) {
       pendingDraft = draft;
       dirty = true;
+      if (!recoveryTimer) scheduleRecoveryFloor();
       emitStatus();
       if (sessionTimer) clearTimeout(sessionTimer);
       sessionTimer = setTimeout(attemptSessionWrite, sessionDelayMs);
@@ -433,7 +434,7 @@ export function createDraftSaver(
     /** Call on editor unmount — writes immediately if anything is pending. */
     flush() {
       if (sessionTimer) clearTimeout(sessionTimer);
-      if (dirty && pendingDraft) {
+      if (pendingDraft) {
         attemptSessionWrite();
         attemptRecoveryWrite();
       }

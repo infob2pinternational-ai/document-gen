@@ -1,3 +1,4 @@
+import { authenticatedHeaders } from './apiAuth';
 import { dbService } from './db';
 import type { CompanyProfile, Document } from '../types';
 
@@ -139,10 +140,8 @@ async function sendPushRequest(companyId: string, payload: PushPayload): Promise
     console.log(`[Push Service] Dispatching push request to /doc/${docId}/send-push...`);
     const response = await fetch(`/doc/${docId}/send-push`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
+      headers: await authenticatedHeaders(),
+      body: JSON.stringify({ ...payload, company_id: companyId })
     });
 
     if (response.ok) {

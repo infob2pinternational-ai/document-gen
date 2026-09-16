@@ -1,3 +1,4 @@
+import { requireUser, requireCompanyAccess } from '../server/auth.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import crypto from 'crypto';
@@ -125,7 +126,7 @@ export default async function handler(req, res) {
   // CORS & Security headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -142,7 +143,10 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { token, title, body, data } = req.body || {};
+    const auth = await requireUser(req, res);
+    if (!auth) return;
+    const { token, title, body, data, company_id } = req.body || {};
+    if (!await requireCompanyAccess(auth, company_id, res)) return;
 
     if (!token || !title || !body) {
       return res.status(400).json({ error: 'Missing required parameters: token, title, and body' });
@@ -158,14 +162,6 @@ export default async function handler(req, res) {
         error: 'Firebase service account configuration is missing on the server environment variables.'
       });
     }
-
-    const cryptoHash = crypto.createHash('sha256').update(privateKey.trim()).digest('hex');
-    res.setHeader('X-Key-Hash', cryptoHash);
-    res.setHeader('X-Key-Length', String(privateKey.length));
-    res.setHeader('X-Key-Start', privateKey.substring(0, 30).replace(/\n/g, '\\n'));
-    res.setHeader('X-Key-End', privateKey.substring(privateKey.length - 30).replace(/\n/g, '\\n'));
-    res.setHeader('X-Key-Escaped-Newlines', String((privateKey.match(/\\n/g) || []).length));
-    res.setHeader('X-Key-Real-Newlines', String((privateKey.match(/\n/g) || []).length));
 
     let attempt = 0;
     const maxRetry = 3;

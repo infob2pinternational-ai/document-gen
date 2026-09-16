@@ -1,3 +1,4 @@
+import { authenticatedHeaders } from './apiAuth';
 import type { 
   WhatsAppConversation, 
   WhatsAppMessage, 
@@ -146,7 +147,7 @@ class WhatsAppService {
     try {
       const response = await fetch('/api/whatsapp?action=send-message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authenticatedHeaders(),
         body: JSON.stringify({
           phone,
           type: attachment?.url ? 'document' : 'text',
@@ -162,6 +163,9 @@ class WhatsAppService {
 
       if (response.ok) {
         const resData = await response.json();
+        if (!resData.success || resData.simulated || !resData.messageId) {
+          throw new Error('WhatsApp did not confirm message acceptance.');
+        }
         waMsgId = resData.messageId;
         newMsg.status = 'sent';
         newMsg.wa_message_id = waMsgId;
@@ -172,8 +176,8 @@ class WhatsAppService {
       }
     } catch (apiErr) {
       console.warn('[whatsappService] Could not reach WhatsApp serverless endpoint:', apiErr);
-      // Keep optimistic local state
-      newMsg.status = 'sent';
+      newMsg.status = 'failed';
+      newMsg.error_message = apiErr instanceof Error ? apiErr.message : 'Unable to send message.';
     }
 
     // Persist directly to Supabase if cloud active
@@ -206,7 +210,7 @@ class WhatsAppService {
     }
 
     // If linked to lead, log to lead activity (best effort)
-    if (idx >= 0 && convs[idx].lead_id && senderType === 'staff') {
+    if (newMsg.status === 'sent' && idx >= 0 && convs[idx].lead_id && senderType === 'staff') {
       leadService.addLeadActivity({
         lead_id: convs[idx].lead_id!,
         company_id: companyId || 'default',
@@ -216,6 +220,10 @@ class WhatsAppService {
       }).catch(e => console.error('[whatsappService] Lead activity log failed:', e));
     }
 
+    // Persist final status, replacing the earlier queued local snapshot.
+    const latest = getLocal<Record<string, WhatsAppMessage[]>>(MESSAGES_KEY, {});
+    latest[conversationId] = (latest[conversationId] || []).map(message => message.id === newMsg.id ? newMsg : message);
+    setLocal(MESSAGES_KEY, latest);
     return newMsg;
   }
 
@@ -301,7 +309,7 @@ class WhatsAppService {
     try {
       const res = await fetch('/api/whatsapp?action=send-message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authenticatedHeaders(),
         body: JSON.stringify({
           phone: cleanPhone,
           type: 'text',
