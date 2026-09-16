@@ -36,4 +36,5 @@ android/build
 android/local.properties
 dist/mobile
 scratch/
+supabase/
 
