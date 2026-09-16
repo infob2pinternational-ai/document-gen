@@ -1518,17 +1518,35 @@ function App() {
                 borderRadius: '9999px',
                 boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
               }}>
-                <img 
-                  src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" 
-                  alt="Sarath John"
-                  style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
-                />
+                {user?.user_metadata?.avatar_url ? (
+                  <img 
+                    src={user.user_metadata.avatar_url} 
+                    alt={user?.user_metadata?.full_name || user?.email || 'User'}
+                    style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: '0.7rem',
+                    flexShrink: 0
+                  }}>
+                    {((user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'U').charAt(0)).toUpperCase()}
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', lineHeight: 1.1 }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Sarath John
+                    {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
                   </span>
                   <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                    {simulatedRole}
+                    {user?.user_metadata?.role || simulatedRole}
                   </span>
                 </div>
               </div>

@@ -25,7 +25,8 @@ import {
   Layers,
   Landmark,
   Plus,
-  Check
+  Check,
+  LogOut
 } from 'lucide-react';
 import type { CompanyProfile } from '../types';
 import { metricsService } from '../services/metricsService';
@@ -59,7 +60,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClose,
   isCollapsed = false,
   onToggleCollapse,
-  userRole = 'owner'
+  userRole = 'owner',
+  user,
+  onLogout
 }) => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = React.useRef<HTMLDivElement>(null);
@@ -590,32 +593,94 @@ export const Sidebar: React.FC<SidebarProps> = ({
           justifyContent: isCollapsed ? 'center' : 'space-between',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-            <img 
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" 
-              alt="Sarath John"
-              style={{
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
+            {user?.user_metadata?.avatar_url ? (
+              <img 
+                src={user.user_metadata.avatar_url} 
+                alt={user?.user_metadata?.full_name || user?.email || 'User'}
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '1.5px solid #ffffff',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
+                  flexShrink: 0
+                }}
+              />
+            ) : (
+              <div style={{
                 width: '30px',
                 height: '30px',
                 borderRadius: '50%',
-                objectFit: 'cover',
+                background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: '0.8rem',
                 border: '1.5px solid #ffffff',
-                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)'
-              }}
-            />
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
+                flexShrink: 0
+              }}>
+                {((user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'U').charAt(0)).toUpperCase()}
+              </div>
+            )}
             {!isCollapsed && (
-              <div className="profile-details" style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                  Sarath John
+              <div className="profile-details" style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                <span style={{
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  lineHeight: 1.2,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
                 </span>
-                <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                  {userRole}
+                <span style={{
+                  fontSize: '0.6875rem',
+                  color: 'var(--text-muted)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {user?.email || userRole}
                 </span>
               </div>
             )}
           </div>
-          {!isCollapsed && <ChevronDown size={14} color="#94a3b8" />}
         </div>
+
+        {/* Sign Out button */}
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
+              gap: '0.6rem',
+              padding: '0.45rem 0.65rem',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'transparent',
+              color: '#ef4444',
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'background 0.15s ease'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            title={isCollapsed ? 'Sign Out' : undefined}
+          >
+            <LogOut size={15} color="#ef4444" />
+            {!isCollapsed && <span>Sign Out</span>}
+          </button>
+        )}
 
         {/* Settings button */}
         <button
