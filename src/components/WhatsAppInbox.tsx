@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { WhatsAppConversation, WhatsAppMessage } from '../types';
-import { officeService } from '../services/officeService';
+import { whatsappService } from '../services/whatsappService';
 import { leadService } from '../services/leadService';
+import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { FollowUpModal } from './FollowUpModal';
 import { 
   Search, 
@@ -10,7 +11,11 @@ import {
   Clock, 
   FileText, 
   Eye,
-  Phone
+  Phone,
+  Check,
+  CheckCheck,
+  AlertCircle,
+  ExternalLink
 } from 'lucide-react';
 
 interface WhatsAppInboxProps {
@@ -48,12 +53,14 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Modals
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
 
-  const refreshConversations = () => {
-    const list = officeService.getConversations();
+  const refreshConversations = async () => {
+    const list = await whatsappService.getConversations();
     setConversations(list);
     if (!activeConvId && list.length > 0) {
       setActiveConvId(list[0].id);
@@ -66,38 +73,106 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
 
   useEffect(() => {
     if (activeConvId) {
-      setMessages(officeService.getMessages(activeConvId));
+      whatsappService.getMessages(activeConvId).then(setMessages);
+      whatsappService.markAsRead(activeConvId).then(() => {
+        setConversations(prev => prev.map(c => c.id === activeConvId ? { ...c, unread_count: 0 } : c));
+      });
     }
   }, [activeConvId]);
+
+  // Real-time incoming messages & status updates subscription
+  useEffect(() => {
+    const unsubscribe = whatsappService.subscribeToLiveInbox(
+      (newMsg) => {
+        if (newMsg.conversation_id === activeConvId) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id || (m.wa_message_id && m.wa_message_id === newMsg.wa_message_id))) {
+              return prev;
+            }
+            return [...prev, newMsg];
+          });
+        }
+        refreshConversations();
+      },
+      (statusUpdate) => {
+        setMessages(prev => prev.map(m => {
+          if (m.id === statusUpdate.id || m.wa_message_id === statusUpdate.id) {
+            return { ...m, status: statusUpdate.status, error_message: statusUpdate.error_message };
+          }
+          return m;
+        }));
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeConvId]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const activeConv = conversations.find(c => c.id === activeConvId);
   const linkedLead = activeConv?.lead_id ? leadService.getLeadById(activeConv.lead_id) : null;
 
-  const handleSendMessage = (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() || !activeConvId) return;
+    if (!inputText.trim() || !activeConvId || !activeConv || isSending) return;
 
-    officeService.sendMessage(activeConvId, inputText.trim(), 'staff', userEmail.split('@')[0]);
+    const textToSend = inputText.trim();
     setInputText('');
-    setMessages(officeService.getMessages(activeConvId));
-    refreshConversations();
+    setIsSending(true);
+
+    try {
+      const newMsg = await whatsappService.sendMessage({
+        conversationId: activeConvId,
+        phone: activeConv.phone,
+        text: textToSend,
+        senderType: 'staff',
+        senderName: userEmail.split('@')[0],
+        senderEmail: userEmail,
+        companyId: activeConv.company_id
+      });
+      setMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
+      refreshConversations();
+    } catch (err) {
+      console.error('[WhatsAppInbox] Failed to send message:', err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleSelectTemplate = (text: string) => {
     setInputText(text);
   };
 
-  const handleSendSimulatedAttachment = () => {
-    if (!activeConvId) return;
-    officeService.sendMessage(
-      activeConvId,
-      'Formal Quotation PDF attached for your review.',
-      'staff',
-      userEmail.split('@')[0],
-      { type: 'pdf', name: 'Quotation-B2P.pdf', url: '#' }
-    );
-    setMessages(officeService.getMessages(activeConvId));
-    refreshConversations();
+  const handleSendSimulatedAttachment = async () => {
+    if (!activeConvId || !activeConv || isSending) return;
+    setIsSending(true);
+    try {
+      const newMsg = await whatsappService.sendMessage({
+        conversationId: activeConvId,
+        phone: activeConv.phone,
+        text: 'Formal Quotation PDF attached for your review.',
+        senderType: 'staff',
+        senderName: userEmail.split('@')[0],
+        senderEmail: userEmail,
+        companyId: activeConv.company_id,
+        attachment: {
+          type: 'pdf',
+          name: 'Quotation-B2P.pdf',
+          url: '#'
+        }
+      });
+      setMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
+      refreshConversations();
+    } catch (err) {
+      console.error('[WhatsAppInbox] Failed to send attachment:', err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const filteredConversations = conversations.filter(c =>
@@ -191,9 +266,23 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                     <strong style={{ fontSize: '0.8125rem', color: isSelected ? 'var(--brand-navy)' : 'var(--text-primary)' }}>
                       {c.customer_name}
                     </strong>
-                    <span className="mono" style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                      {new Date(c.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      {c.unread_count > 0 && (
+                        <span style={{
+                          background: '#16a34a',
+                          color: '#ffffff',
+                          borderRadius: '9999px',
+                          padding: '0.1rem 0.4rem',
+                          fontSize: '0.625rem',
+                          fontWeight: 700
+                        }}>
+                          {c.unread_count}
+                        </span>
+                      )}
+                      <span className="mono" style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                        {new Date(c.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
                   </div>
 
                   {c.company_name && (
@@ -248,6 +337,17 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
               </div>
 
               <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <a
+                  href={`https://wa.me/${normalizeIndianPhone(activeConv.phone)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary"
+                  style={{ fontSize: '0.72rem', padding: '0.3rem 0.55rem', display: 'flex', alignItems: 'center', gap: '0.3rem', textDecoration: 'none', color: '#15803d' }}
+                  title="Open in WhatsApp Web"
+                >
+                  <ExternalLink size={12} />
+                  <span>WhatsApp Web</span>
+                </a>
                 <button
                   type="button"
                   onClick={() => setFollowUpModalOpen(true)}
@@ -292,9 +392,20 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                       <strong style={{ fontSize: '0.7rem', color: isStaff ? '#15803d' : 'var(--text-primary)' }}>
                         {msg.sender_name}
                       </strong>
-                      <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {isStaff && (
+                          <span title={`Status: ${msg.status}${msg.error_message ? ` (${msg.error_message})` : ''}`}>
+                            {msg.status === 'queued' && <Clock size={11} color="#6b7280" />}
+                            {msg.status === 'sent' && <Check size={11} color="#6b7280" />}
+                            {msg.status === 'delivered' && <CheckCheck size={11} color="#6b7280" />}
+                            {msg.status === 'read' && <CheckCheck size={11} color="#2563eb" />}
+                            {msg.status === 'failed' && <AlertCircle size={11} color="#dc2626" />}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <p style={{ margin: 0, fontSize: '0.8125rem', lineHeight: 1.4, whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>
@@ -320,6 +431,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                   </div>
                 );
               })}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Quick Templates Selector */}
@@ -404,9 +516,12 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 {activeConv.company_name && (
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>{activeConv.company_name}</span>
                 )}
-                <div style={{ marginTop: '0.4rem', fontSize: '0.75rem' }}>
-                  <a href={`tel:${activeConv.phone}`} style={{ color: 'var(--brand-navy)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <Phone size={11} /> {activeConv.phone}
+                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem' }}>
+                  <a href={`tel:${activeConv.phone}`} className="btn-secondary" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <Phone size={11} /> Call
+                  </a>
+                  <a href={`https://wa.me/${normalizeIndianPhone(activeConv.phone)}`} target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', color: '#15803d' }}>
+                    <ExternalLink size={11} /> WhatsApp
                   </a>
                 </div>
               </div>

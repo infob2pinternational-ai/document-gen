@@ -74,8 +74,8 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({
   }, [selectedFY]);
 
   const handleToggleLock = async (lockId: string, currentStatus: boolean) => {
-    if (userRole !== 'owner') {
-      alert('Only OWNER role has permission to lock or unlock financial periods.');
+    if (userRole !== 'owner' && userRole !== 'admin') {
+      alert('Only OWNER or ADMIN role has permission to lock or unlock financial periods.');
       return;
     }
     const newStatus = !currentStatus;
@@ -90,8 +90,8 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({
   };
 
   const handlePerformYearEndClose = async () => {
-    if (userRole !== 'owner') {
-      alert('Only OWNER role has statutory permission to perform Year-End Closing.');
+    if (userRole !== 'owner' && userRole !== 'admin') {
+      alert('Only OWNER or ADMIN role has statutory permission to perform Year-End Closing.');
       return;
     }
 
@@ -149,7 +149,7 @@ export const FinancialReports: React.FC<FinancialReportsProps> = ({
 
   // REMEDIATION (2026-08-24, P2 item 11): moved after every hook - see
   // the matching note in AccountsDashboard.tsx.
-  if (userRole === 'admin' || userRole === 'telecaller') {
+  if (userRole === 'telecaller') {
     return <AccessRestricted currentRole={userRole as UserRole} />;
   }
 

@@ -145,12 +145,12 @@ function App() {
   // now resolves to devSimulatedRole in dev and to the real authRole in
   // every production build, with zero changes needed at any of its ~50
   // existing call sites below.
-  const isFransonManager = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
-  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('manager');
+  const isItAdmin = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
+  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('admin');
   const normalizeAppRole = (raw: string | null | undefined, email?: string | null): UserRole => {
     const userEmail = (email || '').toLowerCase().trim();
     if (userEmail === 'fransonputhukkara@gmail.com') {
-      return 'manager';
+      return 'admin';
     }
     if (userEmail === 'owner@b2p.com') {
       return 'owner';
@@ -162,8 +162,9 @@ function App() {
     return 'telecaller';
   };
   const authRole: UserRole = normalizeAppRole(user?.user_metadata?.role, user?.email);
-  const simulatedRole: UserRole = import.meta.env.DEV ? (isFransonManager ? 'manager' : devSimulatedRole) : authRole;
+  const simulatedRole: UserRole = import.meta.env.DEV ? (isItAdmin ? 'admin' : devSimulatedRole) : authRole;
   const currentUserEmail = user?.email || `${simulatedRole}@b2p.com`;
+  const hasFinanceAccess = simulatedRole === 'owner' || simulatedRole === 'admin' || simulatedRole === 'accounts' || isItAdmin;
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1599,7 +1600,7 @@ function App() {
                     {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
                   </span>
                   <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                    {isFransonManager ? 'manager' : (user?.user_metadata?.role || simulatedRole)}
+                    {isItAdmin ? 'IT Admin' : simulatedRole === 'admin' ? 'IT Admin' : (user?.user_metadata?.role || simulatedRole)}
                   </span>
                 </div>
               </div>
@@ -1704,7 +1705,7 @@ function App() {
           /* Normal Tab routing rendering */
           <>
              {currentTab === 'dashboard' && (
-              (simulatedRole === 'owner' || simulatedRole === 'manager') ? (
+              (simulatedRole === 'owner' || simulatedRole === 'admin' || simulatedRole === 'manager' || isItAdmin) ? (
                 <OwnerDashboard
                   userRole={simulatedRole}
                   userEmail={currentUserEmail}
@@ -1774,7 +1775,7 @@ function App() {
 
             {/* FINANCE & ACCOUNTS MODULE ROUTES */}
             {(currentTab === 'finance-accounts' || currentTab === 'accounts') && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <AccountsDashboard 
                   onNavigate={setCurrentTab}
                   userRole={simulatedRole}
@@ -1789,7 +1790,7 @@ function App() {
             )}
 
             {currentTab === 'journal-entries' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <JournalEntries 
                   userEmail={currentUserEmail}
                 />
@@ -1802,7 +1803,7 @@ function App() {
             )}
 
             {currentTab === 'chart-of-accounts' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <ChartOfAccounts />
               ) : (
                 <AccessRestricted 
@@ -1813,7 +1814,7 @@ function App() {
             )}
 
             {currentTab === 'banking-reconciliation' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <BankingReconciliation 
                   userRole={simulatedRole}
                   userEmail={currentUserEmail}
@@ -1827,7 +1828,7 @@ function App() {
             )}
 
             {currentTab === 'sales-receivables' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <SalesReceivables 
                   onOpenDocument={handleViewDocument}
                   userEmail={currentUserEmail}
@@ -1841,7 +1842,7 @@ function App() {
             )}
 
             {currentTab === 'expenses' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <Expenses 
                   userEmail={currentUserEmail}
                 />
@@ -1854,7 +1855,7 @@ function App() {
             )}
 
             {currentTab === 'suppliers' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <Suppliers 
                   onNewPurchaseForSupplier={() => setCurrentTab('purchases-payables')}
                 />
@@ -1867,7 +1868,7 @@ function App() {
             )}
 
             {(currentTab === 'purchases-payables' || currentTab === 'finance-purchases') && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <Purchases 
                   userEmail={currentUserEmail}
                 />
@@ -1880,7 +1881,7 @@ function App() {
             )}
 
             {(currentTab === 'gst-tax' || currentTab === 'finance-gst') && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <GSTComplianceCenter />
               ) : (
                 <AccessRestricted 
@@ -1891,7 +1892,7 @@ function App() {
             )}
 
             {currentTab === 'profit-loss' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <ProfitAndLoss />
               ) : (
                 <AccessRestricted 
@@ -1902,7 +1903,7 @@ function App() {
             )}
 
             {currentTab === 'financial-reports' && (
-              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+              hasFinanceAccess ? (
                 <FinancialReports 
                   userRole={simulatedRole}
                   userEmail={currentUserEmail}

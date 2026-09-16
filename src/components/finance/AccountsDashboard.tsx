@@ -116,7 +116,7 @@ export const AccountsDashboard: React.FC<AccountsDashboardProps> = ({
   // components). Moved here, after every hook has already executed
   // unconditionally on every render, so a role change on this mounted
   // instance can no longer change how many hooks it calls.
-  if (userRole === 'admin' || userRole === 'telecaller') {
+  if (userRole === 'telecaller') {
     return <AccessRestricted currentRole={userRole} />;
   }
 

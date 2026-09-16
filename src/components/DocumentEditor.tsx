@@ -7,6 +7,7 @@ import { LineItemModal } from './LineItemModal';
 import { DocumentSuccessDialog } from './DocumentSuccessDialog';
 import { DocumentPreview } from './DocumentPreview';
 import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
+import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
 import {
   getDraftKey,
   getTabId,
@@ -1308,13 +1309,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             }
           }}
           onSendWhatsApp={() => {
-            if (successData?.document?.customer_phone) {
-              const phone = successData.document.customer_phone.replace(/[^0-9]/g, '');
-              const formattedPhone = phone.length === 10 ? `91${phone}` : phone;
-              const shareUrl = `${window.location.origin}/#doc=${successData.document.id}`;
-              const docTypeLabel = successData.document.document_type.replace('_', ' ').toUpperCase();
-              const messageText = `Hi ${successData.document.customer_name}, please find your ${docTypeLabel} #${successData.document.document_number} from ${activeProfile?.name}:\n${shareUrl}`;
-              window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`, '_blank');
+            if (successData?.document) {
+              shareDocumentViaWhatsApp(
+                successData.document,
+                activeProfile?.name || 'B2P International',
+                activeProfile?.email || ''
+              );
             }
           }}
           onCreateNew={() => {

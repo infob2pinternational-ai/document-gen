@@ -67,7 +67,7 @@ const FALLBACK_ROLE: EmployeeRole = 'staff';
 export function normalizeRole(rawRole: string | undefined | null, email?: string | null): EmployeeRole {
   const userEmail = (email || '').toLowerCase().trim();
   if (userEmail === 'fransonputhukkara@gmail.com') {
-    return 'manager';
+    return 'admin';
   }
   if (userEmail === 'owner@b2p.com') {
     return 'owner';
@@ -87,7 +87,10 @@ export function canAccessModule(rawRole: string | undefined | null, module: Modu
 
 /** Human-readable label for the role badge shown in the app (e.g. Settings/profile area). */
 export function roleLabel(rawRole: string | undefined | null, email?: string | null): string {
+  const userEmail = (email || '').toLowerCase().trim();
+  if (userEmail === 'fransonputhukkara@gmail.com') return 'IT Admin';
   const role = normalizeRole(rawRole, email);
-  if (role === 'admin' || role === 'owner') return 'Owner';
+  if (role === 'admin') return 'IT Admin';
+  if (role === 'owner') return 'Owner';
   return role.charAt(0).toUpperCase() + role.slice(1);
 }

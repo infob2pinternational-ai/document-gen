@@ -218,7 +218,7 @@ export const BankingReconciliation: React.FC<BankingReconciliationProps> = ({
 
   // REMEDIATION (2026-08-24, P2 item 11): moved after every hook - see
   // the matching note in AccountsDashboard.tsx.
-  if (userRole === 'admin' || userRole === 'telecaller') {
+  if (userRole === 'telecaller') {
     return <AccessRestricted currentRole={userRole} />;
   }
 
