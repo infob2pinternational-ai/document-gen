@@ -557,14 +557,14 @@ function App() {
       supabase?.removeChannel(channel);
       console.log('[Realtime] Subscription disconnected');
     };
-  }, [supabase, activeProfile, user]);
+  }, [supabase, activeProfile?.id, user?.id, activeProfile?.approver_email]);
 
   // Realtime sync for google_sync_queue and google_sync_log (Phase B4) -
   // same merge-not-refetch pattern as the documents subscription above:
   // apply the event payload directly to local state instead of
   // re-querying, since Postgres already sent the full row.
   useEffect(() => {
-    if (!supabase || !activeProfile || !user) return;
+    if (!supabase || !activeProfile?.id || !user) return;
 
     const channel = supabase
       .channel(`sync-queue-${activeProfile.id}`)
@@ -596,7 +596,7 @@ function App() {
     return () => {
       supabase?.removeChannel(channel);
     };
-  }, [supabase, activeProfile, user]);
+  }, [supabase, activeProfile?.id, user?.id]);
 
   // Auto-clear toast alert after 10 seconds
   useEffect(() => {
