@@ -281,7 +281,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             >
                               <Edit size={14} />
                             </button>
-                            {role === 'admin' && (
+                            {(role === 'admin' || role === 'owner') && (
                               <button
                                 onClick={() => {
                                   if (window.confirm(`Are you sure you want to delete ${doc.document_number}?`)) {

@@ -251,7 +251,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
     }
   };
 
-  const isOwner = userRole === 'owner';
+  const isOwner = userRole === 'owner' || userRole === 'admin';
   const isApproved = approvalStatus === 'APPROVED' || approvalStatus === 'SENT';
 
   return (

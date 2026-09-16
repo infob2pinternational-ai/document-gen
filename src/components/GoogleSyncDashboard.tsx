@@ -152,7 +152,7 @@ export const GoogleSyncDashboard: React.FC<GoogleSyncDashboardProps> = ({
             Live status for {activeProfile.name}'s Google Sheets synchronization.
           </p>
         </div>
-        {role === 'admin' && (
+        {(role === 'admin' || role === 'owner') && (
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button onClick={handleRetryAll} disabled={retryingAll || failed === 0} className="btn-secondary">
               <RefreshCw size={16} className={retryingAll ? 'spin' : ''} />

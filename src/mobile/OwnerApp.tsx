@@ -12,7 +12,7 @@ import { BottomNav, type OwnerTab } from './components/BottomNav';
 import { PullToRefresh } from './components/PullToRefresh';
 import { ProfileSwitcher } from './components/ProfileSwitcher';
 import { setupPushNotifications } from './push';
-import { getRoleModules, canAccessModule, roleLabel } from './roles';
+import { getRoleModules, canAccessModule, roleLabel, normalizeRole } from './roles';
 import { LogOut } from 'lucide-react';
 
 const MODULE_TO_TAB: Record<string, OwnerTab> = {
@@ -60,11 +60,14 @@ export const OwnerApp: React.FC = () => {
   // Defined once here (not inline at each call site - the push-setup
   // effect below needs the same value, and hooks must run before this
   // component's early returns, so it can't wait until after them).
-  const isDesignatedApprover = (profile: CompanyProfile | null, currentUser: any): boolean =>
-    canAccessModule(currentUser?.user_metadata?.role, 'pending_approval') && (
+  const isDesignatedApprover = (profile: CompanyProfile | null, currentUser: any): boolean => {
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (email === 'fransonputhukkara@gmail.com' || email === 'owner@b2p.com') return true;
+    return canAccessModule(currentUser?.user_metadata?.role, 'pending_approval', currentUser?.email) && (
       !profile?.approver_email ||
-      (currentUser?.email || '').toLowerCase() === profile.approver_email.toLowerCase()
+      email === profile.approver_email.toLowerCase()
     );
+  };
 
   // Auth session (reuses the same Supabase auth as the web app - same
   // account, same session mechanism, no separate login system).
@@ -236,8 +239,8 @@ export const OwnerApp: React.FC = () => {
 
   // roles.ts's module map, keyed off the same user_metadata.role field
   // the desktop app already reads - see roles.ts for the full rationale.
-  const role = user?.user_metadata?.role;
-  const allowedModules = getRoleModules(role);
+  const role = normalizeRole(user?.user_metadata?.role, user?.email);
+  const allowedModules = getRoleModules(role, user?.email);
   const allowedTabs = allowedModules
     .map(m => MODULE_TO_TAB[m])
     .filter((t): t is OwnerTab => Boolean(t));

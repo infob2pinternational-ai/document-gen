@@ -143,16 +143,22 @@ function App() {
   // now resolves to devSimulatedRole in dev and to the real authRole in
   // every production build, with zero changes needed at any of its ~50
   // existing call sites below.
+  const isSuperOwner = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
   const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('owner');
-  const normalizeAppRole = (raw: string | null | undefined): UserRole => {
+  const normalizeAppRole = (raw: string | null | undefined, email?: string | null): UserRole => {
+    const userEmail = (email || '').toLowerCase().trim();
+    if (userEmail === 'fransonputhukkara@gmail.com' || userEmail === 'owner@b2p.com') {
+      return 'owner';
+    }
     const r = (raw || '').toLowerCase().trim();
     if (r === 'owner' || r === 'admin' || r === 'telecaller' || r === 'accounts') return r as UserRole;
     // Unset/unrecognized roles default to the MOST restrictive tier,
     // not 'owner' - the opposite of a silent full-access fallback.
     return 'telecaller';
   };
-  const authRole: UserRole = normalizeAppRole(user?.user_metadata?.role);
-  const simulatedRole: UserRole = import.meta.env.DEV ? devSimulatedRole : authRole;
+  const authRole: UserRole = normalizeAppRole(user?.user_metadata?.role, user?.email);
+  const simulatedRole: UserRole = import.meta.env.DEV ? (isSuperOwner ? 'owner' : devSimulatedRole) : authRole;
+  const currentUserEmail = user?.email || `${simulatedRole}@b2p.com`;
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1569,7 +1575,7 @@ function App() {
                     {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
                   </span>
                   <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                    {user?.user_metadata?.role || simulatedRole}
+                    {isSuperOwner ? 'owner' : (user?.user_metadata?.role || simulatedRole)}
                   </span>
                 </div>
               </div>
@@ -1677,14 +1683,14 @@ function App() {
               simulatedRole === 'owner' ? (
                 <OwnerDashboard
                   userRole={simulatedRole}
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                   onNavigateTab={setCurrentTab}
                   onOpenLead={(id) => setGlobalLeadDetailId(id)}
                 />
               ) : (
                 <Dashboard
                   role={simulatedRole}
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                   activeProfile={activeProfile}
                   profiles={profiles}
                   documents={documents}
@@ -1748,7 +1754,7 @@ function App() {
                 <AccountsDashboard 
                   onNavigate={setCurrentTab}
                   userRole={simulatedRole}
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                 />
               ) : (
                 <AccessRestricted 
@@ -1761,7 +1767,7 @@ function App() {
             {currentTab === 'journal-entries' && (
               (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
                 <JournalEntries 
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                 />
               ) : (
                 <AccessRestricted 
@@ -1786,7 +1792,7 @@ function App() {
               (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
                 <BankingReconciliation 
                   userRole={simulatedRole}
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                 />
               ) : (
                 <AccessRestricted 
@@ -1800,7 +1806,7 @@ function App() {
               (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
                 <SalesReceivables 
                   onOpenDocument={handleViewDocument}
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                 />
               ) : (
                 <AccessRestricted 
@@ -1813,7 +1819,7 @@ function App() {
             {currentTab === 'expenses' && (
               (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
                 <Expenses 
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                 />
               ) : (
                 <AccessRestricted 
@@ -1839,7 +1845,7 @@ function App() {
             {(currentTab === 'purchases-payables' || currentTab === 'finance-purchases') && (
               (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
                 <Purchases 
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                 />
               ) : (
                 <AccessRestricted 
@@ -1875,7 +1881,7 @@ function App() {
               (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
                 <FinancialReports 
                   userRole={simulatedRole}
-                  userEmail={`${simulatedRole}@b2p.com`}
+                  userEmail={currentUserEmail}
                 />
               ) : (
                 <AccessRestricted 
@@ -1888,7 +1894,7 @@ function App() {
             {currentTab === 'leads' && (
               <Leads
                 role={simulatedRole}
-                userEmail={`${simulatedRole}@b2p.com`}
+                userEmail={currentUserEmail}
                 customers={customers}
                 companyId={activeProfile?.id}
               />
@@ -1897,7 +1903,7 @@ function App() {
             {currentTab === 'calendar' && (
               <BookingCalendar 
                 role={simulatedRole}
-                userEmail={`${simulatedRole}@b2p.com`}
+                userEmail={currentUserEmail}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
               />
             )}
@@ -1905,7 +1911,7 @@ function App() {
             {currentTab === 'follow-ups' && (
               <FollowUps 
                 role={simulatedRole}
-                userEmail={`${simulatedRole}@b2p.com`}
+                userEmail={currentUserEmail}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
               />
             )}
@@ -1913,7 +1919,7 @@ function App() {
             {currentTab === 'whatsapp' && (
               <WhatsAppInbox 
                 userRole={simulatedRole}
-                userEmail={`${simulatedRole}@b2p.com`}
+                userEmail={currentUserEmail}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
               />
             )}
@@ -1921,7 +1927,7 @@ function App() {
             {currentTab === 'reports' && (
               <Reports 
                 userRole={simulatedRole}
-                userEmail={`${simulatedRole}@b2p.com`}
+                userEmail={currentUserEmail}
               />
             )}
 

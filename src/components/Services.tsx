@@ -203,7 +203,7 @@ export const Services: React.FC<ServicesProps> = ({
                           >
                             <Edit size={14} />
                           </button>
-                          {role === 'admin' && (
+                          {(role === 'admin' || role === 'owner') && (
                             <button
                               onClick={() => handleDelete(service.id)}
                               className="btn-ghost"

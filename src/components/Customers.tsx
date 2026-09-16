@@ -201,7 +201,7 @@ export const Customers: React.FC<CustomersProps> = ({
                           >
                             <Edit size={14} />
                           </button>
-                          {role === 'admin' && (
+                          {(role === 'admin' || role === 'owner') && (
                             <button
                               onClick={() => handleDelete(cust.id)}
                               className="btn-ghost"

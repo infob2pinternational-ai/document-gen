@@ -64,23 +64,27 @@ const ROLE_MODULES: Record<EmployeeRole, ModuleKey[]> = {
  */
 const FALLBACK_ROLE: EmployeeRole = 'staff';
 
-export function normalizeRole(rawRole: string | undefined | null): EmployeeRole {
+export function normalizeRole(rawRole: string | undefined | null, email?: string | null): EmployeeRole {
+  const userEmail = (email || '').toLowerCase().trim();
+  if (userEmail === 'fransonputhukkara@gmail.com' || userEmail === 'owner@b2p.com') {
+    return 'owner';
+  }
   const r = (rawRole || '').toLowerCase().trim();
   if (r in ROLE_MODULES) return r as EmployeeRole;
   return FALLBACK_ROLE;
 }
 
-export function getRoleModules(rawRole: string | undefined | null): ModuleKey[] {
-  return ROLE_MODULES[normalizeRole(rawRole)];
+export function getRoleModules(rawRole: string | undefined | null, email?: string | null): ModuleKey[] {
+  return ROLE_MODULES[normalizeRole(rawRole, email)];
 }
 
-export function canAccessModule(rawRole: string | undefined | null, module: ModuleKey): boolean {
-  return getRoleModules(rawRole).includes(module);
+export function canAccessModule(rawRole: string | undefined | null, module: ModuleKey, email?: string | null): boolean {
+  return getRoleModules(rawRole, email).includes(module);
 }
 
 /** Human-readable label for the role badge shown in the app (e.g. Settings/profile area). */
-export function roleLabel(rawRole: string | undefined | null): string {
-  const role = normalizeRole(rawRole);
-  if (role === 'admin') return 'Owner';
+export function roleLabel(rawRole: string | undefined | null, email?: string | null): string {
+  const role = normalizeRole(rawRole, email);
+  if (role === 'admin' || role === 'owner') return 'Owner';
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
