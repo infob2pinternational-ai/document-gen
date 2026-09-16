@@ -1752,7 +1752,7 @@ function App() {
               </div>
             )}
 
-            {(currentTab === 'documents' || currentTab === 'invoices') && !editorOpen && (
+            {currentTab === 'documents' && !editorOpen && (
               <Documents 
                 role={simulatedRole}
                 activeProfile={activeProfile}

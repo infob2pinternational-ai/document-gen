@@ -128,7 +128,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Document Management
+              Doc Gen
             </h1>
             <span className="badge badge-neutral">
               {filteredDocs.length} Documents
