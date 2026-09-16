@@ -207,7 +207,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
 
           <div>
             <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-              {isEditMode ? '✅ Document Updated Successfully' : '✅ Document Created Successfully'}
+              {isEditMode ? 'Document Updated Successfully' : 'Document Created Successfully'}
             </h2>
             <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
               Your <strong style={{ color: 'var(--accent-primary)' }}>{docTypeLabel}</strong> has been generated, formatted, and saved.

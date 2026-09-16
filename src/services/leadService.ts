@@ -1,0 +1,345 @@
+import type { Lead, LeadActivity, LeadStatus } from '../types';
+import { metricsService } from './metricsService';
+import { supabase, isCloudActive } from './db';
+
+const LEADS_KEY = 'docgen_leads';
+const ACTIVITIES_KEY = 'docgen_lead_activities';
+
+// REMEDIATION (2026-08-24, CRM audit pass): this file used to seed a
+// full set of fictional leads/activities ("Arun Kumar", "Kerala Grand
+// Events Pvt Ltd", etc, explicitly labelled in a since-removed comment
+// as "realistic seed leads for B2P International prototyping") as the
+// fallback whenever LEADS_KEY/ACTIVITIES_KEY were empty in localStorage
+// - i.e. every fresh browser/device would show fabricated customers,
+// phone numbers and campaign notes mixed in as if they were real CRM
+// records. That directly violates this app's own "zero fictional data"
+// principle (already applied to the finance module's chart-of-accounts
+// defaults - see the "ZERO FICTIONAL BALANCES" note in
+// financeService.ts). A genuinely empty CRM now starts genuinely empty.
+const SEED_LEADS: Lead[] = [];
+const SEED_ACTIVITIES: LeadActivity[] = [];
+
+// =========================================================================
+// PERSISTENCE MODEL (REMEDIATION 2026-08-24, third full-project audit
+// pass): leads/lead_activities were 100% localStorage - every browser/
+// device had its own independent, unsynced lead pipeline. This follows
+// the EXACT same cloud/local pattern already proven in financeService.ts
+// (isCloudActive() from db.ts decides cloud vs local per request, never
+// both): reads stay synchronous from a local cache, mutations write
+// through to Supabase (leads/lead_activities - see the phase6 migration)
+// when a cloud session is active, hydrateLeadsFromCloud() refreshes that
+// cache on login/company-switch (called from officeService's combined
+// hydrateCrmFromCloud(), itself called from App.tsx alongside
+// financeService.hydrateFromCloud()).
+// =========================================================================
+
+type CrmLeadsTable = 'leads' | 'lead_activities';
+
+async function loadCrmTable<T>(storageKey: string, table: CrmLeadsTable, companyId?: string | null): Promise<T[]> {
+  if (isCloudActive() && supabase) {
+    let query = supabase.from(table).select('*');
+    if (companyId) query = query.eq('company_id', companyId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []) as T[];
+  }
+  try {
+    const raw = localStorage.getItem(storageKey);
+    return raw ? (JSON.parse(raw) as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function persistCrmRow<T extends { id: string }>(storageKey: string, table: CrmLeadsTable, fullLocalArray: T[], changedRow: T): Promise<void> {
+  if (isCloudActive() && supabase) {
+    const { error } = await supabase.from(table).upsert(changedRow as any);
+    if (error) throw error;
+  } else {
+    localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
+  }
+  metricsService.notifyChange();
+}
+
+async function persistCrmRowDeleted(storageKey: string, table: CrmLeadsTable, fullLocalArray: any[], deletedId: string): Promise<void> {
+  if (isCloudActive() && supabase) {
+    const { error } = await supabase.from(table).delete().eq('id', deletedId);
+    if (error) throw error;
+  } else {
+    localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
+  }
+  metricsService.notifyChange();
+}
+
+/** Pulls this company's leads + lead activities down from Supabase and
+ * overwrites the local cache, exactly mirroring
+ * financeService.hydrateFromCloud(). A no-op (existing local cache left
+ * untouched) when no cloud session is active. */
+export async function hydrateLeadsFromCloud(companyId?: string): Promise<void> {
+  if (!isCloudActive() || !supabase) return;
+  try {
+    const [leads, activities] = await Promise.all([
+      loadCrmTable<Lead>(LEADS_KEY, 'leads', companyId),
+      loadCrmTable<LeadActivity>(ACTIVITIES_KEY, 'lead_activities', companyId)
+    ]);
+    localStorage.setItem(LEADS_KEY, JSON.stringify(leads));
+    localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities));
+    metricsService.notifyChange();
+  } catch (e) {
+    console.error('[leadService] hydrateLeadsFromCloud failed - continuing with existing local cache:', e);
+  }
+}
+
+// REMEDIATION (2026-08-24, found by the new CRM regression suite): both
+// getters below used to `return SEED_LEADS`/`return SEED_ACTIVITIES`
+// directly - the actual module-level array, not a copy. Every caller
+// (saveLead, addLeadActivity, ...) then mutates the array it got back
+// in place (`.unshift()`), which silently mutated the shared "empty
+// default" constant itself. In a real browser this was invisible (a
+// full page reload re-evaluates the module, resetting SEED_LEADS to
+// `[]` again) - but any in-app flow that clears localStorage WITHOUT a
+// reload (a "clear local data" action, a backup restore) would then see
+// a stale, already-populated "empty" default instead of a genuinely
+// empty one. JSON.parse(JSON.stringify(...)) returns a fresh, unlinked
+// copy every time - safe for this app's data, which is already fully
+// JSON-serializable by construction (it's persisted as JSON).
+function getStoredLeads(): Lead[] {
+  const raw = localStorage.getItem(LEADS_KEY);
+  if (!raw) {
+    localStorage.setItem(LEADS_KEY, JSON.stringify(SEED_LEADS));
+    return JSON.parse(JSON.stringify(SEED_LEADS));
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return JSON.parse(JSON.stringify(SEED_LEADS));
+  }
+}
+
+function getStoredActivities(): LeadActivity[] {
+  const raw = localStorage.getItem(ACTIVITIES_KEY);
+  if (!raw) {
+    localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(SEED_ACTIVITIES));
+    return JSON.parse(JSON.stringify(SEED_ACTIVITIES));
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return JSON.parse(JSON.stringify(SEED_ACTIVITIES));
+  }
+}
+
+// REMEDIATION (2026-08-24, full-project audit pass - the exact same
+// "company-isolation problems" class of bug already fixed once for
+// financeService.ts's P0.2): before this fix, EVERY leadService/
+// officeService getter except Leads.tsx's own list screen was called
+// with zero arguments across the whole CRM UI (FollowUps, BookingCalendar,
+// OwnerDashboard, Reports, Customer360Modal, QuotationModal,
+// FollowUpModal, LeadDetailModal) - so follow-ups, CRM quotations and
+// bookings for EVERY company profile were shown mixed together
+// everywhere except the main Leads list. Same fix as financeService: the
+// app tells this service ONCE which company is active (App.tsx calls
+// setActiveCompany() at the exact same moments it already calls
+// financeService.setActiveCompany()), and every method defaults to that
+// scope when no explicit companyId is supplied. An explicit companyId
+// argument, where still accepted, still wins.
+let activeCompanyId: string | null = null;
+
+export const leadService = {
+  setActiveCompany(companyId: string | null): void {
+    activeCompanyId = companyId;
+  },
+
+  getActiveCompany(): string | null {
+    return activeCompanyId;
+  },
+
+  getLeads(companyId?: string): Lead[] {
+    const leads = getStoredLeads();
+    const scopeId = companyId || activeCompanyId;
+    if (scopeId) {
+      return leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === scopeId);
+    }
+    return leads;
+  },
+
+  getLeadById(id: string): Lead | null {
+    const leads = getStoredLeads();
+    return leads.find(l => l.id === id) || null;
+  },
+
+  async saveLead(lead: Partial<Lead> & { customer_name: string; phone: string }, userEmail: string = 'Staff'): Promise<Lead> {
+    const leads = getStoredLeads();
+    const isNew = !lead.id || !leads.some(l => l.id === lead.id);
+    const now = new Date().toISOString();
+
+    let leadNumber = lead.lead_number;
+    if (isNew && !leadNumber) {
+      const maxSeq = leads.reduce((max, l) => {
+        if (l.lead_number && l.lead_number.startsWith('B2P-LD-')) {
+          const num = parseInt(l.lead_number.replace('B2P-LD-', ''), 10);
+          if (!isNaN(num) && num > max) return num;
+        }
+        return max;
+      }, 1000);
+      leadNumber = `B2P-LD-${maxSeq + 1}`;
+    }
+
+    const leadRecord: Lead = {
+      id: lead.id || crypto.randomUUID(),
+      lead_number: leadNumber,
+      company_id: lead.company_id || activeCompanyId || 'default',
+      customer_id: lead.customer_id,
+      customer_name: lead.customer_name,
+      company_name: lead.company_name,
+      phone: lead.phone,
+      whatsapp_number: lead.whatsapp_number || lead.phone,
+      address: lead.address,
+      location: lead.location,
+      business_type: lead.business_type,
+      lead_source: lead.lead_source || 'phone',
+      source_details: lead.source_details,
+      service_required: lead.service_required,
+      vehicle_service_type: lead.vehicle_service_type,
+      required_date: lead.required_date,
+      campaign_location: lead.campaign_location,
+      number_of_days: lead.number_of_days ? Number(lead.number_of_days) : undefined,
+      priority: lead.priority || 'WARM',
+      assigned_telecaller_email: lead.assigned_telecaller_email,
+      status: lead.status || 'new',
+      next_follow_up_at: lead.next_follow_up_at,
+      notes: lead.notes,
+      remarks: lead.remarks,
+      created_at: lead.created_at || now,
+      updated_at: now
+    };
+
+    if (isNew) {
+      leads.unshift(leadRecord);
+      await persistCrmRow(LEADS_KEY, 'leads', leads, leadRecord);
+
+      // Record activity
+      await this.addLeadActivity({
+        lead_id: leadRecord.id,
+        company_id: leadRecord.company_id,
+        user_email: userEmail,
+        action: 'Lead Created',
+        new_status: leadRecord.status,
+        note: `New lead created from ${leadRecord.lead_source || 'inquiry'}.`
+      });
+    } else {
+      const idx = leads.findIndex(l => l.id === leadRecord.id);
+      const prev = leads[idx];
+      leads[idx] = leadRecord;
+      await persistCrmRow(LEADS_KEY, 'leads', leads, leadRecord);
+
+      // Record update activity if status changed
+      if (prev && prev.status !== leadRecord.status) {
+        await this.addLeadActivity({
+          lead_id: leadRecord.id,
+          company_id: leadRecord.company_id,
+          user_email: userEmail,
+          action: 'Status Updated',
+          previous_status: prev.status,
+          new_status: leadRecord.status,
+          note: `Status updated to ${leadRecord.status.replace(/_/g, ' ')}.`
+        });
+      }
+    }
+
+    return leadRecord;
+  },
+
+  async deleteLead(id: string): Promise<void> {
+    const leads = getStoredLeads();
+    const updated = leads.filter(l => l.id !== id);
+    await persistCrmRowDeleted(LEADS_KEY, 'leads', updated, id);
+
+    // Cloud: ON DELETE CASCADE on lead_activities.lead_id handles this
+    // server-side. Local cache still needs the equivalent manual purge.
+    if (!isCloudActive()) {
+      const activities = getStoredActivities();
+      const updatedActs = activities.filter(a => a.lead_id !== id);
+      localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(updatedActs));
+      metricsService.notifyChange();
+    }
+  },
+
+  getLeadActivities(leadId: string): LeadActivity[] {
+    const activities = getStoredActivities();
+    return activities
+      .filter(a => a.lead_id === leadId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  },
+
+  async addLeadActivity(activity: Omit<LeadActivity, 'id' | 'created_at'>): Promise<LeadActivity> {
+    const activities = getStoredActivities();
+    const newAct: LeadActivity = {
+      ...activity,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString()
+    };
+    activities.unshift(newAct);
+    await persistCrmRow(ACTIVITIES_KEY, 'lead_activities', activities, newAct);
+    return newAct;
+  },
+
+  async updateLeadStatus(leadId: string, newStatus: LeadStatus, userEmail: string, note?: string): Promise<Lead | null> {
+    const leads = getStoredLeads();
+    const idx = leads.findIndex(l => l.id === leadId);
+    if (idx < 0) return null;
+
+    const prev = leads[idx];
+    const updated: Lead = {
+      ...prev,
+      status: newStatus,
+      updated_at: new Date().toISOString()
+    };
+    leads[idx] = updated;
+    await persistCrmRow(LEADS_KEY, 'leads', leads, updated);
+
+    await this.addLeadActivity({
+      lead_id: leadId,
+      company_id: updated.company_id,
+      user_email: userEmail,
+      action: 'Status Transition',
+      previous_status: prev.status,
+      new_status: newStatus,
+      note: note || `Status changed from ${prev.status} to ${newStatus}.`
+    });
+
+    return updated;
+  },
+
+  async sendToAdmin(leadId: string, userEmail: string, handoverNote?: string): Promise<{ success: boolean; lead?: Lead; error?: string }> {
+    const lead = this.getLeadById(leadId);
+    if (!lead) return { success: false, error: 'Lead not found.' };
+
+    // Validation for handover
+    if (!lead.customer_name || !lead.phone) {
+      return { success: false, error: 'Customer Name and Phone are required before sending to Admin.' };
+    }
+    if (!lead.service_required) {
+      return { success: false, error: 'Service Required must be specified before sending to Admin.' };
+    }
+
+    const updated = await this.updateLeadStatus(
+      leadId,
+      'sent_to_admin',
+      userEmail,
+      handoverNote ? `Telecaller Handover: ${handoverNote}` : 'Requirement collected and handed over to Admin for quotation.'
+    );
+
+    return { success: true, lead: updated || undefined };
+  },
+
+  async startQuotationPreparation(leadId: string, userEmail: string): Promise<{ success: boolean; lead?: Lead }> {
+    const updated = await this.updateLeadStatus(
+      leadId,
+      'quotation_preparing',
+      userEmail,
+      'Admin started quotation drafting process.'
+    );
+    return { success: true, lead: updated || undefined };
+  }
+};

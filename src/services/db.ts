@@ -11,104 +11,18 @@ import { enqueueSync } from './sheetsSyncQueue';
 // dependency between db.ts and sheetsSyncQueue.ts.
 export { supabase, isSupabaseConfigured };
 
-export const SQL_SCHEMA = `-- =====================================================================
--- 1. SAFE MIGRATION FOR EXISTING DATABASES (RUN THIS IN SUPABASE SQL EDITOR)
--- =====================================================================
-
--- Update documents document_type CHECK constraint to support all document types
-ALTER TABLE IF EXISTS documents DROP CONSTRAINT IF EXISTS documents_document_type_check;
-ALTER TABLE IF EXISTS documents ADD CONSTRAINT documents_document_type_check 
-  CHECK (document_type IN ('invoice', 'proforma_invoice', 'quotation', 'work_order', 'non_tax_invoice', 'comparison_quotation', 'comparison_invoice'));
-
--- Fix legacy INV/1014 for B2P International to plain Invoice (non_tax_invoice)
-UPDATE documents 
-SET document_type = 'non_tax_invoice' 
-WHERE document_number = 'INV/1014' AND (customer_name ILIKE '%nesto%' OR company_id IN (SELECT id FROM profiles WHERE name ILIKE '%international%'));
-
--- Ensure INV/1014 for B2P Inter-Media Solutions is Tax Invoice (invoice)
-UPDATE documents 
-SET document_type = 'invoice' 
-WHERE document_number = 'INV/1014' AND (customer_name ILIKE '%venus%' OR company_id IN (SELECT id FROM profiles WHERE name ILIKE '%inter%media%'));
-
--- Add missing columns to profiles
-ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS non_tax_prefix TEXT DEFAULT 'INV/';
-ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS non_tax_start_number INT DEFAULT 1001;
-ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS google_sheets_url TEXT;
-ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS show_bank_details BOOLEAN DEFAULT true;
-ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS approver_email TEXT;
-
--- Add missing columns to documents
-ALTER TABLE IF EXISTS documents ADD COLUMN IF NOT EXISTS created_by_email TEXT;
-ALTER TABLE IF EXISTS documents ADD COLUMN IF NOT EXISTS whatsapp_sent_by_email TEXT;
-ALTER TABLE IF EXISTS documents ADD COLUMN IF NOT EXISTS whatsapp_sent_at TIMESTAMP WITH TIME ZONE;
-ALTER TABLE IF EXISTS documents ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending_approval';
-ALTER TABLE IF EXISTS documents ADD COLUMN IF NOT EXISTS approved_by_email TEXT;
-ALTER TABLE IF EXISTS documents ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE;
-
--- Add missing columns to document_items
-ALTER TABLE IF EXISTS document_items ADD COLUMN IF NOT EXISTS gst_percentage NUMERIC DEFAULT 18;
-ALTER TABLE IF EXISTS document_items ADD COLUMN IF NOT EXISTS discount_amount NUMERIC DEFAULT 0;
-ALTER TABLE IF EXISTS document_items ADD COLUMN IF NOT EXISTS discount_percent NUMERIC DEFAULT 0;
-
--- Create missing tables if they do not exist
-CREATE TABLE IF NOT EXISTS comparison_document_data (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
-  options_data JSONB NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
-);
-
-CREATE TABLE IF NOT EXISTS comparison_templates (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  company_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  template_config JSONB NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
-);
-
-CREATE TABLE IF NOT EXISTS approver_devices (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
-  token TEXT NOT NULL,
-  device_name TEXT,
-  last_active TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
-);
-
--- Enable RLS for additional tables
-ALTER TABLE IF EXISTS comparison_document_data ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS comparison_templates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS approver_devices ENABLE ROW LEVEL SECURITY;
-
--- Safe Policy creation for additional tables
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'comparison_document_data_select_public') THEN
-    CREATE POLICY comparison_document_data_select_public ON comparison_document_data FOR SELECT USING (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'comparison_document_data_auth_all') THEN
-    CREATE POLICY comparison_document_data_auth_all ON comparison_document_data FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'comparison_templates_auth_all') THEN
-    CREATE POLICY comparison_templates_auth_all ON comparison_templates FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'approver_devices_auth_all') THEN
-    CREATE POLICY approver_devices_auth_all ON approver_devices FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-END $$;
-
-
--- =====================================================================
--- 2. FULL SCHEMA DEFINITION (FOR FRESH DATABASE CREATION)
--- =====================================================================
+export const SQL_SCHEMA = `DROP TABLE IF EXISTS document_items CASCADE;
+DROP TABLE IF EXISTS documents CASCADE;
+DROP TABLE IF EXISTS services CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
 
 -- Profiles (Company entities)
-CREATE TABLE IF NOT EXISTS profiles (
+CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  logo_url TEXT,
+  logo_url TEXT, -- Base64 logo or url
   seal_url TEXT,
   gstin TEXT,
   pan TEXT,
@@ -123,16 +37,15 @@ CREATE TABLE IF NOT EXISTS profiles (
   bank_holder TEXT,
   bank_branch TEXT,
   default_terms TEXT,
-  show_bank_details BOOLEAN DEFAULT true,
-  approver_email TEXT,
-  google_sheets_url TEXT,
   
+  -- Column headings
   col_name_description TEXT DEFAULT 'Description',
   col_name_quantity TEXT DEFAULT 'Quantity',
   col_name_unit TEXT DEFAULT 'Unit',
   col_name_rate TEXT DEFAULT 'Rate',
   col_name_amount TEXT DEFAULT 'Amount',
   
+  -- Sequencing settings
   invoice_prefix TEXT DEFAULT 'INV/',
   invoice_start_number INT DEFAULT 1001,
   proforma_prefix TEXT DEFAULT 'PI/',
@@ -141,13 +54,11 @@ CREATE TABLE IF NOT EXISTS profiles (
   quotation_start_number INT DEFAULT 1001,
   work_order_prefix TEXT DEFAULT 'WO/',
   work_order_start_number INT DEFAULT 1001,
-  non_tax_prefix TEXT DEFAULT 'INV/',
-  non_tax_start_number INT DEFAULT 1001,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
 -- Customers
-CREATE TABLE IF NOT EXISTS customers (
+CREATE TABLE customers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   company_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -160,7 +71,7 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 -- Services
-CREATE TABLE IF NOT EXISTS services (
+CREATE TABLE services (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   company_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -173,12 +84,12 @@ CREATE TABLE IF NOT EXISTS services (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
--- Documents (Invoices, Non-tax Invoices, Proforma Invoices, Quotations, Work Orders, Comparisons)
-CREATE TABLE IF NOT EXISTS documents (
+-- Documents (Invoices, Proforma Invoices, Quotations, Work Orders)
+CREATE TABLE documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   company_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  document_type TEXT NOT NULL CHECK (document_type IN ('invoice', 'proforma_invoice', 'quotation', 'work_order', 'non_tax_invoice', 'comparison_quotation', 'comparison_invoice')),
+  document_type TEXT NOT NULL CHECK (document_type IN ('invoice', 'proforma_invoice', 'quotation', 'work_order')),
   document_number TEXT NOT NULL,
   sequence_number INT NOT NULL,
   customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
@@ -189,12 +100,14 @@ CREATE TABLE IF NOT EXISTS documents (
   customer_gstin TEXT,
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   
+  -- Custom Column Headings
   col_name_description TEXT NOT NULL DEFAULT 'Description',
   col_name_quantity TEXT NOT NULL DEFAULT 'Quantity',
   col_name_unit TEXT NOT NULL DEFAULT 'Unit',
   col_name_rate TEXT NOT NULL DEFAULT 'Rate',
   col_name_amount TEXT NOT NULL DEFAULT 'Amount',
   
+  -- Calculations
   subtotal NUMERIC NOT NULL DEFAULT 0,
   tax_total NUMERIC NOT NULL DEFAULT 0,
   discount_total NUMERIC NOT NULL DEFAULT 0,
@@ -202,17 +115,11 @@ CREATE TABLE IF NOT EXISTS documents (
   advance NUMERIC NOT NULL DEFAULT 0,
   notes TEXT,
   terms TEXT,
-  created_by_email TEXT,
-  whatsapp_sent_by_email TEXT,
-  whatsapp_sent_at TIMESTAMP WITH TIME ZONE,
-  status TEXT DEFAULT 'pending_approval',
-  approved_by_email TEXT,
-  approved_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
 -- Document Line Items
-CREATE TABLE IF NOT EXISTS document_items (
+CREATE TABLE document_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
   service_id UUID REFERENCES services(id) ON DELETE SET NULL,
@@ -222,74 +129,83 @@ CREATE TABLE IF NOT EXISTS document_items (
   rate NUMERIC NOT NULL DEFAULT 0,
   unit TEXT DEFAULT 'nos',
   hsn_sac TEXT,
-  gst_percentage NUMERIC DEFAULT 18,
-  discount_amount NUMERIC DEFAULT 0,
-  discount_percent NUMERIC DEFAULT 0,
   amount NUMERIC NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0
 );
 
--- RLS Enablement
+-- =====================================================================
+-- Row Level Security (RLS)
+-- Every table is tenant-scoped by the owning auth.users row (user_id).
+-- Without this, the public 'anon' API key (shipped to every browser and
+-- to the /api/doc share-link function) can read and write ALL
+-- customers' data. Documents/document_items also get a narrow
+-- "public read" policy so that shareable WhatsApp document links keep
+-- working for anonymous visitors, but only SELECT, never write.
+-- =====================================================================
+
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE document_items ENABLE ROW LEVEL SECURITY;
 
--- Base Policies
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'profiles_select_public') THEN
-    CREATE POLICY profiles_select_public ON profiles FOR SELECT USING (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'profiles_auth_insert') THEN
-    CREATE POLICY profiles_auth_insert ON profiles FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'profiles_auth_update') THEN
-    CREATE POLICY profiles_auth_update ON profiles FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'profiles_auth_delete') THEN
-    CREATE POLICY profiles_auth_delete ON profiles FOR DELETE USING (auth.role() = 'authenticated');
-  END IF;
+-- Profiles: any authenticated team member can write; anyone can read (required for public guest shared view)
+CREATE POLICY profiles_select_public ON profiles
+  FOR SELECT USING (true);
+CREATE POLICY profiles_auth_insert ON profiles
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY profiles_auth_update ON profiles
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY profiles_auth_delete ON profiles
+  FOR DELETE USING (auth.role() = 'authenticated');
 
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'customers_auth_all') THEN
-    CREATE POLICY customers_auth_all ON customers FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
+-- Customers: shared access among all authenticated team members
+CREATE POLICY customers_auth_all ON customers
+  FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'services_auth_all') THEN
-    CREATE POLICY services_auth_all ON services FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
+-- Services: shared access among all authenticated team members
+CREATE POLICY services_auth_all ON services
+  FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'documents_select_public') THEN
-    CREATE POLICY documents_select_public ON documents FOR SELECT USING (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'documents_auth_insert') THEN
-    CREATE POLICY documents_auth_insert ON documents FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'documents_auth_update') THEN
-    CREATE POLICY documents_auth_update ON documents FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'documents_auth_delete') THEN
-    CREATE POLICY documents_auth_delete ON documents FOR DELETE USING (auth.role() = 'authenticated');
-  END IF;
+-- Documents: public guest read (for share links); write access shared among all authenticated team members
+CREATE POLICY documents_select_public ON documents
+  FOR SELECT USING (true);
+CREATE POLICY documents_auth_insert ON documents
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY documents_auth_update ON documents
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY documents_auth_delete ON documents
+  FOR DELETE USING (auth.role() = 'authenticated');
 
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'document_items_select_public') THEN
-    CREATE POLICY document_items_select_public ON document_items FOR SELECT USING (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'document_items_auth_insert') THEN
-    CREATE POLICY document_items_auth_insert ON document_items FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'document_items_auth_update') THEN
-    CREATE POLICY document_items_auth_update ON document_items FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'document_items_auth_delete') THEN
-    CREATE POLICY document_items_auth_delete ON document_items FOR DELETE USING (auth.role() = 'authenticated');
-  END IF;
-END $$;
-`;;
+-- Document Items: public guest read (for share links); write access shared among all authenticated team members
+CREATE POLICY document_items_select_public ON document_items
+  FOR SELECT USING (true);
+CREATE POLICY document_items_auth_insert ON document_items
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY document_items_auth_update ON document_items
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY document_items_auth_delete ON document_items
+  FOR DELETE USING (auth.role() = 'authenticated');
 
-// Helper to check if we should write to local storage or supabase
-const useCloud = (): boolean => {
+-- Approver Devices: token registrations for push notifications
+CREATE TABLE IF NOT EXISTS approver_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
+  token TEXT NOT NULL,
+  device_name TEXT,
+  last_active TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+ALTER TABLE approver_devices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY approver_devices_auth_all ON approver_devices
+  FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');`;
+
+// Helper to check if we should write to local storage or supabase.
+// Exported (REMEDIATION 2026-08-24) so financeService.ts can use the
+// exact same cloud/local decision the rest of the app already uses,
+// instead of inventing a second, possibly-divergent check.
+export const isCloudActive = (): boolean => {
   if (!supabase) return false;
   // If supabase is initialized, only write/read if a session user exists
   const storedUser = localStorage.getItem('supabase_user');
@@ -343,27 +259,10 @@ function buildSyncPayload(companyName: string, doc: Document, items: DocumentIte
   };
 }
 
-const normalizeDocTypeForCompany = (d: Document, profile?: CompanyProfile | null): boolean => {
-  const profileName = (profile?.name || '').toLowerCase();
-  const customerName = (d.customer_name || '').toLowerCase();
-  const isInterMedia = profileName.includes('inter-media') || profileName.includes('inter media') || customerName.includes('venus');
-  const isInternational = profileName.includes('international') || customerName.includes('nesto');
-
-  if (isInterMedia && d.document_type === 'non_tax_invoice') {
-    d.document_type = 'invoice';
-    return true;
-  }
-  if (isInternational && d.document_type === 'invoice') {
-    d.document_type = 'non_tax_invoice';
-    return true;
-  }
-  return false;
-};
-
 export const dbService = {
   // Profiles
   async getProfiles(): Promise<CompanyProfile[]> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: true });
       if (error) throw error;
       return data || [];
@@ -380,7 +279,7 @@ export const dbService = {
       pan: isIntl ? undefined : profile.pan
     };
 
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const userId = userStr ? JSON.parse(userStr).id : null;
       
@@ -416,7 +315,7 @@ export const dbService = {
   },
 
   async deleteProfile(id: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase.from('profiles').delete().eq('id', id);
       if (error) throw error;
     } else {
@@ -442,7 +341,7 @@ export const dbService = {
 
   // Customers
   async getCustomers(companyId: string): Promise<Customer[]> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { data, error } = await supabase.from('customers').select('*').eq('company_id', companyId).order('name', { ascending: true });
       if (error) throw error;
       return data || [];
@@ -453,7 +352,7 @@ export const dbService = {
   },
 
   async saveCustomer(customer: Customer): Promise<Customer> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const userId = userStr ? JSON.parse(userStr).id : null;
       const payload = { ...customer, user_id: userId };
@@ -482,7 +381,7 @@ export const dbService = {
   },
 
   async deleteCustomer(id: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase.from('customers').delete().eq('id', id);
       if (error) throw error;
     } else {
@@ -493,7 +392,7 @@ export const dbService = {
 
   // Services
   async getServices(companyId?: string): Promise<Service[]> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       let query = supabase.from('services').select('*');
       if (companyId) {
         query = query.eq('company_id', companyId);
@@ -511,7 +410,7 @@ export const dbService = {
   },
 
   async saveService(service: Service): Promise<Service> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const userId = userStr ? JSON.parse(userStr).id : null;
       const payload = { ...service, user_id: userId };
@@ -540,7 +439,7 @@ export const dbService = {
   },
 
   async deleteService(id: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase.from('services').delete().eq('id', id);
       if (error) throw error;
     } else {
@@ -551,36 +450,16 @@ export const dbService = {
 
   // Documents
   async getDocuments(companyId?: string): Promise<Document[]> {
-    const profiles = getLocal<CompanyProfile[]>('profiles', []);
-    const prof = companyId ? profiles.find(p => p.id === companyId) : null;
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       let query = supabase.from('documents').select('*');
       if (companyId) {
         query = query.eq('company_id', companyId);
       }
       const { data, error } = await query.order('date', { ascending: false }).order('created_at', { ascending: false });
       if (error) throw error;
-      if (data) {
-        data.forEach(d => {
-          const docProf = prof || profiles.find(p => p.id === d.company_id);
-          if (normalizeDocTypeForCompany(d, docProf)) {
-            supabase?.from('documents').update({ document_type: d.document_type }).eq('id', d.id).then(() => {});
-          }
-        });
-      }
       return data || [];
     } else {
       const docs = getLocal<Document[]>('documents', []);
-      let updatedLocal = false;
-      docs.forEach(d => {
-        const docProf = prof || profiles.find(p => p.id === d.company_id);
-        if (normalizeDocTypeForCompany(d, docProf)) {
-          updatedLocal = true;
-        }
-      });
-      if (updatedLocal) {
-        setLocal('documents', docs);
-      }
       if (companyId) {
         return docs.filter(d => d.company_id === companyId);
       }
@@ -607,11 +486,6 @@ export const dbService = {
       try {
         const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
         if (!docError && document) {
-          const profiles = getLocal<CompanyProfile[]>('profiles', []);
-          const docProf = profiles.find(p => p.id === document.company_id);
-          if (normalizeDocTypeForCompany(document, docProf)) {
-            supabase?.from('documents').update({ document_type: document.document_type }).eq('id', document.id).then(() => {});
-          }
           const { data: items, error: itemsError } = await supabase
             .from('document_items')
             .select('*')
@@ -628,20 +502,15 @@ export const dbService = {
     }
     const docs = getLocal<Document[]>('documents', []);
     const doc = docs.find(d => d.id === id);
-    if (!doc) {
-      if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
-      return null;
-    }
-    const profiles = getLocal<CompanyProfile[]>('profiles', []);
-    const docProf = profiles.find(p => p.id === doc.company_id);
-    if (normalizeDocTypeForCompany(doc, docProf)) {
-      setLocal('documents', docs);
-    }
-    const items = getLocal<DocumentItem[]>('document_items', []);
-    const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
-    if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
-    if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
-    return { document: doc, items: docItems };
+      if (!doc) {
+        if (import.meta.env.DEV) console.log('dbService: Local Document not found for ID:', id);
+        return null;
+      }
+      const items = getLocal<DocumentItem[]>('document_items', []);
+      const docItems = items.filter(it => it.document_id === id).sort((a, b) => a.sort_order - b.sort_order);
+      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned document:', doc);
+      if (import.meta.env.DEV) console.log('dbService: LocalStorage returned items count:', docItems.length, 'items:', docItems);
+      return { document: doc, items: docItems };
   },
 
   // Public/anonymous document lookup (share links only, both /doc/:id
@@ -697,7 +566,7 @@ export const dbService = {
     const itemsWithoutThisDoc = localItems.filter(it => it.document_id !== doc.id);
     setLocal('document_items', [...itemsWithoutThisDoc, ...items]);
 
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const user = userStr ? JSON.parse(userStr) : null;
       const userId = user ? user.id : null;
@@ -760,14 +629,14 @@ export const dbService = {
     
     localStorage.removeItem(`docgen_comparison_doc_${id}`);
 
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase.from('documents').delete().eq('id', id);
       if (error) throw error;
     }
   },
 
   async logWhatsAppSend(docId: string, email: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase.from('documents').update({
         whatsapp_sent_by_email: email,
         whatsapp_sent_at: new Date().toISOString()
@@ -785,7 +654,7 @@ export const dbService = {
   },
 
   async approveDocument(docId: string, email: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase.from('documents').update({
         status: 'approved',
         approved_by_email: email,
@@ -805,7 +674,7 @@ export const dbService = {
   },
 
   async rejectDocument(docId: string, email: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase.from('documents').update({
         status: 'rejected',
         approved_by_email: email,
@@ -825,7 +694,7 @@ export const dbService = {
   },
 
   async getApproverDevice(companyId: string): Promise<any | null> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { data, error } = await supabase
         .from('approver_devices')
         .select('*')
@@ -838,7 +707,7 @@ export const dbService = {
   },
 
   async getApproverDevices(companyId: string): Promise<any[]> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { data, error } = await supabase
         .from('approver_devices')
         .select('*')
@@ -857,7 +726,7 @@ export const dbService = {
       device_name: deviceName,
       last_active: new Date().toISOString()
     };
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { data: existing } = await supabase
         .from('approver_devices')
         .select('id')
@@ -889,7 +758,7 @@ export const dbService = {
   },
 
   async removeApproverDevice(companyId: string): Promise<void> {
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       const { error } = await supabase
         .from('approver_devices')
         .delete()
@@ -908,7 +777,7 @@ export const dbService = {
     let servs = getLocal<Service[]>('services', []);
     let profs = getLocal<CompanyProfile[]>('profiles', []);
 
-    if (useCloud() && supabase) {
+    if (isCloudActive() && supabase) {
       try {
         const [d, it, c, s, p] = await Promise.all([
           supabase.from('documents').select('*'),
@@ -932,7 +801,7 @@ export const dbService = {
       const compData = getLocal<any>(`comparison_doc_${doc.id}`, null);
       if (compData) {
         comparisonData[doc.id] = compData;
-      } else if (useCloud() && supabase) {
+      } else if (isCloudActive() && supabase) {
         try {
           const { data } = await supabase.from('comparison_document_data').select('options_data').eq('document_id', doc.id).maybeSingle();
           if (data?.options_data) {
@@ -1107,7 +976,7 @@ Go to Settings > Local Backup & Data Recovery in your portal and select this .zi
       }
 
       // If Cloud is active, restore to Supabase too
-      if (useCloud() && supabase) {
+      if (isCloudActive() && supabase) {
         if (profs.length > 0) await supabase.from('profiles').upsert(profs);
         if (custs.length > 0) await supabase.from('customers').upsert(custs);
         if (servs.length > 0) await supabase.from('services').upsert(servs);

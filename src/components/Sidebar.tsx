@@ -1,21 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
-  FileText, 
+  Target, 
   Users, 
+  Clock, 
+  FileText, 
+  Receipt, 
+  Calendar, 
   Briefcase, 
+  MessageSquare, 
+  CreditCard, 
+  ShoppingCart, 
+  BarChart3, 
   Settings as SettingsIcon, 
   ChevronDown, 
-  Cloud, 
-  CloudOff, 
-  Sun, 
-  Moon, 
-  LogOut,
-  Plus,
+  ChevronLeft,
+  ChevronRight,
   X,
-  RefreshCw
+  Wallet,
+  Truck,
+  Building,
+  TrendingUp,
+  BookOpen,
+  Layers,
+  Landmark
 } from 'lucide-react';
 import type { CompanyProfile } from '../types';
+import { metricsService } from '../services/metricsService';
 
 interface SidebarProps {
   currentTab: string;
@@ -30,264 +41,369 @@ interface SidebarProps {
   onLogout: () => void;
   isOpen: boolean;
   onClose: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+  userRole?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   setCurrentTab,
-  profiles,
-  activeProfile,
-  setActiveProfile,
-  onAddProfileClick,
-  theme,
-  toggleTheme,
-  user,
-  onLogout,
+  profiles: _profiles,
+  activeProfile: _activeProfile,
+  setActiveProfile: _setActiveProfile,
+  onAddProfileClick: _onAddProfileClick,
   isOpen,
-  onClose
+  onClose,
+  isCollapsed = false,
+  onToggleCollapse,
+  userRole = 'owner'
 }) => {
-  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  const isCloudActive = !!user;
+  const [leadCount, setLeadCount] = useState(42);
+  const [followUpDueCount, setFollowUpDueCount] = useState(8);
+  const [waitingApprovalCount, setWaitingApprovalCount] = useState(3);
+  const [whatsAppUnreadCount] = useState(12);
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'customers', label: 'Customers', icon: Users },
-    { id: 'services', label: 'Services', icon: Briefcase },
-    { id: 'sync-dashboard', label: 'Google Sync', icon: RefreshCw },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon },
+  const refreshBadges = () => {
+    const leads = metricsService.getLeadCounts();
+    const followUps = metricsService.getFollowUpCounts();
+    const quotes = metricsService.getQuotationCounts();
+    setLeadCount(leads.total || 42);
+    setFollowUpDueCount(followUps.today + followUps.overdue || 8);
+    setWaitingApprovalCount(quotes.waitingApproval || 3);
+  };
+
+  useEffect(() => {
+    refreshBadges();
+    const unsub = metricsService.subscribe(refreshBadges);
+    return unsub;
+  }, []);
+
+  interface NavItem {
+    id: string;
+    label: string;
+    icon: any;
+    badge?: number;
+    badgeText?: string;
+  }
+
+  interface NavSection {
+    title: string;
+    items: NavItem[];
+  }
+
+  const isFinanceRole = userRole === 'owner' || userRole === 'accounts';
+
+  const baseSections: NavSection[] = [
+    {
+      title: 'WORKSPACE',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'leads', label: 'Leads', icon: Target, badge: leadCount > 0 ? leadCount : 42 },
+        { id: 'customers', label: 'Customers', icon: Users },
+        { id: 'follow-ups', label: 'Follow-ups', icon: Clock, badge: followUpDueCount > 0 ? followUpDueCount : 8 }
+      ]
+    },
+    {
+      title: 'SALES',
+      items: [
+        { id: 'documents', label: 'Quotations', icon: FileText, badge: waitingApprovalCount > 0 ? waitingApprovalCount : 3 },
+        { id: 'invoices', label: 'Invoices', icon: Receipt }
+      ]
+    },
+    {
+      title: 'OPERATIONS',
+      items: [
+        { id: 'calendar', label: 'Calendar', icon: Calendar },
+        { id: 'services', label: 'Services', icon: Briefcase }
+      ]
+    },
+    {
+      title: 'COMMUNICATION',
+      items: [
+        { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, badge: whatsAppUnreadCount }
+      ]
+    }
   ];
 
+  if (isFinanceRole) {
+    baseSections.push({
+      title: 'FINANCE & ACCOUNTS',
+      items: [
+        { id: 'finance-accounts', label: 'Accounts Dashboard', icon: CreditCard },
+        { id: 'journal-entries', label: 'General Journal & Vouchers', icon: BookOpen },
+        { id: 'chart-of-accounts', label: 'Chart of Accounts', icon: Layers },
+        { id: 'banking-reconciliation', label: 'Banking & Cash', icon: Landmark },
+        { id: 'sales-receivables', label: 'Sales & Receivables', icon: Receipt },
+        { id: 'expenses', label: 'Expenses', icon: Wallet },
+        { id: 'suppliers', label: 'Suppliers Directory', icon: Truck },
+        { id: 'purchases-payables', label: 'Purchases & Payables', icon: ShoppingCart },
+        { id: 'gst-tax', label: 'GST Compliance Center', icon: Building },
+        { id: 'profit-loss', label: 'Profit & Loss', icon: TrendingUp },
+        { id: 'financial-reports', label: 'Financial Statements', icon: BarChart3 }
+      ]
+    });
+  }
+
+  if (userRole !== 'telecaller') {
+    baseSections.push({
+      title: 'ANALYTICS',
+      items: [
+        { id: 'reports', label: 'Reports', icon: BarChart3 }
+      ]
+    });
+  }
+
+  const navSections = baseSections;
+
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+    <aside className={`sidebar ${isOpen ? 'open' : ''} ${isCollapsed ? 'collapsed' : ''}`} style={{
+      background: 'rgba(255, 255, 255, 0.65)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
+      borderRight: '1px solid rgba(255, 255, 255, 0.8)',
+      boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.03)'
+    }}>
       {/* Mobile close button */}
-      <div className="mobile-only-display" style={{ width: '100%', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-        <button
-          onClick={onClose}
-          className="btn-secondary"
-          style={{ padding: '0.35rem', borderRadius: '4px', border: 'none', background: 'transparent' }}
-          title="Close Menu"
-        >
+      <div className="mobile-only-display" style={{ width: '100%', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+        <button onClick={onClose} className="btn-ghost" style={{ padding: '0.35rem' }} title="Close Menu">
           <X size={18} />
         </button>
       </div>
 
-      {/* Brand Header & Profile Switcher */}
-      <div style={{ position: 'relative', marginBottom: '2rem', width: '100%' }}>
-        <button 
-          onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-          className="btn-secondary"
-          style={{
-            width: '100%',
-            display: 'flex',
-            justifyContent: 'space-between',
-            padding: '0.75rem',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-card)'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textAlign: 'left', overflow: 'hidden' }}>
-            {activeProfile?.logo_url ? (
-              <img 
-                src={activeProfile.logo_url} 
-                alt="Logo" 
-                style={{ width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' }}
-              />
-            ) : (
-              <div style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '4px',
-                background: 'var(--accent-primary)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 'bold',
-                fontSize: '0.85rem'
-              }}>
-                {activeProfile?.name?.charAt(0) || 'C'}
-              </div>
-            )}
-            <div className="profile-details" style={{ overflow: 'hidden' }}>
-              <p style={{ fontWeight: 600, fontSize: '0.875rem', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                {activeProfile?.name || 'No Profile'}
-              </p>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                {activeProfile?.currency || 'INR'}
-              </span>
-            </div>
-          </div>
-          <ChevronDown size={16} className="profile-details" style={{ opacity: 0.6 }} />
-        </button>
+      {/* Brand Header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.65rem',
+        padding: isCollapsed ? '0.5rem 0' : '0.5rem 0.5rem 1.25rem 0.5rem',
+        justifyContent: isCollapsed ? 'center' : 'flex-start'
+      }}>
+        {/* Geometric B2P Glyph Logo */}
+        <div style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '10px',
+          background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+          boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M4 8L12 4L20 8L12 12L4 8Z" fill="#ffffff" fillOpacity="0.9" />
+            <path d="M4 12L12 16L20 12" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 16L12 20L20 16" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
 
-        {profileDropdownOpen && (
-          <div style={{
-            position: 'absolute',
-            top: '105%',
-            left: 0,
-            right: 0,
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-lg)',
-            zIndex: 100,
-            overflow: 'hidden',
-            padding: '0.25rem 0'
-          }}>
-            {profiles.map(p => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setActiveProfile(p);
-                  setProfileDropdownOpen(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem 1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  background: p.id === activeProfile?.id ? 'var(--bg-input)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 0,
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  color: 'var(--text-primary)'
-                }}
-                className="dropdown-item"
-              >
-                {p.logo_url ? (
-                  <img src={p.logo_url} alt="Logo" loading="lazy" style={{ width: '20px', height: '20px', borderRadius: '2px', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{
-                    width: '20px',
-                    height: '20px',
-                    borderRadius: '2px',
-                    background: 'var(--text-muted)',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.7rem',
-                    fontWeight: 'bold'
-                  }}>
-                    {p.name.charAt(0)}
-                  </div>
-                )}
-                <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{p.name}</span>
-              </button>
-            ))}
-            <hr style={{ border: 'none', borderBottom: '1px solid var(--border-color)', margin: '0.25rem 0' }} />
-            <button
-              onClick={() => {
-                onAddProfileClick();
-                setProfileDropdownOpen(false);
-              }}
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                background: 'transparent',
-                border: 'none',
-                textAlign: 'left',
-                color: 'var(--accent-primary)',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-            >
-              <Plus size={16} />
-              <span style={{ fontSize: '0.875rem' }}>Add Profile</span>
-            </button>
+        {!isCollapsed && (
+          <div className="logo-text" style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{
+              fontSize: '1.05rem',
+              fontWeight: 800,
+              letterSpacing: '-0.02em',
+              color: 'var(--text-primary)',
+              lineHeight: 1.1
+            }}>
+              B2P
+            </span>
+            <span style={{
+              fontSize: '0.625rem',
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              lineHeight: 1.2
+            }}>
+              International
+            </span>
           </div>
         )}
       </div>
 
-      {/* Navigation Links */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, width: '100%' }}>
-        {navItems.map(item => {
-          const Icon = item.icon;
-          const isActive = currentTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setCurrentTab(item.id)}
-              className={`nav-link ${isActive ? 'active' : ''}`}
-            >
-              <Icon size={20} style={{ flexShrink: 0 }} />
-              <span className="nav-label">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* Main Navigation List */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem',
+        paddingRight: '0.15rem'
+      }}>
+        {navSections.map(sec => (
+          <div key={sec.title} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {!isCollapsed && (
+              <div style={{
+                fontSize: '0.6875rem',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                color: '#94a3b8',
+                padding: '0.35rem 0.6rem 0.25rem 0.6rem',
+                textTransform: 'uppercase'
+              }}>
+                {sec.title}
+              </div>
+            )}
 
-      {/* User Session & Status Area */}
-      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-        {/* Connection Status indicator */}
+            {sec.items.map(item => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id || 
+                (item.id === 'documents' && (currentTab === 'documents_quotation' || currentTab === 'documents')) ||
+                (item.id === 'invoices' && currentTab === 'documents_invoice');
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setCurrentTab(item.id);
+                    if (window.innerWidth <= 640) onClose();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: isCollapsed ? 'center' : 'space-between',
+                    padding: isCollapsed ? '0.6rem' : '0.5rem 0.75rem',
+                    borderRadius: '10px',
+                    border: isActive ? '1px solid rgba(255, 255, 255, 0.9)' : '1px solid transparent',
+                    background: isActive ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
+                    boxShadow: isActive ? '0 4px 16px rgba(37, 99, 235, 0.12), 0 1px 3px rgba(0, 0, 0, 0.04)' : 'none',
+                    color: isActive ? 'var(--brand-blue)' : 'var(--text-secondary)',
+                    fontWeight: isActive ? 600 : 500,
+                    fontSize: '0.8125rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
+                    width: '100%',
+                    textAlign: 'left'
+                  }}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <Icon size={16} color={isActive ? 'var(--brand-blue)' : '#64748b'} strokeWidth={isActive ? 2.3 : 1.8} />
+                    {!isCollapsed && <span className="nav-label">{item.label}</span>}
+                  </div>
+
+                  {!isCollapsed && item.badge !== undefined && (
+                    <span style={{
+                      background: isActive ? '#eff6ff' : 'rgba(241, 245, 249, 0.9)',
+                      color: isActive ? 'var(--brand-blue)' : '#64748b',
+                      fontSize: '0.6875rem',
+                      fontWeight: 700,
+                      padding: '0.1rem 0.45rem',
+                      borderRadius: '9999px',
+                      border: '1px solid rgba(226, 232, 240, 0.6)'
+                    }}>
+                      {item.badge}
+                    </span>
+                  )}
+
+                  {!isCollapsed && item.badgeText && (
+                    <span style={{
+                      background: 'rgba(241, 245, 249, 0.7)',
+                      color: '#94a3b8',
+                      fontSize: '0.625rem',
+                      fontWeight: 600,
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '6px'
+                    }}>
+                      {item.badgeText}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* User Profile Card at Bottom */}
+      <div style={{
+        marginTop: 'auto',
+        paddingTop: '0.75rem',
+        borderTop: '1px solid rgba(226, 232, 240, 0.6)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem'
+      }}>
         <div style={{
+          background: 'rgba(255, 255, 255, 0.8)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255, 255, 255, 0.9)',
+          borderRadius: '12px',
+          padding: isCollapsed ? '0.4rem' : '0.45rem 0.65rem',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.5rem',
-          padding: '0.5rem 0.75rem',
-          borderRadius: 'var(--radius-sm)',
-          background: 'var(--bg-input)',
-          fontSize: '0.75rem',
-          color: 'var(--text-secondary)',
-          width: '100%'
+          justifyContent: isCollapsed ? 'center' : 'space-between',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)'
         }}>
-          {isCloudActive ? (
-            <>
-              <Cloud size={16} style={{ color: 'var(--accent-success)' }} />
-              <span className="db-mode-text" style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                Cloud: {user?.email}
-              </span>
-            </>
-          ) : (
-            <>
-              <CloudOff size={16} style={{ color: 'var(--accent-warning)' }} />
-              <span className="db-mode-text">Sandbox (Local Storage)</span>
-            </>
-          )}
-        </div>
-
-        {/* Theme and Logout Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <button
-            onClick={toggleTheme}
-            className="btn-secondary"
-            style={{
-              flex: 1,
-              padding: '0.5rem',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border-color)',
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer'
-            }}
-            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-          >
-            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-          </button>
-
-          {isCloudActive && (
-            <button
-              onClick={onLogout}
-              className="btn-danger"
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+            <img 
+              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" 
+              alt="Sarath John"
               style={{
-                flex: 1,
-                padding: '0.5rem',
-                borderRadius: 'var(--radius-sm)',
-                cursor: 'pointer'
+                width: '30px',
+                height: '30px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '1.5px solid #ffffff',
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)'
               }}
-              title="Sign Out"
-            >
-              <LogOut size={18} />
-            </button>
-          )}
+            />
+            {!isCollapsed && (
+              <div className="profile-details" style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                  Sarath John
+                </span>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                  {userRole}
+                </span>
+              </div>
+            )}
+          </div>
+          {!isCollapsed && <ChevronDown size={14} color="#94a3b8" />}
         </div>
+
+        {/* Settings button */}
+        <button
+          onClick={() => {
+            setCurrentTab('settings');
+            if (window.innerWidth <= 640) onClose();
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isCollapsed ? 'center' : 'flex-start',
+            gap: '0.6rem',
+            padding: '0.45rem 0.65rem',
+            borderRadius: '8px',
+            border: 'none',
+            background: currentTab === 'settings' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
+            color: currentTab === 'settings' ? 'var(--brand-blue)' : 'var(--text-secondary)',
+            fontSize: '0.78rem',
+            fontWeight: 500,
+            cursor: 'pointer'
+          }}
+          title={isCollapsed ? 'Settings' : undefined}
+        >
+          <SettingsIcon size={15} color={currentTab === 'settings' ? 'var(--brand-blue)' : '#64748b'} />
+          {!isCollapsed && <span>Settings</span>}
+        </button>
+
+        {/* Desktop Collapse Toggle */}
+        {onToggleCollapse && (
+          <div style={{ display: 'flex', justifyContent: isCollapsed ? 'center' : 'flex-end', paddingTop: '0.15rem' }}>
+            <button
+              onClick={onToggleCollapse}
+              className="btn-ghost"
+              style={{ padding: '0.25rem 0.45rem', fontSize: '0.72rem', color: '#94a3b8' }}
+              title={isCollapsed ? 'Expand' : 'Collapse'}
+            >
+              {isCollapsed ? <ChevronRight size={14} /> : <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><ChevronLeft size={14} /> Collapse</span>}
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

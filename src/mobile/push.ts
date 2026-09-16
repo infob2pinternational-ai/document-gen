@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { dbService } from '../services/db';

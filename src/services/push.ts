@@ -36,13 +36,13 @@ export const sendApprovalNotification = async (
       return false;
     }
 
-    // Format specified by the business: "🔔 {Company} / New {Type} Awaiting
+    // Format specified by the business: "{Company} / New {Type} Awaiting
     // Approval / {Customer} / {Amount} / Tap to Review". Shared here (not
     // duplicated) so both the desktop app and the owner mobile app - which
     // both trigger this from the same DocumentEditor save path - send the
     // identical notification. data.documentId below is what the mobile
     // app's native tap handler deep-links on.
-    const title = `🔔 ${profile.name}`;
+    const title = `${profile.name}`;
     const docTypeStr = formatDocType(doc.document_type);
     const formattedAmount = Number(doc.total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const body = `New ${docTypeStr} Awaiting Approval\n${doc.customer_name}\n₹${formattedAmount}\nTap to Review`;

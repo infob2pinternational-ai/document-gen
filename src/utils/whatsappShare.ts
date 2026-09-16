@@ -50,8 +50,8 @@ export function shareDocumentViaWhatsApp(
   const advanceAmount = normalizeAdvance(doc.advance);
   const balanceDue = calculateBalanceDue(Number(doc.total) || 0, advanceAmount);
   const advanceLine = advanceAmount > 0
-    ? `💵 Advance: ₹${advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
-      `📌 Balance Due: ₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n`
+    ? `Advance: ₹${advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+      `Balance Due: ₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n`
     : `\n`;
   const baseUrl = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
   const shareLink = baseUrl + '/doc/' + doc.id;
@@ -78,23 +78,23 @@ export function shareDocumentViaWhatsApp(
   const msg = `*Dear ${doc.customer_name}*,\n\n` +
     `Greetings from ${companyName}.\n\n` +
     `Thank you for choosing us. Please find your ${docTypeLabel}.\n\n` +
-    `📄 ${docNoLabel} No.: ${doc.document_number}\n` +
-    `📅 Date: ${docDate}\n` +
-    `💰 Amount: ₹${formattedTotal}\n` +
+    `${docNoLabel} No.: ${doc.document_number}\n` +
+    `Date: ${docDate}\n` +
+    `Amount: ₹${formattedTotal}\n` +
     advanceLine +
-    `🔗 *View / Download ${docNoLabel}*\n` +
+    `*View / Download ${docNoLabel}*\n` +
     `${shareLink}\n\n` +
     `Should you require any clarification or revisions, please feel free to contact us.\n\n` +
     `Thank you for your trust in ${companyName}.\n\n` +
     `Warm Regards,\n` +
     `${companyName}\n\n` +
     `━━━━━━━━━━━━━━━━━━\n\n` +
-    `📲 *Follow Us*\n` +
+    `*Follow Us*\n` +
     `Instagram\n` +
     `https://www.instagram.com/b2p_international/\n\n` +
     `Facebook\n` +
     `https://facebook.com/b2pinternational\n\n` +
-    `⭐ *Share Your Experience*\n` +
+    `*Share Your Experience*\n` +
     `https://g.page/r/CcC1J3PCvB_BEBM/review`;
 
   if (userEmail) {

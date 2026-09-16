@@ -7,7 +7,6 @@ import { LineItemModal } from './LineItemModal';
 import { DocumentSuccessDialog } from './DocumentSuccessDialog';
 import { DocumentPreview } from './DocumentPreview';
 import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
-import { getErrorMessage } from '../utils/error';
 import {
   getDraftKey,
   getTabId,
@@ -32,24 +31,6 @@ interface DocumentEditorProps {
   // as a fallback if the new draft system finds nothing (e.g. a draft
   // left over from immediately before this change shipped).
   draftToRestore?: any;
-  conversionPayload?: {
-    targetType: DocumentType;
-    customer_id?: string;
-    customer_name: string;
-    customer_email?: string;
-    customer_phone?: string;
-    customer_address?: string;
-    customer_gstin?: string;
-    col_name_description?: string;
-    col_name_quantity?: string;
-    col_name_unit?: string;
-    col_name_rate?: string;
-    col_name_amount?: string;
-    notes?: string;
-    terms?: string;
-    discount_total?: number;
-    items: DocumentItem[];
-  } | null;
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({
@@ -57,8 +38,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   documentToEdit,
   onClose,
   onRefreshDocs,
-  draftToRestore,
-  conversionPayload
+  draftToRestore
 }) => {
   // Profile-specific rule: B2P Inter-Media Solutions only issues Tax
   // Invoices - Non-Tax Invoice is not a valid document type for this
@@ -67,16 +47,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // established by the existing isB2PInternational check further down
   // this file, per the explicit instruction to reuse the existing
   // profile identification mechanism rather than add a new one.
-  const lowerProfileName = (activeProfile?.name || '').toLowerCase();
-  const isB2PInterMediaSolutions = lowerProfileName.includes('inter-media') || lowerProfileName.includes('inter media');
-  const isB2PInternational = lowerProfileName.includes('international');
+  const isB2PInterMediaSolutions = !!activeProfile?.name?.toLowerCase().includes('inter-media');
 
   // Database Libraries
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
 
   // Main Document States
-  const [docType, setDocType] = useState<DocumentType>(isB2PInternational ? 'non_tax_invoice' : 'invoice');
+  const [docType, setDocType] = useState<DocumentType>('invoice');
   const [docNumber, setDocNumber] = useState('');
   const [sequenceNumber, setSequenceNumber] = useState<number>(1001);
   const [date, setDate] = useState('');
@@ -322,13 +300,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
       if (found) {
         const f = found.draft.fields;
-        let restoredType: DocumentType = f.docType;
-        if (isB2PInterMediaSolutions && restoredType === 'non_tax_invoice') {
-          restoredType = 'invoice';
-        } else if (isB2PInternational && restoredType === 'invoice') {
-          restoredType = 'non_tax_invoice';
-        }
-        setDocType(restoredType);
+        setDocType(f.docType);
         setDocNumber(f.docNumber);
         setSequenceNumber(f.sequenceNumber);
         setDate(f.date);
@@ -360,13 +332,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       // Backward-compat fallback: a draft handed down via the old prop
       // path (see interface comment above) and not yet migrated/found
       // by the new system.
-      let restoredType: DocumentType = draftToRestore.docType;
-      if (isB2PInterMediaSolutions && restoredType === 'non_tax_invoice') {
-        restoredType = 'invoice';
-      } else if (isB2PInternational && restoredType === 'invoice') {
-        restoredType = 'non_tax_invoice';
-      }
-      setDocType(restoredType);
+      setDocType(draftToRestore.docType);
       setDocNumber(draftToRestore.docNumber);
       setSequenceNumber(draftToRestore.sequenceNumber);
       setDate(draftToRestore.date);
@@ -395,13 +361,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           const res = await dbService.getDocumentById(documentToEdit.id);
           if (res) {
             const { document, items: docItems } = res;
-            let editType: DocumentType = document.document_type;
-            if (isB2PInterMediaSolutions && editType === 'non_tax_invoice') {
-              editType = 'invoice';
-            } else if (isB2PInternational && editType === 'invoice') {
-              editType = 'non_tax_invoice';
-            }
-            setDocType(editType);
+            setDocType(document.document_type);
             setDocNumber(document.document_number);
             setSequenceNumber(document.sequence_number);
             setDate(document.date || '');
@@ -440,31 +400,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         }
       };
       loadDocData();
-    } else if (conversionPayload) {
-      // Conversion Initialization Mode
-      setDocType(conversionPayload.targetType);
-      const today = new Date().toISOString().split('T')[0];
-      setDate(today);
-      setNotes(conversionPayload.notes || '');
-      setTerms(conversionPayload.terms || '');
-      setDiscountTotal(conversionPayload.discount_total || 0);
-
-      setSelectedCustomerId(conversionPayload.customer_id || '');
-      setCustomerName(conversionPayload.customer_name || '');
-      setCustomerEmail(conversionPayload.customer_email || '');
-      setCustomerPhone(conversionPayload.customer_phone || '');
-      setCustomerAddress(conversionPayload.customer_address || '');
-      setCustomerGstin(conversionPayload.customer_gstin || '');
-
-      setColDesc(conversionPayload.col_name_description || activeProfile.col_name_description || 'Description');
-      setColQty(conversionPayload.col_name_quantity || activeProfile.col_name_quantity || 'Quantity');
-      setColUnit(conversionPayload.col_name_unit || activeProfile.col_name_unit || 'Unit');
-      setColRate(conversionPayload.col_name_rate || activeProfile.col_name_rate || 'Rate');
-      setColAmt(conversionPayload.col_name_amount || activeProfile.col_name_amount || 'Amount');
-
-      setItems(conversionPayload.items || []);
-
-      generateSequenceNumber(conversionPayload.targetType);
     } else {
       // Create Mode
       const today = new Date().toISOString().split('T')[0];
@@ -491,12 +426,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       setCustomerGstin('');
 
       // Auto-sequence numbers
-      const initialType: DocumentType = isB2PInternational ? 'non_tax_invoice' : 'invoice';
-      setDocType(initialType);
-      generateSequenceNumber(initialType);
+      generateSequenceNumber(docType);
       hasInitializedRef.current = true;
     }
-  }, [documentToEdit, activeProfile, draftToRestore, conversionPayload]);
+  }, [documentToEdit, activeProfile, draftToRestore]);
 
   // Handle document type change -> update sequence
   useEffect(() => {
@@ -567,8 +500,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       prefix = activeProfile.work_order_prefix || 'WO/';
       startSeq = Number(activeProfile.work_order_start_number) || 1001;
     } else if (type === 'non_tax_invoice') {
-      prefix = activeProfile.non_tax_prefix || activeProfile.invoice_prefix || 'INV/';
-      startSeq = Number(activeProfile.non_tax_start_number) || Number(activeProfile.invoice_start_number) || 1001;
+      prefix = activeProfile.non_tax_prefix || 'NT/';
+      startSeq = Number(activeProfile.non_tax_start_number) || 1001;
     }
 
     // Set immediate non-blank default - only if no newer request has
@@ -677,10 +610,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       alert('Non-Tax Invoice is not available for B2P Inter-Media Solutions. This profile issues Tax Invoices only.');
       return;
     }
-    if (isB2PInternational && docType === 'invoice') {
-      alert('Tax Invoice is not available for B2P International. This profile issues Invoices only.');
-      return;
-    }
 
     setLoading(true);
     try {
@@ -783,7 +712,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         isEditMode: Boolean(documentToEdit)
       });
     } catch (err) {
-      const errorMsg = getErrorMessage(err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
       alert(`Failed to save document: ${errorMsg}\n\n(Please ensure you have executed the SQL migration scripts in your Supabase SQL Editor under "SQL Editor")`);
     } finally {
       setLoading(false);
@@ -807,17 +736,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     
     setItems(updated.map((item, idx) => ({ ...item, sort_order: idx })));
     setDraggedIndex(null);
-  };
-
-  const getDocTypeDisplayLabel = (type: DocumentType) => {
-    switch (type) {
-      case 'invoice': return 'Tax Invoice';
-      case 'non_tax_invoice': return 'Invoice';
-      case 'proforma_invoice': return 'Proforma Invoice';
-      case 'quotation': return 'Quotation';
-      case 'work_order': return 'Work Order';
-      default: return (type as string).replace(/_/g, ' ');
-    }
   };
 
   if (previewDoc) {
@@ -844,7 +762,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           </button>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-              {documentToEdit ? `Edit ${getDocTypeDisplayLabel(docType)}` : `Create ${getDocTypeDisplayLabel(docType)}`}
+              {documentToEdit ? `Edit ${docType.replace('_', ' ')}` : `Create ${docType.replace('_', ' ')}`}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '2px 0 0 0' }}>
               Sequence details and custom branding will be locked upon save.
@@ -933,9 +851,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   }}
                   disabled={!!documentToEdit} // cannot change type on edit
                 >
-                  {!isB2PInternational && (
-                    <option value="invoice">Tax Invoice</option>
-                  )}
+                  <option value="invoice">Tax Invoice</option>
+                  {/* Profile-specific rule: B2P Inter-Media Solutions only
+                      issues Tax Invoices - Non-Tax Invoice is not a valid
+                      document type for this profile, so it's not offered
+                      as a choice. Backed up by a hard save-time check
+                      below (handleSaveDoc) - this UI hiding alone is not
+                      the enforcement mechanism. */}
                   {!isB2PInterMediaSolutions && (
                     <option value="non_tax_invoice">Invoice</option>
                   )}

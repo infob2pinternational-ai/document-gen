@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { CompanyProfile, Document, Customer, Service, DocumentItem, DocumentType } from './types';
+import type { CompanyProfile, Document, Customer, Service } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
 import { Sidebar } from './components/Sidebar';
@@ -14,8 +14,32 @@ import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
 import { ComparisonEditor } from './components/comparison/ComparisonEditor';
 import { ComparisonPreview } from './components/comparison/ComparisonPreview';
-import { ConvertModal } from './components/ConvertModal';
-import { Building, Menu, Moon, Sun, Download, Cloud } from 'lucide-react';
+import { Leads } from './components/Leads';
+import { LeadDetailModal } from './components/LeadDetailModal';
+import { OwnerDashboard } from './components/OwnerDashboard';
+import { BookingCalendar } from './components/BookingCalendar';
+import { FollowUps } from './components/FollowUps';
+import { WhatsAppInbox } from './components/WhatsAppInbox';
+import { Reports } from './components/Reports';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
+import { NotificationCenter } from './components/NotificationCenter';
+import { AccountsDashboard } from './components/finance/AccountsDashboard';
+import { JournalEntries } from './components/finance/JournalEntries';
+import { ChartOfAccounts } from './components/finance/ChartOfAccounts';
+import { BankingReconciliation } from './components/finance/BankingReconciliation';
+import { SalesReceivables } from './components/finance/SalesReceivables';
+import { Expenses } from './components/finance/Expenses';
+import { Suppliers } from './components/finance/Suppliers';
+import { Purchases } from './components/finance/Purchases';
+import { GSTComplianceCenter } from './components/finance/GSTComplianceCenter';
+import { ProfitAndLoss } from './components/finance/ProfitAndLoss';
+import { FinancialReports } from './components/finance/FinancialReports';
+import { AccessRestricted } from './components/finance/AccessRestricted';
+import type { UserRole } from './types';
+import { financeService } from './services/financeService';
+import { leadService } from './services/leadService';
+import { hydrateCrmFromCloud } from './services/officeService';
+import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, CheckCircle, X } from 'lucide-react';
 import { getRecoverableDrafts, deleteDraft, type DraftSummary } from './utils/drafts';
 
 const playNotificationSound = () => {
@@ -84,8 +108,6 @@ function App() {
   const [documentToPreview, setDocumentToPreview] = useState<Document | null>(null);
   const [recoverableDrafts, setRecoverableDrafts] = useState<DraftSummary[]>([]);
   const [draftToRestore, setDraftToRestore] = useState<any>(null);
-  const [documentToConvert, setDocumentToConvert] = useState<Document | null>(null);
-  const [conversionPayload, setConversionPayload] = useState<any>(null);
   
   // Modals
   const [showAddProfileModal, setShowAddProfileModal] = useState(false);
@@ -104,6 +126,50 @@ function App() {
   const [publicViewDocId, setPublicViewDocId] = useState<string | null>(null);
   const [publicViewDoc, setPublicViewDoc] = useState<Document | null>(null);
   const [publicViewLoading, setPublicViewLoading] = useState(false);
+
+  // REMEDIATION (2026-08-24, P0.3 - audit finding "Role Simulation
+  // Switcher / client-side role security problem"): this used to be the
+  // ONLY role concept anywhere in the desktop app - simulatedRole was a
+  // plain useState any user could flip from the UI (below), and every
+  // finance/admin component trusted it directly as real authorization.
+  // Production authorization now comes from the authenticated user's
+  // real role (the same `user.user_metadata.role` field
+  // src/mobile/roles.ts already reads from the Supabase session, set via
+  // Supabase Admin/dashboard - not self-service, not client-editable).
+  // The switcher below is kept ONLY for local development/testing
+  // (`import.meta.env.DEV`, stripped from production builds) and can no
+  // longer influence what a production build actually authorizes -
+  // `simulatedRole` (used everywhere else in this file, unchanged)
+  // now resolves to devSimulatedRole in dev and to the real authRole in
+  // every production build, with zero changes needed at any of its ~50
+  // existing call sites below.
+  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('owner');
+  const normalizeAppRole = (raw: string | null | undefined): UserRole => {
+    const r = (raw || '').toLowerCase().trim();
+    if (r === 'owner' || r === 'admin' || r === 'telecaller' || r === 'accounts') return r as UserRole;
+    // Unset/unrecognized roles default to the MOST restrictive tier,
+    // not 'owner' - the opposite of a silent full-access fallback.
+    return 'telecaller';
+  };
+  const authRole: UserRole = normalizeAppRole(user?.user_metadata?.role);
+  const simulatedRole: UserRole = import.meta.env.DEV ? devSimulatedRole : authRole;
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+
+
+  // Global Ctrl+K Shortcut for Search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setGlobalSearchOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Saturday 5:00 PM Backup Reminder State & Checks
   const [showSaturdayBackupReminder, setShowSaturdayBackupReminder] = useState(false);
@@ -284,6 +350,8 @@ function App() {
     setProfiles([]);
     setActiveProfile(null);
     setDocuments([]);
+    financeService.setActiveCompany(null);
+    leadService.setActiveCompany(null);
   };
 
   // Auto-expire inactive cloud sessions: if a logged-in user leaves the
@@ -610,7 +678,30 @@ function App() {
 
         setActiveProfile(active);
         localStorage.setItem('docgen_active_profile_id', active.id);
-        
+
+        // REMEDIATION (2026-08-24, P0.2 - audit finding "company-
+        // isolation problems"): tells financeService which company is
+        // active so every finance read/write it does defaults to this
+        // scope, without each of the ~20 finance components needing to
+        // remember to pass a companyId (none of them ever did before
+        // this fix). hydrateFromCloud() pulls this company's finance
+        // rows down from Supabase first when a cloud session is active.
+        financeService.setActiveCompany(active.id);
+        await financeService.hydrateFromCloud(active.id);
+
+        // REMEDIATION (2026-08-24, third full-project audit pass): same
+        // treatment for the CRM module (leads, lead activities,
+        // follow-ups, CRM quotations, resources/bookings) - was
+        // previously localStorage-only with no cloud hydration AND no
+        // company-scoping at all (every CRM getter except Leads.tsx's
+        // own list screen was called with zero arguments, so follow-ups/
+        // quotations/company-scoped-leads for every company profile
+        // were shown mixed together everywhere else - the exact same
+        // "company-isolation problems" class of bug already fixed once
+        // for financeService.ts's P0.2).
+        leadService.setActiveCompany(active.id);
+        await hydrateCrmFromCloud(active.id);
+
         // Fetch docs, customers, and services via the shared loader
         await refreshCompanyData(active.id);
       } else {
@@ -618,6 +709,8 @@ function App() {
         setDocuments([]);
         setCustomers([]);
         setServices([]);
+        financeService.setActiveCompany(null);
+        leadService.setActiveCompany(null);
       }
     } catch (err) {
       console.error('Error loading application data:', err);
@@ -725,7 +818,8 @@ function App() {
     setEditorOpen(false);
     setComparisonEditorActive(false);
     setDraftToRestore(null);
-    setConversionPayload(null);
+    // Drafts are NOT deleted on close (Phase A2/A4) - just refresh the
+    // registry in case a new draft was created during this session.
     refreshRecoverableDrafts();
   };
 
@@ -746,100 +840,14 @@ function App() {
   // Document management actions
   const handleEditDocument = (doc: Document) => {
     setDocumentToEdit(doc);
-    setConversionPayload(null);
     setCurrentTab('documents');
     setEditorOpen(true);
   };
 
   const handleCreateDocument = () => {
     setDocumentToEdit(null);
-    setConversionPayload(null);
     setCurrentTab('documents');
     setEditorOpen(true);
-  };
-
-  const handleConvertDocumentToInvoice = async (srcDoc: Document, targetType: DocumentType) => {
-    if (!srcDoc || srcDoc.status !== 'approved') {
-      alert('Only approved documents can be converted to an invoice.');
-      return;
-    }
-
-    try {
-      const fullData = await dbService.getDocumentById(srcDoc.id);
-      if (!fullData) {
-        alert('Source document details could not be loaded.');
-        return;
-      }
-      const { document: originalDoc, items: originalItems } = fullData;
-
-      let srcLabel = 'Document';
-      if (originalDoc.document_type === 'quotation') srcLabel = 'Quotation';
-      else if (originalDoc.document_type === 'proforma_invoice') srcLabel = 'Proforma Invoice';
-      else if (originalDoc.document_type === 'work_order') srcLabel = 'Work Order';
-
-      const isInterMedia = activeProfile?.name?.toLowerCase().includes('inter-media') || activeProfile?.name?.toLowerCase().includes('inter media');
-      const isInternational = activeProfile?.name?.toLowerCase().includes('international');
-
-      let effectiveTargetType = targetType;
-      if (isInternational) {
-        effectiveTargetType = 'non_tax_invoice';
-      } else if (isInterMedia) {
-        effectiveTargetType = 'invoice';
-      }
-
-      const conversionRef = `Converted from ${srcLabel} ${originalDoc.document_number}`;
-      const updatedNotes = originalDoc.notes && originalDoc.notes.trim()
-        ? `${originalDoc.notes.trim()}\n\n${conversionRef}`
-        : conversionRef;
-
-      const clonedItems: DocumentItem[] = (originalItems || []).map(it => ({
-        id: crypto.randomUUID(),
-        document_id: '',
-        service_id: it.service_id || undefined,
-        description: it.description,
-        quantity: Number(it.quantity) || 1,
-        days: Number(it.days) || 1,
-        rate: Number(it.rate) || 0,
-        unit: it.unit || 'nos',
-        hsn_sac: it.hsn_sac || undefined,
-        gst_percentage: effectiveTargetType === 'non_tax_invoice' ? 0 : (Number(it.gst_percentage) || 0),
-        amount: Number(it.amount) || 0,
-        sort_order: Number(it.sort_order) || 0,
-        discount_amount: it.discount_amount ? Number(it.discount_amount) : undefined,
-        discount_percent: it.discount_percent ? Number(it.discount_percent) : undefined
-      }));
-
-      setConversionPayload({
-        targetType: effectiveTargetType,
-        customer_id: originalDoc.customer_id,
-        customer_name: originalDoc.customer_name,
-        customer_email: originalDoc.customer_email,
-        customer_phone: originalDoc.customer_phone,
-        customer_address: originalDoc.customer_address,
-        customer_gstin: originalDoc.customer_gstin,
-        col_name_description: originalDoc.col_name_description,
-        col_name_quantity: originalDoc.col_name_quantity,
-        col_name_unit: originalDoc.col_name_unit,
-        col_name_rate: originalDoc.col_name_rate,
-        col_name_amount: originalDoc.col_name_amount,
-        notes: updatedNotes,
-        terms: originalDoc.terms || activeProfile?.default_terms || '',
-        discount_total: Number(originalDoc.discount_total) || 0,
-        items: clonedItems
-      });
-
-      setDocumentToConvert(null);
-      setDocumentToEdit(null);
-      if (previewOpen) {
-        setPreviewOpen(false);
-        setDocumentToPreview(null);
-      }
-      setCurrentTab('documents');
-      setEditorOpen(true);
-    } catch (err) {
-      console.error('Error initiating document conversion:', err);
-      alert('Failed to initiate document conversion.');
-    }
   };
 
   const [comparisonEditorType, setComparisonEditorType] = useState<'comparison_quotation' | 'comparison_invoice'>('comparison_quotation');
@@ -1166,7 +1174,9 @@ function App() {
           animation: 'slideIn 0.3s ease forwards',
           maxWidth: '350px'
         }}>
-          <span style={{ fontSize: '1.25rem' }}>{toast.type === 'success' ? '🎉' : '🔔'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {toast.type === 'success' ? <CheckCircle size={20} color="#10b981" /> : <Bell size={20} color="#f59e0b" />}
+          </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
               {toast.type === 'success' ? 'Document Approved' : 'Awaiting Approval'}
@@ -1184,7 +1194,7 @@ function App() {
               padding: '0.2rem'
             }}
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       )}
@@ -1225,7 +1235,7 @@ function App() {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>📅 Saturday Backup Reminder (5:00 PM)</span>
+                <span>Saturday Backup Reminder (5:00 PM)</span>
               </div>
               <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', color: '#cbd5e1', lineHeight: '1.4' }}>
                 It's Saturday 5:00 PM! Back up your weekly documents to Google Drive (<strong>info.b2pinternational@gmail.com</strong>) or download a local ZIP file.
@@ -1244,7 +1254,7 @@ function App() {
               }}
               title="Dismiss for today"
             >
-              ✕
+              <X size={18} />
             </button>
           </div>
 
@@ -1360,10 +1370,10 @@ function App() {
         setActiveProfile={(prof) => {
           setActiveProfile(prof);
           localStorage.setItem('docgen_active_profile_id', prof.id);
-          // Manual profile switch is the one case where activeProfile
-          // changes outside of loadData(), so it must trigger the
-          // shared loader itself now that the [activeProfile] effect
-          // has been removed (see note above loadData's definition).
+          financeService.setActiveCompany(prof.id);
+          financeService.hydrateFromCloud(prof.id);
+          leadService.setActiveCompany(prof.id);
+          hydrateCrmFromCloud(prof.id);
           refreshCompanyData(prof.id);
         }}
         onAddProfileClick={() => setShowAddProfileModal(true)}
@@ -1373,11 +1383,159 @@ function App() {
         onLogout={handleLogout}
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+        userRole={simulatedRole}
       />
 
       {/* Main Content viewport */}
-      <main className="main-content">
+      <main className={`main-content ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         
+        {/* Apple-inspired Floating Glass Top Bar */}
+        {!editorOpen && !previewOpen && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'rgba(255, 255, 255, 0.72)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.85)',
+            borderRadius: '16px',
+            padding: '0.65rem 1.25rem',
+            marginBottom: '1.5rem',
+            gap: '1rem',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.03)',
+            flexWrap: 'wrap'
+          }}>
+            {/* Global Search Pill */}
+            <button
+              type="button"
+              onClick={() => setGlobalSearchOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                fontSize: '0.8125rem',
+                padding: '0.45rem 1rem',
+                width: '380px',
+                maxWidth: '100%',
+                justifyContent: 'space-between',
+                background: 'rgba(255, 255, 255, 0.85)',
+                border: '1px solid rgba(226, 232, 240, 0.8)',
+                borderRadius: '9999px',
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b' }}>
+                <Search size={15} color="#94a3b8" />
+                <span>Search leads, customers, quotations...</span>
+              </div>
+              <span className="mono" style={{
+                fontSize: '0.6875rem',
+                background: '#ffffff',
+                padding: '0.1rem 0.4rem',
+                borderRadius: '6px',
+                border: '1px solid rgba(226, 232, 240, 0.9)',
+                color: '#64748b',
+                fontWeight: 600
+              }}>
+                ⌘K
+              </span>
+            </button>
+
+            {/* Right Controls: Role Simulation Switcher + Notification Bell + Theme */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              
+              {/* Role Simulation Switcher - REMEDIATION (2026-08-24):
+                  dev-only now. Production builds (import.meta.env.DEV
+                  false) never render this, and simulatedRole itself
+                  ignores devSimulatedRole outside dev (see its
+                  definition above) - so even a build that somehow
+                  shipped this markup couldn't use it to escalate. */}
+              {import.meta.env.DEV && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: 'rgba(241, 245, 249, 0.8)',
+                padding: '0.2rem',
+                borderRadius: '9999px',
+                border: '1px solid rgba(226, 232, 240, 0.7)'
+              }}>
+                {(['owner', 'accounts', 'admin', 'telecaller'] as const).map(r => {
+                  const isActive = simulatedRole === r;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setDevSimulatedRole(r)}
+                      style={{
+                        padding: '0.25rem 0.65rem',
+                        fontSize: '0.72rem',
+                        fontWeight: isActive ? 700 : 500,
+                        borderRadius: '9999px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: isActive ? '#ffffff' : 'transparent',
+                        color: isActive ? 'var(--brand-blue)' : '#64748b',
+                        boxShadow: isActive ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                        textTransform: 'capitalize',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {r}
+                    </button>
+                  );
+                })}
+              </div>
+              )}
+
+              {/* Notification Center */}
+              <NotificationCenter 
+                onSelectNotification={(type, id) => {
+                  if (type === 'lead' && id) {
+                    setGlobalLeadDetailId(id);
+                  } else if (type === 'quotation') {
+                    setCurrentTab('dashboard');
+                  } else if (type === 'followup') {
+                    setCurrentTab('follow-ups');
+                  } else if (type === 'booking') {
+                    setCurrentTab('calendar');
+                  }
+                }}
+              />
+
+              {/* User Avatar Chip */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'rgba(255, 255, 255, 0.9)',
+                border: '1px solid rgba(226, 232, 240, 0.8)',
+                padding: '0.25rem 0.65rem 0.25rem 0.35rem',
+                borderRadius: '9999px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+              }}>
+                <img 
+                  src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" 
+                  alt="Sarath John"
+                  style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', lineHeight: 1.1 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Sarath John
+                  </span>
+                  <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                    {simulatedRole}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {recoverableDrafts.length > 0 && !editorOpen && !previewOpen && (
           <div className="draft-banner-list" style={{
             display: 'flex',
@@ -1469,24 +1627,32 @@ function App() {
               activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
               document={documentToPreview}
               onClose={() => setPreviewOpen(false)}
-              onConvertDocument={(doc) => setDocumentToConvert(doc)}
             />
           )
         ) : (
           /* Normal Tab routing rendering */
           <>
              {currentTab === 'dashboard' && (
-              <Dashboard
-                role={user?.user_metadata?.role || 'admin'}
-                userEmail={user?.email}
-                activeProfile={activeProfile}
-                profiles={profiles}
-                documents={documents}
-                onEditDocument={handleEditDocument}
-                onViewDocument={handleViewDocument}
-                onDeleteDocument={handleDeleteDocument}
-                setCurrentTab={setCurrentTab}
-              />
+              simulatedRole === 'owner' ? (
+                <OwnerDashboard
+                  userRole={simulatedRole}
+                  userEmail={`${simulatedRole}@b2p.com`}
+                  onNavigateTab={setCurrentTab}
+                  onOpenLead={(id) => setGlobalLeadDetailId(id)}
+                />
+              ) : (
+                <Dashboard
+                  role={simulatedRole}
+                  userEmail={`${simulatedRole}@b2p.com`}
+                  activeProfile={activeProfile}
+                  profiles={profiles}
+                  documents={documents}
+                  onEditDocument={handleEditDocument}
+                  onViewDocument={handleViewDocument}
+                  onDeleteDocument={handleDeleteDocument}
+                  setCurrentTab={setCurrentTab}
+                />
+              )
             )}
             
             {editorOpen && (
@@ -1515,15 +1681,14 @@ function App() {
                       if (activeProfile) dbService.getDocuments(activeProfile.id).then(setDocuments);
                     }}
                     draftToRestore={draftToRestore}
-                    conversionPayload={conversionPayload}
                   />
                 )}
               </div>
             )}
 
-            {currentTab === 'documents' && !editorOpen && (
+            {(currentTab === 'documents' || currentTab === 'invoices') && !editorOpen && (
               <Documents 
-                role={user?.user_metadata?.role || 'admin'}
+                role={simulatedRole}
                 activeProfile={activeProfile}
                 documents={documents}
                 syncQueue={syncQueue}
@@ -1533,13 +1698,195 @@ function App() {
                 onViewDocument={handleViewDocument}
                 onDeleteDocument={handleDeleteDocument}
                 onRefreshDocs={() => loadData(activeProfile?.id)}
-                onConvertDocument={(doc) => setDocumentToConvert(doc)}
+              />
+            )}
+
+            {/* FINANCE & ACCOUNTS MODULE ROUTES */}
+            {(currentTab === 'finance-accounts' || currentTab === 'accounts') && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <AccountsDashboard 
+                  onNavigate={setCurrentTab}
+                  userRole={simulatedRole}
+                  userEmail={`${simulatedRole}@b2p.com`}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'journal-entries' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <JournalEntries 
+                  userEmail={`${simulatedRole}@b2p.com`}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'chart-of-accounts' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <ChartOfAccounts />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'banking-reconciliation' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <BankingReconciliation 
+                  userRole={simulatedRole}
+                  userEmail={`${simulatedRole}@b2p.com`}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'sales-receivables' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <SalesReceivables 
+                  onOpenDocument={handleViewDocument}
+                  userEmail={`${simulatedRole}@b2p.com`}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'expenses' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <Expenses 
+                  userEmail={`${simulatedRole}@b2p.com`}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'suppliers' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <Suppliers 
+                  onNewPurchaseForSupplier={() => setCurrentTab('purchases-payables')}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {(currentTab === 'purchases-payables' || currentTab === 'finance-purchases') && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <Purchases 
+                  userEmail={`${simulatedRole}@b2p.com`}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {(currentTab === 'gst-tax' || currentTab === 'finance-gst') && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <GSTComplianceCenter />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'profit-loss' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <ProfitAndLoss />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'financial-reports' && (
+              (simulatedRole === 'owner' || simulatedRole === 'accounts') ? (
+                <FinancialReports 
+                  userRole={simulatedRole}
+                  userEmail={`${simulatedRole}@b2p.com`}
+                />
+              ) : (
+                <AccessRestricted 
+                  currentRole={simulatedRole}
+                  onNavigateToDashboard={() => setCurrentTab('dashboard')}
+                />
+              )
+            )}
+
+            {currentTab === 'leads' && (
+              <Leads
+                role={simulatedRole}
+                userEmail={`${simulatedRole}@b2p.com`}
+                customers={customers}
+                companyId={activeProfile?.id}
+              />
+            )}
+
+            {currentTab === 'calendar' && (
+              <BookingCalendar 
+                role={simulatedRole}
+                userEmail={`${simulatedRole}@b2p.com`}
+                onOpenLead={(id) => setGlobalLeadDetailId(id)}
+              />
+            )}
+
+            {currentTab === 'follow-ups' && (
+              <FollowUps 
+                role={simulatedRole}
+                userEmail={`${simulatedRole}@b2p.com`}
+                onOpenLead={(id) => setGlobalLeadDetailId(id)}
+              />
+            )}
+
+            {currentTab === 'whatsapp' && (
+              <WhatsAppInbox 
+                userRole={simulatedRole}
+                userEmail={`${simulatedRole}@b2p.com`}
+                onOpenLead={(id) => setGlobalLeadDetailId(id)}
+              />
+            )}
+
+            {currentTab === 'reports' && (
+              <Reports 
+                userRole={simulatedRole}
+                userEmail={`${simulatedRole}@b2p.com`}
               />
             )}
 
             {currentTab === 'sync-dashboard' && (
               <GoogleSyncDashboard
-                role={user?.user_metadata?.role || 'admin'}
+                role={simulatedRole}
                 activeProfile={activeProfile}
                 syncQueue={syncQueue}
                 onRefreshQueue={() => activeProfile && getQueueStatusForCompany(activeProfile.id).then(setSyncQueue)}
@@ -1548,7 +1895,7 @@ function App() {
 
             {currentTab === 'customers' && (
               <Customers 
-                role={user?.user_metadata?.role || 'admin'}
+                role={simulatedRole}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
                 preloadedCustomers={customers}
@@ -1560,7 +1907,7 @@ function App() {
 
             {currentTab === 'services' && (
               <Services 
-                role={user?.user_metadata?.role || 'admin'}
+                role={simulatedRole}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
                 preloadedServices={services}
@@ -1576,7 +1923,7 @@ function App() {
 
             {currentTab === 'settings' && (
               <Settings 
-                role={user?.user_metadata?.role || 'admin'}
+                role={simulatedRole}
                 profiles={profiles}
                 activeProfile={activeProfile}
                 onRefreshProfiles={loadData}
@@ -1677,18 +2024,28 @@ function App() {
         </div>
       )}
 
-      {/* Convert to Invoice Modal */}
-      <ConvertModal
-        isOpen={!!documentToConvert}
-        document={documentToConvert}
-        activeProfile={activeProfile}
-        onClose={() => setDocumentToConvert(null)}
-        onConfirm={(targetType) => {
-          if (documentToConvert) {
-            handleConvertDocumentToInvoice(documentToConvert, targetType);
-          }
-        }}
-      />
+      {/* Global Search Modal */}
+      {globalSearchOpen && (
+        <GlobalSearchModal
+          isOpen={globalSearchOpen}
+          onClose={() => setGlobalSearchOpen(false)}
+          onSelectLead={(id) => setGlobalLeadDetailId(id)}
+          onSelectTab={(t) => setCurrentTab(t)}
+        />
+      )}
+
+      {/* Global Lead Detail Viewer (when clicked from search or notifications) */}
+      {globalLeadDetailId && (
+        <LeadDetailModal
+          lead={leadService.getLeadById(globalLeadDetailId)}
+          isOpen={!!globalLeadDetailId}
+          onClose={() => setGlobalLeadDetailId(null)}
+          onEdit={() => {}}
+          onUpdated={() => {}}
+          userRole={simulatedRole}
+          userEmail={`${simulatedRole}@b2p.com`}
+        />
+      )}
 
     </div>
   );

@@ -1,17 +1,12 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Service } from '../types';
 import { dbService } from '../services/db';
-import { getErrorMessage } from '../utils/error';
-import { Search, Plus, Edit, Trash2, ShieldAlert } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, ShieldAlert, X } from 'lucide-react';
 
 interface ServicesProps {
   role: string;
   activeProfile: CompanyProfile | null;
   onRefreshStats: () => void;
-  // Services is a fully controlled component: App.tsx is the single
-  // owner of service data. This component never fetches or stores its
-  // own copy - it only renders what it's given and asks the parent to
-  // reload after a mutation.
   preloadedServices: Service[];
   onRefreshServices: () => void;
 }
@@ -80,7 +75,7 @@ export const Services: React.FC<ServicesProps> = ({
       setShowModal(false);
     } catch (err) {
       console.error('Error saving service:', err);
-      alert(`Failed to save service: ${getErrorMessage(err)}`);
+      alert('Failed to save service.');
     } finally {
       setLoading(false);
     }
@@ -94,7 +89,7 @@ export const Services: React.FC<ServicesProps> = ({
         onRefreshStats();
       } catch (err) {
         console.error('Error deleting service:', err);
-        alert(`Failed to delete service: ${getErrorMessage(err)}`);
+        alert('Failed to delete service.');
       }
     }
   };
@@ -111,88 +106,109 @@ export const Services: React.FC<ServicesProps> = ({
   });
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div className="page-header">
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      
+      {/* Header */}
+      <div className="glass-panel" style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '1rem 1.5rem',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.25rem' }}>Services Library</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Manage pre-saved services and inventories for quick insertion into documents.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Service Catalog & Inventory Rates
+            </h1>
+            <span className="badge badge-neutral">
+              {filteredServices.length} Items
+            </span>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>
+            Manage pricing catalog, HSN/SAC codes, and standard rate cards.
           </p>
         </div>
+
         <button 
           onClick={() => handleOpenModal()} 
           className="btn-primary"
           disabled={!activeProfile}
+          style={{ padding: '0.5rem 1rem', fontSize: '0.8125rem' }}
         >
-          <Plus size={16} />
+          <Plus size={15} />
           <span>Add Service</span>
         </button>
       </div>
 
       {!activeProfile ? (
-        <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <ShieldAlert size={48} style={{ color: 'var(--accent-warning)', margin: '0 auto 1rem auto' }} />
-          <h3 style={{ marginBottom: '0.5rem' }}>No Active Profile Selected</h3>
-          <p style={{ color: 'var(--text-secondary)' }}>Please create or select a company profile in Settings to manage services.</p>
+        <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem' }}>
+          <ShieldAlert size={40} style={{ color: 'var(--accent-warning)', margin: '0 auto 0.75rem auto' }} />
+          <h3 style={{ marginBottom: '0.35rem', fontSize: '1rem' }}>No Active Profile Selected</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Please create or select a company profile in Settings to manage services.</p>
         </div>
       ) : (
         <>
           {/* Search Controls */}
-          <div className="search-box" style={{ maxWidth: '360px' }}>
-            <Search size={18} />
-            <input
-              type="text"
-              placeholder="Search by name, description, HSN..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="glass-panel" style={{ padding: '0.75rem 1rem' }}>
+            <div style={{ position: 'relative', maxWidth: '320px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search by name, description, HSN/SAC..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ paddingLeft: '2.2rem', fontSize: '0.8125rem' }}
+              />
+            </div>
           </div>
 
           {/* Table list */}
-          <div className="table-container">
+          <div className="table-container animate-fade-in">
             {filteredServices.length > 0 ? (
               <table>
                 <thead>
                   <tr>
-                    <th>Service Name</th>
-                    <th>Description</th>
-                    <th>HSN/SAC</th>
-                    <th>Default Rate</th>
-                    <th>Unit</th>
-                    <th>GST %</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ minWidth: '160px' }}>Service Name</th>
+                    <th style={{ minWidth: '220px' }}>Scope / Description</th>
+                    <th style={{ minWidth: '100px' }}>HSN/SAC</th>
+                    <th style={{ minWidth: '130px' }}>Default Rate</th>
+                    <th style={{ minWidth: '80px' }}>Unit</th>
+                    <th style={{ minWidth: '95px' }}>GST Rate</th>
+                    <th style={{ textAlign: 'right', minWidth: '85px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredServices.map(service => (
                     <tr key={service.id}>
-                      <td data-label="Service Name" style={{ fontWeight: 600 }}>{service.name}</td>
-                      <td data-label="Description" style={{ color: 'var(--text-secondary)', maxWidth: '280px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                        {service.description || '-'}
+                      <td style={{ fontWeight: 600, color: 'var(--brand-navy)' }}>{service.name}</td>
+                      <td style={{ color: 'var(--text-secondary)', maxWidth: '280px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', fontSize: '0.8125rem' }}>
+                        {service.description || '—'}
                       </td>
-                      <td className="mono" data-label="HSN/SAC">{service.hsn_sac || '-'}</td>
-                      <td className="mono" data-label="Default Rate" style={{ fontWeight: 500 }}>
+                      <td className="mono" style={{ fontSize: '0.78rem' }}>{service.hsn_sac || '—'}</td>
+                      <td className="mono" style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
                         {activeProfile?.currency === 'INR' || !activeProfile?.currency ? '₹' : (activeProfile?.currency === 'USD' ? '$' : `${activeProfile.currency} `)}
                         {Number(service.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td data-label="Unit" style={{ textTransform: 'lowercase' }}>{service.unit || 'nos'}</td>
-                      <td className="mono" data-label="GST %">{service.gst_percentage ?? 18}%</td>
-                      <td data-label="Actions">
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                      <td style={{ textTransform: 'lowercase', fontSize: '0.78rem' }}>{service.unit || 'nos'}</td>
+                      <td className="mono" style={{ fontSize: '0.78rem' }}>{service.gst_percentage ?? 18}%</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
                           <button
                             onClick={() => handleOpenModal(service)}
-                            className="btn-secondary"
-                            style={{ padding: '0.35rem', borderRadius: '4px' }}
-                            title="Edit"
+                            className="btn-ghost"
+                            style={{ padding: '0.3rem' }}
+                            title="Edit Service"
                           >
                             <Edit size={14} />
                           </button>
                           {role === 'admin' && (
                             <button
                               onClick={() => handleDelete(service.id)}
-                              className="btn-secondary"
-                              style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-danger)' }}
-                              title="Delete"
+                              className="btn-ghost"
+                              style={{ padding: '0.3rem', color: 'var(--accent-danger)' }}
+                              title="Delete Service"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -204,8 +220,8 @@ export const Services: React.FC<ServicesProps> = ({
                 </tbody>
               </table>
             ) : (
-              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                <p>No services saved yet. Click "Add Service" to create your first saved item!</p>
+              <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <p style={{ margin: 0, fontSize: '0.875rem' }}>No services saved yet. Click "Add Service" to create your first rate card entry!</p>
               </div>
             )}
           </div>
@@ -214,78 +230,88 @@ export const Services: React.FC<ServicesProps> = ({
 
       {/* Edit/Add Modal */}
       {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-content animate-fade-in" style={{ maxWidth: '720px', padding: '1.25rem' }}>
-            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              {editingService ? 'Edit Saved Service' : 'Add New Service'}
-            </h3>
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', width: '95%' }}>
+            <div className="modal-header">
+              <div>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                  {editingService ? 'Edit Catalog Service' : 'Add New Service Rate'}
+                </h2>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
+                  Define default unit price and tax classification.
+                </p>
+              </div>
+              <button type="button" onClick={() => setShowModal(false)} className="btn-ghost" style={{ padding: '0.35rem' }}>
+                <X size={18} />
+              </button>
+            </div>
             
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div className="grid-2" style={{ gap: '0.75rem' }}>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="s-name">Service Name *</label>
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.65rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Service Name *</label>
                   <input
-                    id="s-name"
                     type="text"
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Website Development"
+                    placeholder="e.g. LED Van Full Day Campaign"
+                    style={{ fontSize: '0.8125rem' }}
                   />
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label" htmlFor="s-desc">Description</label>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Description / Scope</label>
                   <input
-                    id="s-desc"
                     type="text"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="e.g. Scope of work..."
+                    placeholder="e.g. Screen + sound + driver"
+                    style={{ fontSize: '0.8125rem' }}
                   />
                 </div>
               </div>
 
-              <div className="grid-4-compact" style={{ gap: '0.75rem' }}>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="s-rate">Rate ({activeProfile?.currency}) *</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.65rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Rate ({activeProfile?.currency}) *</label>
                   <input
-                    id="s-rate"
                     type="number"
                     step="0.01"
                     required
                     value={defaultRate}
                     onChange={(e) => setDefaultRate(Number(e.target.value))}
                     placeholder="0.00"
+                    style={{ fontSize: '0.8125rem' }}
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="s-unit">Unit *</label>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Unit *</label>
                   <input
-                    id="s-unit"
                     type="text"
                     required
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
-                    placeholder="e.g. nos"
+                    placeholder="day / sqft / nos"
+                    style={{ fontSize: '0.8125rem' }}
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="s-hsn">HSN/SAC</label>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>HSN/SAC</label>
                   <input
-                    id="s-hsn"
                     type="text"
                     value={hsnSac}
                     onChange={(e) => setHsnSac(e.target.value)}
                     placeholder="998313"
+                    style={{ fontSize: '0.8125rem' }}
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="s-gst">GST %</label>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>GST %</label>
                   <select
-                    id="s-gst"
                     value={gstPercentage}
                     onChange={(e) => setGstPercentage(Number(e.target.value))}
+                    style={{ fontSize: '0.8125rem' }}
                   >
                     <option value={0}>0%</option>
                     <option value={5}>5%</option>
@@ -296,12 +322,13 @@ export const Services: React.FC<ServicesProps> = ({
                 </div>
               </div>
 
-              <div className="btn-row" style={{ marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
                 <button 
                   type="button" 
                   onClick={() => setShowModal(false)} 
                   className="btn-secondary"
                   disabled={loading}
+                  style={{ fontSize: '0.8125rem' }}
                 >
                   Cancel
                 </button>
@@ -309,6 +336,7 @@ export const Services: React.FC<ServicesProps> = ({
                   type="submit" 
                   className="btn-primary"
                   disabled={loading}
+                  style={{ fontSize: '0.8125rem', padding: '0.45rem 1.25rem' }}
                 >
                   {loading ? 'Saving...' : 'Save Service'}
                 </button>

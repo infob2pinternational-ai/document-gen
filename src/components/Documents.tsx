@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CompanyProfile, Document } from '../types';
-import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X, Download, RefreshCw, Repeat } from 'lucide-react';
+import { Search, Plus, Eye, Edit, Trash2, ShieldAlert, Check, X, Download, RefreshCw } from 'lucide-react';
 import { dbService } from '../services/db';
 import { retryDocument, type SyncQueueRow } from '../services/sheetsSyncQueue';
 import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
@@ -16,7 +16,6 @@ interface DocumentsProps {
   onViewDocument: (doc: Document) => void;
   onDeleteDocument: (id: string) => void;
   onRefreshDocs?: () => void;
-  onConvertDocument?: (doc: Document) => void;
 }
 
 export const Documents: React.FC<DocumentsProps> = ({
@@ -29,8 +28,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   onEditDocument,
   onViewDocument,
   onDeleteDocument,
-  onRefreshDocs,
-  onConvertDocument
+  onRefreshDocs
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -47,11 +45,11 @@ export const Documents: React.FC<DocumentsProps> = ({
   const getSyncDisplay = (docId: string) => {
     const row = syncQueue.find(q => q.document_id === docId);
     if (!row) return null;
-    if (row.status === 'synced') return { label: 'Synced', icon: '✓', color: '#10b981', row };
-    if (row.status === 'syncing') return { label: 'Syncing', icon: '🔄', color: '#3b82f6', row };
-    if (row.status === 'failed' && row.failed_permanently) return { label: 'Failed', icon: '❌', color: '#ef4444', row };
-    if (row.status === 'failed' && !row.failed_permanently) return { label: 'Retrying', icon: '🔄', color: '#f59e0b', row };
-    return { label: 'Pending', icon: '⏳', color: '#64748b', row };
+    if (row.status === 'synced') return { label: 'Synced', dotClass: 'status-dot-success', color: '#10b981', row };
+    if (row.status === 'syncing') return { label: 'Syncing', dotClass: 'status-dot-info', color: '#3b82f6', row };
+    if (row.status === 'failed' && row.failed_permanently) return { label: 'Failed', dotClass: 'status-dot-danger', color: '#ef4444', row };
+    if (row.status === 'failed' && !row.failed_permanently) return { label: 'Retrying', dotClass: 'status-dot-warning', color: '#f59e0b', row };
+    return { label: 'Pending', dotClass: 'status-dot-neutral', color: '#64748b', row };
   };
 
   const handleRetrySync = async (docId: string) => {
@@ -59,9 +57,6 @@ export const Documents: React.FC<DocumentsProps> = ({
     try {
       await retryDocument(docId);
     } finally {
-      // syncQueue itself updates live via Realtime once the retry
-      // actually runs - this just clears the button's own "in flight"
-      // state for the click itself, not the sync outcome.
       setRetryingId(null);
     }
   };
@@ -102,13 +97,14 @@ export const Documents: React.FC<DocumentsProps> = ({
           const start = startDate ? new Date(startDate) : null;
           const end = endDate ? new Date(endDate) : null;
           if (start) start.setHours(0, 0, 0, 0);
-          if (end) end.setHours(23, 59, 59, 999);
-
+          
           if (start && end) {
+            end.setHours(23, 59, 59, 999);
             matchDate = docDateObj >= start && docDateObj <= end;
           } else if (start) {
             matchDate = docDateObj >= start;
           } else if (end) {
+            end.setHours(23, 59, 59, 999);
             matchDate = docDateObj <= end;
           }
         }
@@ -118,86 +114,93 @@ export const Documents: React.FC<DocumentsProps> = ({
     });
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       
       {/* Header */}
-      <div className="page-header">
+      <div className="glass-panel" style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '1rem 1.5rem',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.25rem' }}>Documents Repository</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Browse, manage, and print invoices, quotations, and work orders.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Document Management
+            </h1>
+            <span className="badge badge-neutral">
+              {filteredDocs.length} Documents
+            </span>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>
+            Create and track official quotations, tax invoices, and proformas.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button 
             onClick={onAddDocument} 
             className="btn-secondary"
             disabled={!activeProfile}
+            style={{ fontSize: '0.8125rem', padding: '0.45rem 0.85rem' }}
           >
-            <Plus size={16} />
-            <span>Create Standard Document</span>
+            <Plus size={14} />
+            <span>Standard Doc</span>
           </button>
           
           <button 
             onClick={() => onAddComparison('comparison_quotation')} 
             className="btn-primary"
             disabled={!activeProfile}
-            style={{
-              background: 'linear-gradient(135deg, var(--accent-primary) 0%, #d97706 100%)',
-              border: 'none',
-              color: '#fff',
-              fontWeight: 600
-            }}
+            style={{ fontSize: '0.8125rem', padding: '0.45rem 0.85rem' }}
           >
-            <Plus size={16} />
-            <span>Create Quote</span>
+            <Plus size={14} />
+            <span>+ Quotation</span>
           </button>
 
           <button 
             onClick={() => onAddComparison('comparison_invoice')} 
             className="btn-primary"
             disabled={!activeProfile}
-            style={{
-              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-              border: 'none',
-              color: '#fff',
-              fontWeight: 600
-            }}
+            style={{ fontSize: '0.8125rem', padding: '0.45rem 0.85rem', background: '#0284c7', borderColor: '#0284c7' }}
           >
-            <Plus size={16} />
-            <span>Create Manual Invoice</span>
+            <Plus size={14} />
+            <span>+ Manual Invoice</span>
           </button>
 
           <button 
             onClick={() => dbService.downloadFullBackupFile()} 
             className="btn-secondary"
             title="Download full backup file (.json) to local computer"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            style={{ fontSize: '0.8125rem', padding: '0.45rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
           >
-            <Download size={16} />
-            <span>Export Backup</span>
+            <Download size={14} />
+            <span>Export</span>
           </button>
         </div>
       </div>
 
       {!activeProfile ? (
-        <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <ShieldAlert size={48} style={{ color: 'var(--accent-warning)', margin: '0 auto 1rem auto' }} />
-          <h3 style={{ marginBottom: '0.5rem' }}>No Active Profile Selected</h3>
-          <p style={{ color: 'var(--text-secondary)' }}>Please create or select a company profile in Settings to manage documents.</p>
+        <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem' }}>
+          <ShieldAlert size={40} style={{ color: 'var(--accent-warning)', margin: '0 auto 0.75rem auto' }} />
+          <h3 style={{ marginBottom: '0.35rem', fontSize: '1rem' }}>No Active Profile Selected</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Please create or select a company profile in Settings to manage documents.</p>
         </div>
       ) : (
         <>
           {/* Filters Area */}
-          <div className="filters-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="glass-panel" style={{ padding: '0.75rem 1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
             {/* Search */}
-            <div className="search-box" style={{ maxWidth: '320px', flex: '1 1 250px' }}>
-              <Search size={18} />
+            <div style={{ position: 'relative', width: '260px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
                 type="text"
-                placeholder="Search by doc number, customer..."
+                placeholder="Search doc #, customer..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ paddingLeft: '2rem', fontSize: '0.8125rem' }}
               />
             </div>
 
@@ -205,16 +208,11 @@ export const Documents: React.FC<DocumentsProps> = ({
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="filter-select"
-              style={{ width: '180px' }}
+              style={{ width: '160px', fontSize: '0.8125rem' }}
             >
               <option value="all">All Documents</option>
-              {!(activeProfile?.name?.toLowerCase().includes('international')) && (
-                <option value="invoice">Tax Invoices</option>
-              )}
-              {!(activeProfile?.name?.toLowerCase().includes('inter-media') || activeProfile?.name?.toLowerCase().includes('inter media')) && (
-                <option value="non_tax_invoice">Invoices</option>
-              )}
+              <option value="invoice">Tax Invoices</option>
+              <option value="non_tax_invoice">Invoices</option>
               <option value="proforma_invoice">Proforma Invoices</option>
               <option value="quotation">Quotations</option>
               <option value="comparison_quotation">Comparison Quotations</option>
@@ -225,42 +223,39 @@ export const Documents: React.FC<DocumentsProps> = ({
             <select
               value={filterDateRange}
               onChange={(e) => setFilterDateRange(e.target.value)}
-              className="filter-select"
-              style={{ width: '180px' }}
+              style={{ width: '150px', fontSize: '0.8125rem' }}
             >
               <option value="all">All Dates</option>
               <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
               <option value="this_week">This Week</option>
               <option value="this_month">This Month</option>
-              <option value="custom">Custom Date Range...</option>
+              <option value="custom">Custom Range...</option>
             </select>
 
             {/* Custom Date Range Picker Fields */}
             {filterDateRange === 'custom' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="filter-select"
-                  style={{ padding: '0.45rem 0.75rem', width: '140px' }}
+                  style={{ padding: '0.35rem 0.5rem', width: '130px', fontSize: '0.78rem' }}
                   title="Start Date"
                 />
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>to</span>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>to</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="filter-select"
-                  style={{ padding: '0.45rem 0.75rem', width: '140px' }}
+                  style={{ padding: '0.35rem 0.5rem', width: '130px', fontSize: '0.78rem' }}
                   title="End Date"
                 />
                 {(startDate || endDate) && (
                   <button 
                     onClick={() => { setStartDate(''); setEndDate(''); }} 
-                    className="btn-secondary" 
-                    style={{ padding: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    className="btn-ghost" 
+                    style={{ padding: '0.35rem' }}
                     title="Clear dates"
                   >
                     <X size={14} />
@@ -276,16 +271,16 @@ export const Documents: React.FC<DocumentsProps> = ({
               <table>
                 <thead>
                   <tr>
-                    <th>Doc Number</th>
-                    <th>Date</th>
-                    <th>Customer Name</th>
-                    <th>Document Type</th>
-                    <th>Total Amount</th>
-                    <th>Created By</th>
-                    <th>Status</th>
-                    <th>Sync Status</th>
-                    <th>WA Sent By</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ minWidth: '115px' }}>Doc Number</th>
+                    <th style={{ minWidth: '95px' }}>Date</th>
+                    <th style={{ minWidth: '160px' }}>Customer Name</th>
+                    <th style={{ minWidth: '130px' }}>Document Type</th>
+                    <th style={{ minWidth: '120px' }}>Total Amount</th>
+                    <th style={{ minWidth: '95px' }}>Created By</th>
+                    <th style={{ minWidth: '95px' }}>Status</th>
+                    <th style={{ minWidth: '110px' }}>Sync Status</th>
+                    <th style={{ minWidth: '100px' }}>WA Sent By</th>
+                    <th style={{ textAlign: 'right', minWidth: '120px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -397,14 +392,14 @@ export const Documents: React.FC<DocumentsProps> = ({
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '0.3rem',
-                                    fontSize: '0.7rem',
+                                    gap: '0.35rem',
+                                    fontSize: '0.72rem',
                                     fontWeight: 600,
                                     color: sync.color,
                                     cursor: 'default'
                                   }}
                                 >
-                                  <span>{sync.icon}</span>
+                                  <span className={`status-dot ${sync.dotClass}`} />
                                   <span>{sync.label}</span>
                                 </span>
                                 {(sync.label === 'Failed' || sync.label === 'Retrying') && (
@@ -508,17 +503,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 </button>
                               </>
                             )}
-                             {doc.status === 'approved' && ['quotation', 'proforma_invoice', 'work_order'].includes(doc.document_type) && onConvertDocument && (
-                               <button
-                                 onClick={() => onConvertDocument(doc)}
-                                 className="btn-secondary"
-                                 style={{ padding: '0.35rem', borderRadius: '4px', color: 'var(--accent-primary)' }}
-                                 title="Convert to Invoice"
-                               >
-                                 <Repeat size={14} />
-                               </button>
-                             )}
-                             <button
+                            <button
                               onClick={() => onViewDocument(doc)}
                               className="btn-secondary"
                               style={{ padding: '0.35rem', borderRadius: '4px' }}

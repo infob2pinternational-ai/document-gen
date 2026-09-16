@@ -1,0 +1,467 @@
+import React, { useState, useEffect } from 'react';
+import type { WhatsAppConversation, WhatsAppMessage } from '../types';
+import { officeService } from '../services/officeService';
+import { leadService } from '../services/leadService';
+import { FollowUpModal } from './FollowUpModal';
+import { 
+  Search, 
+  Send, 
+  Paperclip, 
+  Clock, 
+  FileText, 
+  Eye,
+  Phone
+} from 'lucide-react';
+
+interface WhatsAppInboxProps {
+  userRole?: string;
+  userEmail?: string;
+  onOpenLead?: (leadId: string) => void;
+}
+
+const QUICK_TEMPLATES = [
+  {
+    title: 'LED Van Specs & Pricing',
+    text: 'Hello! Our LED Vans feature 14ft/16ft high-brightness P3 outdoor screens, built-in hydraulic lift, silent generator, and audio sound system. Standard rates are ₹25,000/day across Thrissur and Kochi districts.'
+  },
+  {
+    title: 'Quotation Follow-up',
+    text: 'Greetings from B2P International! We wanted to check if you had a chance to review our formal quotation. Please let us know if you need any adjustments to the route or dates.'
+  },
+  {
+    title: 'Lookwalker Promoters',
+    text: 'Our Lookwalker promoters wear illuminated backlit double-sided walking billboards, perfect for mall activations and town markets. Rate: ₹2,500/promoter/day including uniform.'
+  },
+  {
+    title: 'Bank & Advance Payment',
+    text: 'Thank you for confirming your booking! Please transfer 50% advance to: B2P International Pvt Ltd, Federal Bank Thrissur Main Branch, A/C: 10020100456789, IFSC: FDRL0001002.'
+  }
+];
+
+export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
+  userRole: _userRole,
+  userEmail = 'telecaller@b2p.com',
+  onOpenLead
+}) => {
+  const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
+
+  const refreshConversations = () => {
+    const list = officeService.getConversations();
+    setConversations(list);
+    if (!activeConvId && list.length > 0) {
+      setActiveConvId(list[0].id);
+    }
+  };
+
+  useEffect(() => {
+    refreshConversations();
+  }, []);
+
+  useEffect(() => {
+    if (activeConvId) {
+      setMessages(officeService.getMessages(activeConvId));
+    }
+  }, [activeConvId]);
+
+  const activeConv = conversations.find(c => c.id === activeConvId);
+  const linkedLead = activeConv?.lead_id ? leadService.getLeadById(activeConv.lead_id) : null;
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!inputText.trim() || !activeConvId) return;
+
+    officeService.sendMessage(activeConvId, inputText.trim(), 'staff', userEmail.split('@')[0]);
+    setInputText('');
+    setMessages(officeService.getMessages(activeConvId));
+    refreshConversations();
+  };
+
+  const handleSelectTemplate = (text: string) => {
+    setInputText(text);
+  };
+
+  const handleSendSimulatedAttachment = () => {
+    if (!activeConvId) return;
+    officeService.sendMessage(
+      activeConvId,
+      'Formal Quotation PDF attached for your review.',
+      'staff',
+      userEmail.split('@')[0],
+      { type: 'pdf', name: 'Quotation-B2P.pdf', url: '#' }
+    );
+    setMessages(officeService.getMessages(activeConvId));
+    refreshConversations();
+  };
+
+  const filteredConversations = conversations.filter(c =>
+    c.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.company_name && c.company_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    c.phone.includes(searchQuery) ||
+    c.last_message.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: '#ffffff',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-md)',
+        padding: '1rem 1.25rem',
+        boxShadow: 'var(--shadow-sm)',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+              WhatsApp Business Workspace
+            </h1>
+            <span className="badge badge-success">
+              Connected: +91 98470 00000
+            </span>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', margin: '0.2rem 0 0 0' }}>
+            Multi-staff shared messaging inbox for quick quotations, route coordinates, and customer chats.
+          </p>
+        </div>
+      </div>
+
+      {/* 3-Column Enterprise Workspace */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '290px 1fr 260px',
+        gap: '1px',
+        background: 'var(--border-color)',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-md)',
+        overflow: 'hidden',
+        height: '620px'
+      }}>
+        
+        {/* Left Column: Conversations List */}
+        <div style={{ background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+          {/* Search Box */}
+          <div style={{ padding: '0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+            <div style={{ position: 'relative', width: '100%' }}>
+              <Search size={14} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: '2rem', fontSize: '0.78rem' }}
+              />
+            </div>
+          </div>
+
+          {/* Conversations List */}
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {filteredConversations.map(c => {
+              const isSelected = c.id === activeConvId;
+
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => setActiveConvId(c.id)}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    borderBottom: '1px solid var(--border-color)',
+                    background: isSelected ? '#eff6ff' : 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.2rem',
+                    borderLeft: isSelected ? '3px solid var(--brand-navy)' : '3px solid transparent',
+                    transition: 'all var(--transition-fast)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: '0.8125rem', color: isSelected ? 'var(--brand-navy)' : 'var(--text-primary)' }}>
+                      {c.customer_name}
+                    </strong>
+                    <span className="mono" style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                      {new Date(c.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+
+                  {c.company_name && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {c.company_name}
+                    </span>
+                  )}
+
+                  <p style={{
+                    margin: '0.1rem 0 0 0',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>
+                    {c.last_message}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Center Column: Active Chat Thread */}
+        {activeConv ? (
+          <div style={{ background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+            
+            {/* Chat Top Header */}
+            <div style={{
+              padding: '0.75rem 1.25rem',
+              borderBottom: '1px solid var(--border-color)',
+              background: '#ffffff',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {activeConv.customer_name}
+                  </h3>
+                  {activeConv.company_name && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      · {activeConv.company_name}
+                    </span>
+                  )}
+                </div>
+                <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  {activeConv.phone}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setFollowUpModalOpen(true)}
+                  className="btn-secondary"
+                  style={{ fontSize: '0.72rem', padding: '0.3rem 0.55rem' }}
+                >
+                  <Clock size={12} />
+                  <span>Follow-up</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Message Feed */}
+            <div style={{
+              flex: 1,
+              padding: '1rem',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.6rem'
+            }}>
+              {messages.map(msg => {
+                const isStaff = msg.sender_type === 'staff';
+
+                return (
+                  <div
+                    key={msg.id}
+                    style={{
+                      alignSelf: isStaff ? 'flex-end' : 'flex-start',
+                      maxWidth: '75%',
+                      background: isStaff ? '#dcfce7' : '#ffffff',
+                      border: isStaff ? '1px solid #bbf7d0' : '1px solid var(--border-color)',
+                      borderRadius: isStaff ? '8px 8px 2px 8px' : '8px 8px 8px 2px',
+                      padding: '0.55rem 0.75rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.2rem',
+                      boxShadow: 'var(--shadow-sm)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                      <strong style={{ fontSize: '0.7rem', color: isStaff ? '#15803d' : 'var(--text-primary)' }}>
+                        {msg.sender_name}
+                      </strong>
+                      <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+
+                    <p style={{ margin: 0, fontSize: '0.8125rem', lineHeight: 1.4, whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>
+                      {msg.text}
+                    </p>
+
+                    {msg.attachment_name && (
+                      <div style={{
+                        background: '#ffffff',
+                        padding: '0.35rem 0.5rem',
+                        borderRadius: '4px',
+                        fontSize: '0.72rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        marginTop: '0.2rem',
+                        border: '1px solid var(--border-color)'
+                      }}>
+                        <FileText size={13} color="#dc2626" />
+                        <span style={{ fontWeight: 600 }}>{msg.attachment_name}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Quick Templates Selector */}
+            <div style={{
+              padding: '0.35rem 0.75rem',
+              background: '#ffffff',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex',
+              gap: '0.35rem',
+              overflowX: 'auto'
+            }}>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', alignSelf: 'center', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                Templates:
+              </span>
+              {QUICK_TEMPLATES.map((tmpl, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectTemplate(tmpl.text)}
+                  className="btn-secondary"
+                  style={{ fontSize: '0.6875rem', padding: '0.15rem 0.45rem', whiteSpace: 'nowrap' }}
+                >
+                  {tmpl.title}
+                </button>
+              ))}
+            </div>
+
+            {/* Chat Input Bar */}
+            <form onSubmit={handleSendMessage} style={{
+              padding: '0.65rem 0.75rem',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: '#ffffff'
+            }}>
+              <button
+                type="button"
+                onClick={handleSendSimulatedAttachment}
+                className="btn-secondary"
+                style={{ padding: '0.45rem', borderRadius: 'var(--radius-sm)' }}
+                title="Attach Quotation PDF"
+              >
+                <Paperclip size={15} />
+              </button>
+
+              <input
+                type="text"
+                placeholder="Type message or select response template..."
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                style={{ flex: 1, fontSize: '0.8125rem', padding: '0.45rem 0.65rem' }}
+              />
+
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ background: '#16a34a', borderColor: '#16a34a', padding: '0.45rem 0.85rem', fontSize: '0.78rem' }}
+              >
+                <Send size={13} />
+                <span>Send</span>
+              </button>
+            </form>
+
+          </div>
+        ) : (
+          <div style={{ background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>
+            Select a conversation to view chat history.
+          </div>
+        )}
+
+        {/* Right Column: Customer Context & Lead Summary */}
+        <div style={{ background: '#ffffff', borderLeft: '1px solid var(--border-color)', padding: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+            Client Context
+          </div>
+
+          {activeConv ? (
+            <>
+              <div className="card" style={{ padding: '0.75rem' }}>
+                <strong style={{ fontSize: '0.875rem', display: 'block' }}>{activeConv.customer_name}</strong>
+                {activeConv.company_name && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>{activeConv.company_name}</span>
+                )}
+                <div style={{ marginTop: '0.4rem', fontSize: '0.75rem' }}>
+                  <a href={`tel:${activeConv.phone}`} style={{ color: 'var(--brand-navy)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <Phone size={11} /> {activeConv.phone}
+                  </a>
+                </div>
+              </div>
+
+              {linkedLead && (
+                <div className="card" style={{ padding: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <span className="mono" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--brand-navy)' }}>
+                      {linkedLead.lead_number}
+                    </span>
+                    <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>
+                      {linkedLead.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                    {linkedLead.service_required}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                    {linkedLead.campaign_location || linkedLead.location}
+                  </div>
+
+                  {onOpenLead && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenLead(linkedLead.id)}
+                      className="btn-secondary"
+                      style={{ width: '100%', marginTop: '0.65rem', fontSize: '0.72rem', padding: '0.3rem' }}
+                    >
+                      <Eye size={12} />
+                      <span>View Lead Drawer</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No conversation selected.</p>
+          )}
+        </div>
+
+      </div>
+
+      {/* Follow-up modal from chat */}
+      {followUpModalOpen && activeConv && (
+        <FollowUpModal
+          followUp={null}
+          isOpen={followUpModalOpen}
+          onClose={() => setFollowUpModalOpen(false)}
+          onSaved={() => {
+            setFollowUpModalOpen(false);
+          }}
+          userEmail={userEmail}
+        />
+      )}
+
+    </div>
+  );
+};

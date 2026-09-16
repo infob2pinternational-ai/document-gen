@@ -1,0 +1,26 @@
+-- =====================================================================
+-- B2P INTERNATIONAL ERP: PHASE 4.8 — FOLLOW-UP REMEDIATION
+-- Prepared Migration (LOCAL ONLY — NOT APPLIED TO PRODUCTION SUPABASE)
+--
+-- Second remediation pass (2026-08-24, same day as Phase 4.7). None of
+-- phase4_1 through phase4_7 have ever been applied anywhere, so the
+-- id/FK type corrections described below were made IN PLACE in
+-- 20260823000001_phase4_1_core_accounting.sql (and the downstream FK
+-- columns in phase4_3/4_4/4_5/4_6/4_7) rather than layered on top as an
+-- ALTER COLUMN here - see the comment block at the top of phase4_1 for
+-- the full explanation. This file only adds what genuinely needs to be
+-- additive: a column that didn't exist before.
+--
+-- 1. bank_reconciliation_statements previously had no column to hold
+--    its line items - financeService.ts's BankReconciliationStatement
+--    type already carries `items: BankReconciliationItem[]`, and this
+--    was the one Phase 4.5 entity never wired to Supabase in the first
+--    remediation pass (saveBankReconciliationStatement() was
+--    localStorage-only). It's now wired the same way, and follows the
+--    same embedded-JSONB precedent already used for
+--    purchase_bills.items / journal_entries.lines (see the note in
+--    phase4_7) rather than writing through the separate
+--    bank_reconciliation_items child table.
+-- =====================================================================
+
+ALTER TABLE bank_reconciliation_statements ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]'::jsonb;

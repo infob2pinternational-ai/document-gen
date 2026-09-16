@@ -787,7 +787,7 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
               color: 'var(--text-secondary)',
               lineHeight: 1.4
             }}>
-              💡 This amount will be added to the document total after saving.
+              This amount will be added to the document total after saving.
             </div>
           </div>
         </div>

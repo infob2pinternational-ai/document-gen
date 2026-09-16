@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile } from '../types';
 import { dbService, SQL_SCHEMA, isSupabaseConfigured } from '../services/db';
-import { getErrorMessage } from '../utils/error';
 import { getFCMToken, isFirebaseConfigured } from '../services/fcm';
 import { sendGenericNotification } from '../services/push';
 import { 
@@ -203,8 +202,8 @@ export const Settings: React.FC<SettingsProps> = ({
       setQuotationStart(activeProfile.quotation_start_number || 1001);
       setWorkOrderPrefix(activeProfile.work_order_prefix || 'WO/');
       setWorkOrderStart(activeProfile.work_order_start_number || 1001);
-      setNonTaxPrefix(activeProfile.non_tax_prefix || activeProfile.invoice_prefix || 'INV/');
-      setNonTaxStart(activeProfile.non_tax_start_number || activeProfile.invoice_start_number || 1001);
+      setNonTaxPrefix(activeProfile.non_tax_prefix || 'NT/');
+      setNonTaxStart(activeProfile.non_tax_start_number || 1001);
       setGoogleSheetsUrl(activeProfile.google_sheets_url || '');
     }
   }, [activeProfile]);
@@ -307,7 +306,7 @@ export const Settings: React.FC<SettingsProps> = ({
       alert('Company Profile saved successfully!');
     } catch (err) {
       console.error('Error saving profile:', err);
-      alert(`Failed to save profile details: ${getErrorMessage(err)}`);
+      alert('Failed to save profile details.');
     } finally {
       setSaving(false);
     }
@@ -326,7 +325,7 @@ export const Settings: React.FC<SettingsProps> = ({
         onRefreshProfiles();
       } catch (err) {
         console.error('Error deleting profile:', err);
-        alert(`Failed to delete profile: ${getErrorMessage(err)}`);
+        alert('Failed to delete profile.');
       }
     }
   };
@@ -1106,7 +1105,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>FCM SDK Support</div>
                       <div style={{ fontWeight: 600 }}>
-                        {'serviceWorker' in navigator ? 'Supported ✅' : 'Not Supported ❌'}
+                        {'serviceWorker' in navigator ? 'Supported' : 'Not Supported'}
                       </div>
                     </div>
                   </div>
@@ -1349,7 +1348,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       className="btn-secondary"
                       style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
                     >
-                      📅 Test Saturday 5 PM Reminder Banner
+                      Test Saturday 5 PM Reminder Banner
                     </button>
                   )}
                 </div>
