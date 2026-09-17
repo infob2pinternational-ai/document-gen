@@ -35,7 +35,8 @@ export function formatStaffDisplayName(email?: string | null): string {
 export function isDummyStaffEmail(email?: string | null): boolean {
   if (!email) return false;
   const clean = email.toLowerCase().trim();
-  return ['telecaller@b2p.com', 'rahul@b2p.com', 'priya@b2p.com', 'anjali@b2p.com'].includes(clean);
+  // Only generic placeholders without human identity are filtered
+  return ['dummy@b2p.com'].includes(clean);
 }
 
 /**

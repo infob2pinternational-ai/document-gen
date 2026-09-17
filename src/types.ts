@@ -162,6 +162,25 @@ export type LeadSource =
   | 'referral'
   | 'other';
 
+export type CallOutcome =
+  | 'Connected'
+  | 'No Answer'
+  | 'No Response'
+  | 'Not Reachable'
+  | 'Switched Off'
+  | 'Invalid Number'
+  | 'Interested'
+  | 'Not Interested'
+  | 'Call Back'
+  | 'Follow-up Required'
+  | 'Requirement Collected'
+  | 'Contact Person Needed'
+  | 'Existing Agency'
+  | 'Appointment Confirmed'
+  | 'Meeting Scheduled'
+  | 'Details Sent'
+  | 'Other';
+
 export interface Lead {
   id: string;
   lead_number?: string; // e.g. B2P-LD-1001
@@ -170,6 +189,8 @@ export interface Lead {
   customer_name: string;
   company_name?: string;
   phone: string;
+  alternate_phone?: string;
+  email?: string;
   whatsapp_number?: string;
   address?: string;
   location?: string;
@@ -187,6 +208,12 @@ export interface Lead {
   next_follow_up_at?: string;
   notes?: string;
   remarks?: string;
+  last_call_at?: string;
+  last_call_outcome?: CallOutcome | string;
+  last_call_remark?: string;
+  call_count?: number;
+  last_contacted_by_email?: string;
+  is_telecalling_lead?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -197,10 +224,16 @@ export interface LeadActivity {
   company_id: string;
   user_email: string;
   action: string;
+  activity_type?: 'call' | 'status_change' | 'note' | 'follow_up' | 'import' | string;
+  call_outcome?: CallOutcome | string;
+  phone_used?: string;
+  contact_person?: string;
+  next_follow_up_at?: string;
   previous_status?: LeadStatus;
   new_status?: LeadStatus;
   note?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 // =====================================================================

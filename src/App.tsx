@@ -39,48 +39,15 @@ import type { UserRole } from './types';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { financeService } from './services/financeService';
 import { leadService } from './services/leadService';
-import { hydrateCrmFromCloud } from './services/officeService';
-import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, CheckCircle, X, Zap, Coffee, Sparkles } from 'lucide-react';
+import { hydrateCrmFromCloud, officeService } from './services/officeService';
+import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, BellRing, CheckCircle, X, Zap, Coffee, Sparkles } from 'lucide-react';
 import { getRecoverableDrafts, deleteDraft, type DraftSummary } from './utils/drafts';
-
-const playNotificationSound = () => {
-  try {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    if (ctx.state === 'suspended') {
-      ctx.resume();
-    }
-    
-    // First chime note
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-    gain1.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start();
-    osc1.stop(ctx.currentTime + 0.4);
-    
-    // Second chime note (slightly delayed)
-    setTimeout(() => {
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(880, ctx.currentTime); // A5
-      gain2.gain.setValueAtTime(0.08, ctx.currentTime);
-      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.start();
-      osc2.stop(ctx.currentTime + 0.6);
-    }, 120);
-  } catch (err) {
-    console.error('Audio chime failed:', err);
-  }
-};
+import { playNotificationSound, playFollowUpReminderSound } from './utils/audio';
+import { getDueFollowUpsForUser } from './utils/followUpReminders';
+import { CallingDatabase } from './components/telecalling/CallingDatabase';
+import { TodaysCalls } from './components/telecalling/TodaysCalls';
+import { DailyActivityReport } from './components/telecalling/DailyActivityReport';
+import { TelecallerPerformanceReport } from './components/telecalling/TelecallerPerformanceReport';
 
 function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
@@ -230,6 +197,48 @@ function App() {
     localStorage.setItem('docgen_saturday_backup_dismissed_date', todayDateStr);
     setShowSaturdayBackupReminder(false);
   };
+
+  // ── Follow-up Reminders Periodic Checker ─────────────────────────────
+  const lastFollowUpAlertKeyRef = React.useRef<string>('');
+  useEffect(() => {
+    const checkFollowUpReminders = () => {
+      if (!user) return;
+      try {
+        const allFollowUps = officeService.getFollowUps('all');
+        const dueList = getDueFollowUpsForUser(allFollowUps, currentUserEmail, isOwner);
+        if (dueList.length > 0) {
+          const topDue = dueList[0];
+          const alertKey = `${topDue.followUp.id}_${dueList.length}`;
+          if (lastFollowUpAlertKeyRef.current !== alertKey) {
+            lastFollowUpAlertKeyRef.current = alertKey;
+            playFollowUpReminderSound();
+
+            if (currentTab !== 'follow-ups') {
+              setToast({
+                message: `Follow-up Reminder: You have ${dueList.length} task(s) due (${topDue.followUp.customer_name}). Click to view.`,
+                type: 'info'
+              });
+            }
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+              try {
+                new Notification('B2P Portal - Follow-up Reminder', {
+                  body: `Follow-up Due: ${topDue.followUp.customer_name} (${topDue.dueDateTimeStr}) - ${topDue.followUp.reason}`,
+                  icon: '/billing/logo_b2p.png'
+                });
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Follow-up reminder check failed:', err);
+      }
+    };
+
+    checkFollowUpReminders();
+    const interval = setInterval(checkFollowUpReminders, 25000);
+    return () => clearInterval(interval);
+  }, [user, currentUserEmail, isOwner, currentTab]);
 
   // Initialize Theme
   useEffect(() => {
@@ -1923,6 +1932,39 @@ function App() {
               )
             )}
 
+            {currentTab === 'calling-database' && (
+              <CallingDatabase
+                userRole={simulatedRole}
+                userEmail={currentUserEmail}
+                companyId={activeProfile?.id}
+              />
+            )}
+
+            {currentTab === 'todays-calls' && (
+              <TodaysCalls
+                userRole={simulatedRole}
+                userEmail={currentUserEmail}
+                companyId={activeProfile?.id}
+              />
+            )}
+
+            {currentTab === 'telecaller-performance' && (
+              <TelecallerPerformanceReport
+                userRole={simulatedRole}
+                userEmail={currentUserEmail}
+                onNavigateTab={setCurrentTab}
+              />
+            )}
+
+            {currentTab === 'telecalling-eod-report' && (
+              <DailyActivityReport
+                userRole={simulatedRole}
+                userEmail={currentUserEmail}
+                onNavigateTab={setCurrentTab}
+                onOpenLead={(id) => setGlobalLeadDetailId(id)}
+              />
+            )}
+
             {currentTab === 'leads' && (
               <Leads
                 role={simulatedRole}
@@ -2135,6 +2177,60 @@ function App() {
         currentTheme={theme}
         onSelectTheme={handleSelectTheme}
       />
+
+      {/* Global Interactive Notification Toast */}
+      {toast && (
+        <div
+          className="animate-fade-in"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem',
+            padding: '0.9rem 1.25rem',
+            borderRadius: 'var(--radius-md)',
+            background: toast.type === 'success' ? 'rgba(16, 185, 129, 0.95)' : 'rgba(30, 41, 59, 0.96)',
+            color: '#ffffff',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.25)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
+            backdropFilter: 'blur(12px)',
+            cursor: toast.message.includes('Follow-up') ? 'pointer' : 'default',
+            maxWidth: '440px'
+          }}
+          onClick={() => {
+            if (toast.message.includes('Follow-up')) {
+              setCurrentTab('follow-ups');
+              setToast(null);
+            }
+          }}
+        >
+          <BellRing size={20} style={{ color: '#f59e0b', flexShrink: 0 }} />
+          <div style={{ fontSize: '0.84rem', fontWeight: 500, lineHeight: 1.4, flex: 1 }}>
+            {toast.message}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setToast(null);
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255, 255, 255, 0.65)',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
     </div>
   );

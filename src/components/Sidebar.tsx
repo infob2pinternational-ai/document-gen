@@ -31,11 +31,16 @@ import {
   Moon,
   Zap,
   Coffee,
-  Sparkles
+  Sparkles,
+  PhoneCall,
+  Database,
+  Activity
 } from 'lucide-react';
 import type { CompanyProfile, AppTheme } from '../types';
 import { metricsService } from '../services/metricsService';
 import { officeService } from '../services/officeService';
+import { leadService } from '../services/leadService';
+import { getIstTodayDateStr, isTimestampOnIstDate } from '../utils/dateUtils';
 
 interface SidebarProps {
   currentTab: string;
@@ -80,6 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [followUpDueCount, setFollowUpDueCount] = useState(0);
   const [waitingApprovalCount, setWaitingApprovalCount] = useState(0);
   const [whatsAppUnreadCount, setWhatsAppUnreadCount] = useState(0);
+  const [todayPendingCount, setTodayPendingCount] = useState(0);
 
   const refreshBadges = () => {
     const leads = metricsService.getLeadCounts();
@@ -88,10 +94,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const convs = officeService.getConversations();
     const unreadWA = convs.reduce((sum, c) => sum + (c.unread_count || 0), 0);
 
+    const todayStr = getIstTodayDateStr();
+    const allLeads = leadService.getLeads();
+    const myLeads = (userRole === 'telecaller' && user?.email)
+      ? allLeads.filter(l => (l.assigned_telecaller_email || '').toLowerCase().trim() === user.email.toLowerCase().trim())
+      : allLeads;
+    const pendingCalls = myLeads.filter(l => !l.last_call_at || !isTimestampOnIstDate(l.last_call_at, todayStr)).length;
+
     setLeadCount(leads.total || 0);
     setFollowUpDueCount((followUps.today || 0) + (followUps.overdue || 0));
     setWaitingApprovalCount(quotes.waitingApproval || 0);
     setWhatsAppUnreadCount(unreadWA);
+    setTodayPendingCount(pendingCalls);
   };
 
   useEffect(() => {
@@ -140,6 +154,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     },
     {
+      title: 'TELECALLING',
+      items: [
+        { id: 'calling-database', label: 'Calling Database', icon: Database },
+        { id: 'todays-calls', label: "Today's Calls", icon: PhoneCall, badge: todayPendingCount > 0 ? todayPendingCount : undefined },
+        { id: 'follow-ups', label: 'Follow-ups', icon: Clock, badge: followUpDueCount > 0 ? followUpDueCount : undefined }
+      ]
+    },
+    {
       title: 'SALES',
       items: [
         { id: 'documents', label: 'Doc Gen', icon: FileText, badge: waitingApprovalCount > 0 ? waitingApprovalCount : undefined }
@@ -181,9 +203,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   if (userRole !== 'telecaller') {
     baseSections.push({
-      title: 'ANALYTICS',
+      title: 'REPORTS',
       items: [
-        { id: 'reports', label: 'Reports', icon: BarChart3 }
+        { id: 'reports', label: 'Operational Overview', icon: BarChart3 },
+        { id: 'telecaller-performance', label: 'Telecaller Performance', icon: TrendingUp },
+        { id: 'telecalling-eod-report', label: 'Daily Activity / End-of-Day', icon: Activity }
       ]
     });
   }
