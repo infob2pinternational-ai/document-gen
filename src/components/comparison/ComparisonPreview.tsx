@@ -5,37 +5,53 @@ import { ComparisonService } from './ComparisonService';
 import { Printer, ArrowLeft, Award } from 'lucide-react';
 
 interface ComparisonPreviewProps {
-  activeProfile: CompanyProfile;
+  activeProfile: Partial<CompanyProfile>;
   document: Document;
   onClose: () => void;
+  isPublicShare?: boolean;
+  publicConfig?: ComparisonConfig | null;
 }
 
 export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
   activeProfile,
   document,
-  onClose
+  onClose,
+  isPublicShare = false,
+  publicConfig = null
 }) => {
-  const [config, setConfig] = useState<ComparisonConfig | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [privateConfig, setConfig] = useState<ComparisonConfig | null>(null);
+  const [loading, setLoading] = useState(!isPublicShare);
+  const config = isPublicShare ? publicConfig : privateConfig;
 
   useEffect(() => {
+    if (isPublicShare) return;
+    let cancelled = false;
+    setLoading(true);
+    setConfig(null);
     ComparisonService.getComparisonData(document.id)
       .then(data => {
-        setConfig(data);
+        if (!cancelled) setConfig(data);
       })
       .catch(err => {
         console.error('Failed to load comparison data for preview:', err);
       })
       .finally(() => {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       });
-  }, [document.id]);
+    return () => { cancelled = true; };
+  }, [document.id, isPublicShare]);
+
+  useEffect(() => {
+    const originalTitle = window.document.title;
+    window.document.title = document.document_number;
+    return () => { window.document.title = originalTitle; };
+  }, [document.document_number]);
 
   const handlePrint = () => {
     window.print();
   };
 
-  if (loading) {
+  if (!isPublicShare && loading) {
     return (
       <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
         <div className="spinner" style={{ margin: '0 auto 1rem auto' }}></div>
@@ -44,13 +60,13 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
     );
   }
 
-  if (!config || config.options.length === 0) {
+  if (!config || !Array.isArray(config.options) || config.options.length === 0) {
     return (
       <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-secondary)' }}>No comparison configuration data found for this document.</p>
-        <button onClick={onClose} className="btn-secondary" style={{ marginTop: '1rem' }}>
+        <p style={{ color: 'var(--text-secondary)' }}>{isPublicShare ? 'The comparison details could not be loaded. Please contact the sender for the complete document.' : 'No comparison configuration data found for this document.'}</p>
+        {!isPublicShare && <button onClick={onClose} className="btn-secondary" style={{ marginTop: '1rem' }}>
           Go Back
-        </button>
+        </button>}
       </div>
     );
   }
@@ -63,10 +79,10 @@ export const ComparisonPreview: React.FC<ComparisonPreviewProps> = ({
       
       {/* Action Header (Hidden during Print) */}
       <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-        <button onClick={onClose} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+        {!isPublicShare && <button onClick={onClose} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
           <ArrowLeft size={16} />
           <span>Back to Documents</span>
-        </button>
+        </button>}
         <button onClick={handlePrint} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
           <Printer size={16} />
           <span>Print / Save as PDF</span>
