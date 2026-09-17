@@ -6,7 +6,8 @@ import type {
   LeadActivity, 
   Booking, 
   Resource,
-  PaymentReceived
+  PaymentReceived,
+  Document
 } from '../types';
 import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
@@ -31,6 +32,7 @@ import {
 interface OwnerDashboardProps {
   userRole?: string;
   userEmail?: string;
+  documents?: Document[];
   onNavigateTab: (tab: string) => void;
   onOpenLead?: (leadId: string) => void;
 }
@@ -38,6 +40,7 @@ interface OwnerDashboardProps {
 export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
   userRole: _userRole = 'owner',
   userEmail = 'owner@b2p.com',
+  documents = [],
   onNavigateTab,
   onOpenLead
 }) => {
@@ -141,13 +144,22 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
   }, [followUps, todayStr]);
   const followUpsDueInWindow = followUpsInWindow.filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED').length;
 
+  const docGenPendingApproval = useMemo(() => {
+    return documents.filter(d => d.status !== 'approved' && d.status !== 'rejected');
+  }, [documents]);
+  const docGenPendingApprovalValue = useMemo(() => {
+    return docGenPendingApproval.reduce((sum, d) => sum + (Number(d.total) || 0), 0);
+  }, [docGenPendingApproval]);
+
   // 3. Quotations & Approvals
-  const quotesWaitingApproval = useMemo(() => {
+  const crmQuotesWaitingApproval = useMemo(() => {
     return quotations.filter(q => q.approval_status === 'WAITING_APPROVAL');
   }, [quotations]);
+  const waitingApprovalCount = crmQuotesWaitingApproval.length + docGenPendingApproval.length;
   const waitingApprovalValue = useMemo(() => {
-    return quotesWaitingApproval.reduce((sum, q) => sum + (Number(q.total) || 0), 0);
-  }, [quotesWaitingApproval]);
+    const crmValue = crmQuotesWaitingApproval.reduce((sum, q) => sum + (Number(q.total) || 0), 0);
+    return crmValue + docGenPendingApprovalValue;
+  }, [crmQuotesWaitingApproval, docGenPendingApprovalValue]);
 
   // 4. Confirmed Jobs & Campaigns
   const confirmedLeadsInWindow = useMemo(() => {
@@ -166,9 +178,18 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
       q.approval_status === 'SENT'
     );
   }, [quotations]);
+  const activePipelineDocuments = useMemo(() => {
+    return documents.filter(d =>
+      (d.document_type === 'quotation' || d.document_type === 'proforma_invoice' || d.document_type === 'comparison_quotation') &&
+      d.status !== 'rejected'
+    );
+  }, [documents]);
+  const activePipelineCount = activePipelineQuotations.length + activePipelineDocuments.length;
   const activePipelineValue = useMemo(() => {
-    return activePipelineQuotations.reduce((sum, q) => sum + (Number(q.total) || 0), 0);
-  }, [activePipelineQuotations]);
+    const crmValue = activePipelineQuotations.reduce((sum, q) => sum + (Number(q.total) || 0), 0);
+    const documentValue = activePipelineDocuments.reduce((sum, d) => sum + (Number(d.total) || 0), 0);
+    return crmValue + documentValue;
+  }, [activePipelineQuotations, activePipelineDocuments]);
 
   // 6. Payments & Cash Inflow
   const paymentsCollectedAmount = useMemo(() => {
@@ -213,9 +234,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
   }, [resources, activeBookedResourceIds]);
 
   // Telecaller Performance Data (Dynamically derived from real application records)
-  const telecallerMetrics = useMemo(() => {
-    return metricsService.getTelecallerMetrics();
-  }, [leads, followUps]);
+  const telecallerMetrics = metricsService.getTelecallerMetrics();
 
   // Lead Pipeline Funnel Breakdown
   const leadPipelineStages = useMemo(() => {
@@ -566,8 +585,8 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
         {/* KPI 3: Quotations Waiting Owner Approval */}
         <div 
           onClick={() => {
-            if (quotesWaitingApproval.length > 0) {
-              setViewingQuotation(quotesWaitingApproval[0]);
+            if (crmQuotesWaitingApproval.length > 0) {
+              setViewingQuotation(crmQuotesWaitingApproval[0]);
               setQuotationModalOpen(true);
             } else {
               onNavigateTab('documents');
@@ -581,13 +600,13 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
             <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
               <ShieldCheck size={17} />
             </div>
-            <span style={{ fontSize: '0.6875rem', fontWeight: 700, background: quotesWaitingApproval.length > 0 ? '#fee2e2' : '#f1f5f9', color: quotesWaitingApproval.length > 0 ? '#b91c1c' : '#64748b', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.15rem 0.45rem', borderRadius: '9999px' }}>
-              {quotesWaitingApproval.length > 0 ? `${formatINR(waitingApprovalValue)} pending` : 'All Approved'}
+            <span style={{ fontSize: '0.6875rem', fontWeight: 700, background: waitingApprovalCount > 0 ? '#fee2e2' : '#f1f5f9', color: waitingApprovalCount > 0 ? '#b91c1c' : '#64748b', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.15rem 0.45rem', borderRadius: '9999px' }}>
+              {waitingApprovalCount > 0 ? `${formatINR(waitingApprovalValue)} pending` : 'All Approved'}
             </span>
           </div>
           <div>
             <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>
-              {quotesWaitingApproval.length}
+              {waitingApprovalCount}
             </div>
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
               Waiting Approval
@@ -638,7 +657,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
               <TrendingUp size={17} />
             </div>
             <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-              {activePipelineQuotations.length} proposals
+              {activePipelineCount} proposals
             </span>
           </div>
           <div>
@@ -656,10 +675,10 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
 
         {/* KPI 6: Payments & Inflow vs Receivables */}
         <div 
-          onClick={() => onNavigateTab('documents')}
+          onClick={() => onNavigateTab('sales-receivables')}
           className="glass-panel glass-card-hoverable"
           style={{ padding: '1rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
-          title="Click to view Invoices & Payments"
+          title="Click to view Sales & Receivables"
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(6, 182, 212, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0891b2' }}>
@@ -862,18 +881,18 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
               fontWeight: 700,
               padding: '0.15rem 0.5rem',
               borderRadius: '9999px',
-              background: (quotesWaitingApproval.length + overdueFollowUps.length + unassignedCount) > 0 ? '#fee2e2' : '#f0fdf4',
-              color: (quotesWaitingApproval.length + overdueFollowUps.length + unassignedCount) > 0 ? '#dc2626' : '#16a34a'
+              background: (waitingApprovalCount + overdueFollowUps.length + unassignedCount) > 0 ? '#fee2e2' : '#f0fdf4',
+              color: (waitingApprovalCount + overdueFollowUps.length + unassignedCount) > 0 ? '#dc2626' : '#16a34a'
             }}>
-              {quotesWaitingApproval.length + overdueFollowUps.length + unassignedCount} Action Items
+              {waitingApprovalCount + overdueFollowUps.length + unassignedCount} Action Items
             </span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', overflowY: 'auto', maxHeight: '380px' }}>
             
             {/* Attention Item 1: Quotations Waiting Owner Approval */}
-            {quotesWaitingApproval.length > 0 ? (
-              quotesWaitingApproval.map((q) => (
+            {crmQuotesWaitingApproval.length > 0 ? (
+              crmQuotesWaitingApproval.map((q) => (
                 <div 
                   key={q.id}
                   className="glass-card-hoverable"
@@ -917,6 +936,42 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
                   >
                     Review
                   </button>
+                </div>
+              ))
+            ) : null}
+
+            {docGenPendingApproval.length > 0 ? (
+              docGenPendingApproval.slice(0, 5).map((doc) => (
+                <div
+                  key={doc.id}
+                  onClick={() => onNavigateTab('documents')}
+                  className="glass-card-hoverable"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.85)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: '10px',
+                    padding: '0.75rem 0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', flexShrink: 0 }}>
+                      <ShieldCheck size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {doc.document_number} - {doc.customer_name}
+                      </div>
+                      <div className="mono" style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 600 }}>
+                        {formatINR(Number(doc.total || 0))} - Doc Gen approval pending
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight size={16} color="#ef4444" />
                 </div>
               ))
             ) : null}
@@ -1005,7 +1060,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
             ) : null}
 
             {/* All clear state */}
-            {quotesWaitingApproval.length === 0 && overdueFollowUps.length === 0 && unassignedLeads.length === 0 && (
+            {waitingApprovalCount === 0 && overdueFollowUps.length === 0 && unassignedLeads.length === 0 && (
               <div style={{
                 textAlign: 'center',
                 padding: '2.5rem 1rem',
@@ -1264,4 +1319,3 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
     </div>
   );
 };
-
