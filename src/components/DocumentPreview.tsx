@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { CompanyProfile, Document, DocumentItem } from '../types';
 import { dbService } from '../services/db';
 import { ArrowLeft, Printer, AlertTriangle, Download } from 'lucide-react';
-import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue } from '../utils/calculations';
+import { calculateDocumentTotals, normalizeAdvance, calculateBalanceDue, numberToWordsIndian } from '../utils/calculations';
 import { shareDocumentViaWhatsApp } from '../utils/whatsappShare';
 
 interface DocumentPreviewProps {
@@ -225,7 +225,22 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   }
 
   const effectiveDocType = isIntlProfile ? 'non_tax_invoice' : document.document_type;
-  const totals = calculateDocumentTotals(items, document.discount_total, effectiveDocType);
+  const calculatedTotals = calculateDocumentTotals(items, document.discount_total, effectiveDocType);
+  const savedTotal = Number(document.total) || 0;
+  const savedSubtotal = Number(document.subtotal) || 0;
+  const savedDiscount = Number(document.discount_total) || 0;
+  const savedTaxTotal = Number(document.tax_total) || 0;
+  const shouldUseSavedTotals = items.length === 0 && savedTotal > 0;
+  const totals = shouldUseSavedTotals ? {
+    subtotal: savedSubtotal || Math.max(0, savedTotal - savedTaxTotal),
+    discountTotal: savedDiscount,
+    taxableAmount: Math.max(0, (savedSubtotal || Math.max(0, savedTotal - savedTaxTotal)) - savedDiscount),
+    taxTotal: savedTaxTotal,
+    total: savedTotal,
+    effectiveGstRate: (savedSubtotal - savedDiscount) > 0 ? (savedTaxTotal / (savedSubtotal - savedDiscount)) * 100 : 0,
+    amountInWords: numberToWordsIndian(savedTotal)
+  } : calculatedTotals;
+  const showSavedTotalFallbackRow = shouldUseSavedTotals;
   // Optional Advance / Balance Due - document.advance is undefined/null
   // for any document saved before this feature existed, which
   // normalizeAdvance safely treats as "no advance" (0).
@@ -474,6 +489,23 @@ export const DocumentPreview: React.FC<DocumentPreviewProps> = ({
                   </td>
                 </tr>
               ))}
+
+              {showSavedTotalFallbackRow && (
+                <tr style={{ borderBottom: '1px solid #cbd5e1' }}>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>1</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', fontWeight: 500 }}>
+                    Document total
+                  </td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>-</td>
+                  <td style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'center' }}>-</td>
+                  <td className="mono" style={{ borderRight: '1px solid #cbd5e1', padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                    -
+                  </td>
+                  <td className="mono" style={{ padding: '0.65rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
+                    {totals.total.toFixed(2)}
+                  </td>
+                </tr>
+              )}
 
               {/* Totals Section */}
               {totals.discountTotal > 0 ? (

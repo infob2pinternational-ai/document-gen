@@ -129,6 +129,7 @@ CREATE TABLE document_items (
   rate NUMERIC NOT NULL DEFAULT 0,
   unit TEXT DEFAULT 'nos',
   hsn_sac TEXT,
+  gst_percentage NUMERIC NOT NULL DEFAULT 0,
   amount NUMERIC NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0
 );
