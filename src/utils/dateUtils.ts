@@ -112,3 +112,45 @@ export function isTimestampOnIstDate(
   if (!timestamp || !istDateStr) return false;
   return getIstDateStr(timestamp) === istDateStr;
 }
+
+/**
+ * Safely parses any date input (DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, Excel serials, ISO) into an ISO string.
+ * Returns undefined if invalid or unparseable, without ever throwing a RangeError.
+ */
+export function parseFlexibleDateToIso(input?: string | number | null): string | undefined {
+  if (!input) return undefined;
+  const s = String(input).trim();
+  if (!s || s === '-' || s === '—' || s.toLowerCase() === 'n/a' || s.toLowerCase() === 'null') return undefined;
+
+  // 1. Check if it's an Excel serial number (e.g. 40000 - 55000)
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    const utcDays = serial - 25569;
+    const utcValue = utcDays * 86400 * 1000;
+    const dateObj = new Date(utcValue);
+    if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
+  }
+
+  // 2. Check DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1; // 0-indexed
+    let year = parseInt(dmyMatch[3], 10);
+    if (year < 100) year += 2000;
+    const hour = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 10;
+    const minute = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+    const second = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+    const dateObj = new Date(Date.UTC(year, month, day, hour, minute, second));
+    if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
+  }
+
+  // 3. Try standard Date parsing
+  try {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  } catch {}
+
+  return undefined;
+}
+

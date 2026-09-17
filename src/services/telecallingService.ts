@@ -8,7 +8,8 @@ import {
   getIstDateStr, 
   formatIstTime, 
   formatIstDateTime,
-  isTimestampOnIstDate 
+  isTimestampOnIstDate,
+  parseFlexibleDateToIso 
 } from '../utils/dateUtils';
 import { formatStaffDisplayName } from '../utils/staffUtils';
 
@@ -677,6 +678,8 @@ export const telecallingService = {
         const phone = row.phone?.trim() || '—';
         const outcome = mapRemarkToOutcome(row.remarks);
 
+        const callDate = parseFlexibleDateToIso(row.date);
+
         const newLeadPayload: Partial<Lead> & { customer_name: string; phone: string } = {
           company_id: options.companyId || leadService.getActiveCompany() || 'default',
           company_name: companyName,
@@ -689,7 +692,7 @@ export const telecallingService = {
           priority: outcome === 'Interested' ? 'HOT' : 'WARM',
           assigned_telecaller_email: options.assignedTelecallerEmail,
           status: determineLeadStatusFromOutcome(outcome, 'new'),
-          last_call_at: row.date ? new Date(row.date).toISOString() : (row.remarks ? new Date().toISOString() : undefined),
+          last_call_at: callDate || (row.remarks ? new Date().toISOString() : undefined),
           last_call_outcome: row.remarks ? outcome : undefined,
           last_call_remark: row.remarks?.trim(),
           call_count: row.remarks ? 1 : 0,
@@ -713,7 +716,8 @@ export const telecallingService = {
             contact_person: customerName,
             note: row.remarks.trim(),
             previous_status: 'new',
-            new_status: savedLead.status
+            new_status: savedLead.status,
+            created_at: callDate || new Date().toISOString()
           });
           activitiesCreated++;
         }
