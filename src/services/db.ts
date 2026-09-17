@@ -1,4 +1,5 @@
 import type { CompanyProfile, Customer, Service, Document, DocumentItem } from '../types';
+import type { ComparisonConfig } from '../components/comparison/ComparisonTypes';
 import JSZip from 'jszip';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { enqueueSync } from './sheetsSyncQueue';
@@ -573,7 +574,7 @@ export const dbService = {
   // removed - it had no remaining callers once /q/:documentNumber was
   // wired to this function instead.
   // No offline/local equivalent - public share links require Supabase.
-  async getPublicDocument(params: { id?: string; documentNumber?: string }): Promise<{ document: Document; items: DocumentItem[]; profile: Partial<CompanyProfile> } | null> {
+  async getPublicDocument(params: { id?: string; documentNumber?: string }): Promise<{ document: Document; items: DocumentItem[]; profile: Partial<CompanyProfile>; comparison: ComparisonConfig | null } | null> {
     if (!supabase) return null;
     try {
       const { data, error } = await supabase.rpc('get_public_document', {
@@ -584,7 +585,20 @@ export const dbService = {
         if (import.meta.env.DEV) console.log('dbService: getPublicDocument returned nothing:', error);
         return null;
       }
+      let comparison: ComparisonConfig | null = null;
+      if (data.document.document_type === 'comparison_quotation' || data.document.document_type === 'comparison_invoice') {
+        const result = await supabase.rpc('get_public_comparison_data', { p_document_id: data.document.id });
+        if (result.error) {
+          console.error('Unable to load shared comparison:', result.error);
+        } else {
+          comparison = (result.data?.comparison ?? null) as ComparisonConfig | null;
+          if (result.data?.currency) {
+            data.profile = { ...data.profile, currency: result.data.currency };
+          }
+        }
+      }
       return {
+        comparison,
         // The RPC's whitelist (see get_public_document's SQL) only
         // returns the subset of fields the public preview renders -
         // asserted here since DocumentPreview.tsx's public-share path

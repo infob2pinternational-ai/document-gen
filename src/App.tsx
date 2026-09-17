@@ -127,6 +127,7 @@ function App() {
   // Public View States
   const [publicViewDocId, setPublicViewDocId] = useState<string | null>(null);
   const [publicViewDoc, setPublicViewDoc] = useState<Document | null>(null);
+  const [publicViewData, setPublicViewData] = useState<Awaited<ReturnType<typeof dbService.getPublicDocument>>>(null);
   const [publicViewLoading, setPublicViewLoading] = useState(false);
 
   // REMEDIATION (2026-08-24, P0.3 - audit finding "Role Simulation
@@ -292,6 +293,7 @@ function App() {
         if (res) {
           if (import.meta.env.DEV) console.log('App: Public view document loaded successfully by ID:', res.document);
           setPublicViewDoc(res.document);
+          setPublicViewData(res);
         } else {
           if (import.meta.env.DEV) console.log('App: Public view document not found');
         }
@@ -312,6 +314,7 @@ function App() {
           if (import.meta.env.DEV) console.log('App: Public view document loaded successfully by Number:', res.document);
           setPublicViewDocId(res.document.id);
           setPublicViewDoc(res.document);
+          setPublicViewData(res);
         } else {
           if (import.meta.env.DEV) console.log('App: Public view document not found by Number');
         }
@@ -994,12 +997,22 @@ function App() {
         justifyContent: 'center'
       }}>
         <div style={{ width: '100%', maxWidth: '800px' }}>
-          <DocumentPreview 
-            activeProfile={null}
-            document={publicViewDoc}
-            onClose={() => {}}
-            isPublicShare={true}
-          />
+          {publicViewDoc.document_type === 'comparison_quotation' || publicViewDoc.document_type === 'comparison_invoice' ? (
+            <ComparisonPreview
+              activeProfile={publicViewData?.profile || {}}
+              document={publicViewDoc}
+              onClose={() => {}}
+              isPublicShare={true}
+              publicConfig={publicViewData?.comparison ?? null}
+            />
+          ) : (
+            <DocumentPreview
+              activeProfile={null}
+              document={publicViewDoc}
+              onClose={() => {}}
+              isPublicShare={true}
+            />
+          )}
         </div>
       </div>
     );
