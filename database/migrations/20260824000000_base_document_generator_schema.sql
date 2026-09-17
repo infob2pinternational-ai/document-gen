@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS public.document_items (
     rate NUMERIC NOT NULL DEFAULT 0,
     unit TEXT DEFAULT 'nos',
     hsn_sac TEXT,
+    gst_percentage NUMERIC NOT NULL DEFAULT 0,
     amount NUMERIC NOT NULL DEFAULT 0,
     sort_order INT NOT NULL DEFAULT 0
 );
@@ -252,6 +253,7 @@ BEGIN
       'days', days,
       'rate', rate,
       'unit', unit,
+      'gst_percentage', gst_percentage,
       'amount', amount
     ) ORDER BY sort_order ASC, id ASC
   ) INTO v_items
