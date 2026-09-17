@@ -226,7 +226,7 @@ export const metricsService = {
   // 1. LEAD COUNTS
   getLeadCounts(staffEmail?: string): LeadCounts {
     let leads = readStorage<Lead[]>(LEADS_KEY, []);
-    if (staffEmail && staffEmail !== 'owner@b2p.com' && staffEmail !== 'admin@b2p.com' && staffEmail.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
+    if (staffEmail && staffEmail !== 'owner@b2p.com' && staffEmail !== 'admin@b2p.com' && staffEmail.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanengadan@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
       leads = leads.filter(l => l.assigned_telecaller_email === staffEmail);
     }
 
@@ -270,7 +270,7 @@ export const metricsService = {
   // 2. FOLLOW-UP COUNTS
   getFollowUpCounts(staffEmail?: string): FollowUpCounts {
     let followUps = readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []);
-    if (staffEmail && staffEmail !== 'owner@b2p.com' && staffEmail !== 'admin@b2p.com' && staffEmail.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
+    if (staffEmail && staffEmail !== 'owner@b2p.com' && staffEmail !== 'admin@b2p.com' && staffEmail.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanengadan@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
       followUps = followUps.filter(f => f.assigned_staff_email === staffEmail);
     }
 

@@ -147,11 +147,11 @@ function App() {
   // every production build, with zero changes needed at any of its ~50
   // existing call sites below.
   const isItAdmin = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
-  const isOwner = (user?.email || '').toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' || (user?.email || '').toLowerCase().trim() === 'owner@b2p.com';
+  const isOwner = (user?.email || '').toLowerCase().trim() === 'sarathjohnpanengadan@gmail.com' || (user?.email || '').toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' || (user?.email || '').toLowerCase().trim() === 'owner@b2p.com';
   const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('owner');
   const normalizeAppRole = (raw: string | null | undefined, email?: string | null): UserRole => {
     const userEmail = (email || '').toLowerCase().trim();
-    if (userEmail === 'sarathjohnpanegdan@gmail.com' || userEmail === 'owner@b2p.com') {
+    if (userEmail === 'sarathjohnpanengadan@gmail.com' || userEmail === 'sarathjohnpanegdan@gmail.com' || userEmail === 'owner@b2p.com') {
       return 'owner';
     }
     if (userEmail === 'fransonputhukkara@gmail.com') {

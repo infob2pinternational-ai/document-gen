@@ -18,8 +18,8 @@ export function formatStaffDisplayName(email?: string | null): string {
 
   // Known company staff / leaders
   if (clean === 'fransonputhukkara@gmail.com') return 'Franson Puthukkara';
-  if (clean === 'sarathjohnpanegdan@gmail.com') return 'Sarath John Panegdan';
-  if (clean === 'owner@b2p.com') return 'Sarath John Panegdan (Owner)';
+  if (clean === 'sarathjohnpanengadan@gmail.com' || clean === 'sarathjohnpanegdan@gmail.com') return 'Sarath John Panengadan';
+  if (clean === 'owner@b2p.com') return 'Sarath John Panengadan (Owner)';
   if (clean === 'admin@b2p.com') return 'Franson Puthukkara (IT Admin)';
   if (clean === 'accounts@b2p.com') return 'Accounts Desk';
   if (clean === 'telecaller@b2p.com') return 'Telecaller Desk';
@@ -50,7 +50,8 @@ export function getAvailableStaffList(
   const staffMap = new Map<string, string>();
 
   // Always ensure known company leadership / key staff are available
-  staffMap.set('sarathjohnpanegdan@gmail.com', 'Sarath John Panegdan');
+  staffMap.set('sarathjohnpanengadan@gmail.com', 'Sarath John Panengadan');
+  staffMap.set('sarathjohnpanegdan@gmail.com', 'Sarath John Panengadan');
   staffMap.set('fransonputhukkara@gmail.com', 'Franson Puthukkara');
 
   // Add currently logged in user if valid

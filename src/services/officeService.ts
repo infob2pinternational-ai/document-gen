@@ -162,16 +162,74 @@ type CrmOfficeTable = 'resources' | 'bookings' | 'follow_ups' | 'crm_quotations'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function sanitizeOfficeRowForSupabase(_table: CrmOfficeTable, row: any) {
+function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
+  if (table === 'follow_ups') {
+    const payload: any = {
+      id: row.id,
+      assigned_staff_email: row.assigned_staff_email || 'staff@b2p.com',
+      follow_up_date: row.due_date || row.follow_up_date || new Date().toISOString().split('T')[0],
+      notes: [row.reason, row.notes].filter(Boolean).join(' — ') || '',
+      status: row.status || 'PENDING',
+      created_at: row.created_at || new Date().toISOString(),
+      updated_at: row.updated_at || new Date().toISOString()
+    };
+    if (row.company_id && UUID_REGEX.test(row.company_id)) {
+      payload.company_id = row.company_id;
+    }
+    if (row.customer_id && UUID_REGEX.test(row.customer_id)) {
+      payload.customer_id = row.customer_id;
+    }
+    return payload;
+  }
+
+  if (table === 'bookings') {
+    const payload: any = {
+      id: row.id,
+      customer_name: row.customer_name || 'Customer',
+      resource_id: row.resource_id,
+      start_date: row.start_date,
+      end_date: row.end_date,
+      status: row.status || 'CONFIRMED',
+      notes: row.notes || '',
+      created_at: row.created_at || new Date().toISOString(),
+      updated_at: row.updated_at || new Date().toISOString()
+    };
+    if (row.company_id && UUID_REGEX.test(row.company_id)) {
+      payload.company_id = row.company_id;
+    }
+    if (row.lead_id && UUID_REGEX.test(row.lead_id)) {
+      payload.lead_id = row.lead_id;
+    }
+    return payload;
+  }
+
+  if (table === 'crm_quotations') {
+    const payload: any = {
+      id: row.id,
+      quotation_number: row.quotation_number,
+      customer_name: row.customer_name,
+      company_name: row.company_name,
+      phone: row.phone,
+      items: row.items || [],
+      subtotal: row.subtotal || 0,
+      status: row.status || 'DRAFT',
+      created_at: row.created_at || new Date().toISOString(),
+      updated_at: row.updated_at || new Date().toISOString()
+    };
+    if (row.company_id && UUID_REGEX.test(row.company_id)) {
+      payload.company_id = row.company_id;
+    }
+    if (row.lead_id && UUID_REGEX.test(row.lead_id)) {
+      payload.lead_id = row.lead_id;
+    }
+    if (row.approved_at) payload.approved_at = row.approved_at;
+    if (row.valid_until) payload.valid_until = row.valid_until;
+    return payload;
+  }
+
   const payload = { ...row };
   if (payload.company_id && !UUID_REGEX.test(payload.company_id)) {
     delete payload.company_id;
-  }
-  if (payload.customer_id && !UUID_REGEX.test(payload.customer_id)) {
-    delete payload.customer_id;
-  }
-  if (payload.lead_id && !UUID_REGEX.test(payload.lead_id)) {
-    delete payload.lead_id;
   }
   return payload;
 }
@@ -273,7 +331,22 @@ export async function hydrateCrmFromCloud(companyId?: string): Promise<void> {
     }
     if (followUps && followUps.length > 0) {
       const localFollowUps = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
-      const merged = [...followUps];
+      const localMap = new Map(localFollowUps.map(f => [f.id, f]));
+      const mappedCloud: FollowUp[] = (followUps as any[]).map(fu => {
+        const existing = localMap.get(fu.id);
+        return {
+          ...fu,
+          due_date: fu.follow_up_date || fu.due_date || existing?.due_date || new Date().toISOString().split('T')[0],
+          due_time: existing?.due_time || '10:00',
+          reason: existing?.reason || fu.notes || 'Follow-up',
+          customer_name: existing?.customer_name || fu.customer_name || 'Customer',
+          phone: existing?.phone || fu.phone || '',
+          company_name: existing?.company_name || fu.company_name,
+          lead_id: existing?.lead_id || fu.lead_id,
+          lead_number: existing?.lead_number || fu.lead_number
+        };
+      });
+      const merged = [...mappedCloud];
       for (const loc of localFollowUps) {
         if (!merged.some(f => f.id === loc.id)) merged.push(loc);
       }

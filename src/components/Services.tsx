@@ -58,14 +58,19 @@ export const Services: React.FC<ServicesProps> = ({
 
     setLoading(true);
     try {
+      const trimmedName = name.trim();
+      const existingMatch = !editingService 
+        ? safeServices.find(s => (s.name || '').trim().toLowerCase() === trimmedName.toLowerCase())
+        : undefined;
+
       const payload: Service = {
-        id: editingService?.id || crypto.randomUUID(),
+        id: editingService?.id || existingMatch?.id || crypto.randomUUID(),
         company_id: activeProfile.id,
-        name,
-        description,
+        name: trimmedName,
+        description: description.trim(),
         default_rate: Number(defaultRate),
         unit,
-        hsn_sac: hsnSac || undefined,
+        hsn_sac: hsnSac ? hsnSac.trim() : undefined,
         gst_percentage: Number(gstPercentage)
       };
 

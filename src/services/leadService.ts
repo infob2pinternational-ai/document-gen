@@ -39,34 +39,62 @@ type CrmLeadsTable = 'leads' | 'lead_activities';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function sanitizeLeadForSupabase(row: any) {
-  const payload = { ...row };
-  if (!payload.company_id || !UUID_REGEX.test(payload.company_id)) {
-    delete payload.company_id;
+  const payload: any = {
+    id: row.id,
+    customer_name: row.customer_name,
+    phone: row.phone,
+    priority: row.priority || 'WARM',
+    status: row.status || 'new',
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString()
+  };
+
+  if (row.company_id && UUID_REGEX.test(row.company_id)) {
+    payload.company_id = row.company_id;
   }
-  if (!payload.customer_id || !UUID_REGEX.test(payload.customer_id)) {
-    delete payload.customer_id;
+  if (row.customer_id && UUID_REGEX.test(row.customer_id)) {
+    payload.customer_id = row.customer_id;
   }
-  if (!payload.required_date || typeof payload.required_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(payload.required_date)) {
-    delete payload.required_date;
+  if (row.company_name) payload.company_name = row.company_name;
+  if (row.whatsapp_number) payload.whatsapp_number = row.whatsapp_number;
+  if (row.address) payload.address = row.address;
+  if (row.location) payload.location = row.location;
+  if (row.business_type) payload.business_type = row.business_type;
+  if (row.lead_source) payload.lead_source = row.lead_source;
+  if (row.source_details) payload.source_details = row.source_details;
+  if (row.service_required) payload.service_required = row.service_required;
+  if (row.vehicle_service_type) payload.vehicle_service_type = row.vehicle_service_type;
+  if (row.campaign_location) payload.campaign_location = row.campaign_location;
+  if (row.assigned_telecaller_email) payload.assigned_telecaller_email = row.assigned_telecaller_email;
+  if (row.notes) payload.notes = row.notes;
+  if (row.remarks) payload.remarks = row.remarks;
+
+  if (row.required_date && typeof row.required_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.required_date)) {
+    payload.required_date = row.required_date;
   }
-  if (!payload.next_follow_up_at) {
-    delete payload.next_follow_up_at;
+  if (row.next_follow_up_at) {
+    payload.next_follow_up_at = row.next_follow_up_at;
   }
-  if (payload.number_of_days === '' || payload.number_of_days === undefined || isNaN(Number(payload.number_of_days))) {
-    delete payload.number_of_days;
-  } else {
-    payload.number_of_days = Number(payload.number_of_days);
+  if (row.number_of_days !== '' && row.number_of_days !== undefined && !isNaN(Number(row.number_of_days))) {
+    payload.number_of_days = Number(row.number_of_days);
   }
+
+  // NOTE: 'lead_number' is an in-app sequence number and does not exist as a column in Supabase leads.
+  // We keep it in local storage Lead records and omit it from the Supabase payload.
   return payload;
 }
 
 function sanitizeActivityForSupabase(row: any) {
-  const payload = { ...row };
-  if (!payload.company_id || !UUID_REGEX.test(payload.company_id)) {
-    delete payload.company_id;
-  }
-  if (!payload.lead_id || !UUID_REGEX.test(payload.lead_id)) {
-    delete payload.lead_id;
+  const payload: any = {
+    id: row.id,
+    lead_id: row.lead_id,
+    type: row.action || row.type || 'activity',
+    performed_by: row.user_email || row.performed_by || 'Staff',
+    notes: row.note || row.notes || '',
+    created_at: row.created_at || new Date().toISOString()
+  };
+  if (row.company_id && UUID_REGEX.test(row.company_id)) {
+    payload.company_id = row.company_id;
   }
   return payload;
 }
@@ -154,7 +182,15 @@ export async function hydrateLeadsFromCloud(companyId?: string): Promise<void> {
 
     if (cloudLeads && cloudLeads.length > 0) {
       const localLeads = getStoredLeads();
-      const merged = [...cloudLeads];
+      const localMap = new Map(localLeads.map(l => [l.id, l]));
+      const merged: Lead[] = cloudLeads.map((cl: any, idx: number) => {
+        const existing = localMap.get(cl.id);
+        const seq = 1001 + idx;
+        return {
+          ...cl,
+          lead_number: cl.lead_number || existing?.lead_number || `B2P-LD-${seq}`
+        };
+      });
       for (const loc of localLeads) {
         if (!merged.some(c => c.id === loc.id)) {
           merged.push(loc);
@@ -165,7 +201,16 @@ export async function hydrateLeadsFromCloud(companyId?: string): Promise<void> {
 
     if (cloudActivities && cloudActivities.length > 0) {
       const localActs = getStoredActivities();
-      const mergedActs = [...cloudActivities];
+      const mappedCloud: LeadActivity[] = (cloudActivities as any[]).map(ca => ({
+        id: ca.id,
+        lead_id: ca.lead_id,
+        company_id: ca.company_id,
+        user_email: ca.performed_by || ca.user_email || 'Staff',
+        action: ca.type || ca.action || 'Activity',
+        note: ca.notes || ca.note || '',
+        created_at: ca.created_at
+      }));
+      const mergedActs = [...mappedCloud];
       for (const act of localActs) {
         if (!mergedActs.some(c => c.id === act.id)) {
           mergedActs.push(act);

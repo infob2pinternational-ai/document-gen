@@ -409,35 +409,81 @@ export const dbService = {
     }
   },
 
-  // Services
+  // Services (Shared catalog across profiles with zero duplicate entries)
   async getServices(companyId?: string): Promise<Service[]> {
+    let rawServices: Service[] = [];
     if (isCloudActive() && supabase) {
-      let query = supabase.from('services').select('*');
-      if (companyId) {
-        query = query.eq('company_id', companyId);
-      }
-      const { data, error } = await query.order('name', { ascending: true });
+      // Query all services so services created under any company profile
+      // are shared across the organization.
+      const { data, error } = await supabase.from('services').select('*').order('name', { ascending: true });
       if (error) throw error;
-      return data || [];
+      rawServices = data || [];
     } else {
-      const services = getLocal<Service[]>('services', []);
-      if (companyId) {
-        return services.filter(s => s.company_id === companyId);
-      }
-      return services;
+      rawServices = getLocal<Service[]>('services', []);
     }
+
+    // Deduplicate by normalized service name to prevent duplicate entries
+    const serviceMap = new Map<string, Service>();
+    for (const item of rawServices) {
+      const key = (item.name || '').trim().toLowerCase();
+      if (!key) continue;
+      const existing = serviceMap.get(key);
+      if (!existing) {
+        serviceMap.set(key, item);
+      } else if (companyId && item.company_id === companyId && existing.company_id !== companyId) {
+        // If a duplicate exists, prioritize the record matched to current company_id
+        serviceMap.set(key, item);
+      }
+    }
+
+    return Array.from(serviceMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   },
 
   async saveService(service: Service): Promise<Service> {
+    const trimmedName = (service.name || '').trim();
+    const cleanService = { ...service, name: trimmedName };
+
     if (isCloudActive() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const userId = userStr ? JSON.parse(userStr).id : null;
-      const payload = { ...service, user_id: userId };
-      
-      const { data: existing } = await supabase.from('services').select('id').eq('id', service.id).maybeSingle();
-      if (existing) {
-        const { data, error } = await supabase.from('services').update(payload).eq('id', service.id).select().single();
+      let payload = { ...cleanService, user_id: userId };
+
+      // Check if service already exists by ID
+      let targetId = cleanService.id;
+      let existingRecord: any = null;
+
+      if (targetId) {
+        const { data: byId } = await supabase.from('services').select('id, name, company_id').eq('id', targetId).maybeSingle();
+        if (byId) {
+          existingRecord = byId;
+        }
+      }
+
+      // If not found by ID, check if a service with the same name already exists across profiles
+      // to avoid creating duplicate service entries
+      if (!existingRecord && trimmedName) {
+        const { data: byName } = await supabase
+          .from('services')
+          .select('id, name, company_id')
+          .ilike('name', trimmedName)
+          .limit(1)
+          .maybeSingle();
+
+        if (byName) {
+          existingRecord = byName;
+          targetId = byName.id;
+          payload.id = byName.id;
+        }
+      }
+
+      if (existingRecord) {
+        const { data, error } = await supabase.from('services').update(payload).eq('id', targetId).select().single();
         if (error) throw error;
+
+        // Clean up any historical duplicate entries with the same name across profiles
+        if (trimmedName) {
+          await supabase.from('services').delete().ilike('name', trimmedName).neq('id', targetId);
+        }
         return data;
       } else {
         const { data, error } = await supabase.from('services').insert([payload]).select().single();
@@ -446,24 +492,51 @@ export const dbService = {
       }
     } else {
       const services = getLocal<Service[]>('services', []);
-      const index = services.findIndex(s => s.id === service.id);
-      if (index >= 0) {
-        services[index] = service;
+      const lowerName = trimmedName.toLowerCase();
+
+      const existingIndex = services.findIndex(s => 
+        (cleanService.id && s.id === cleanService.id) || 
+        ((s.name || '').trim().toLowerCase() === lowerName)
+      );
+
+      if (existingIndex >= 0) {
+        const existingId = services[existingIndex].id || cleanService.id;
+        cleanService.id = existingId;
+        services[existingIndex] = cleanService;
+        const deduplicated = services.filter((s, idx) => 
+          idx === existingIndex || (s.name || '').trim().toLowerCase() !== lowerName
+        );
+        setLocal('services', deduplicated);
       } else {
-        services.push(service);
+        services.push(cleanService);
+        setLocal('services', services);
       }
-      setLocal('services', services);
-      return service;
+      return cleanService;
     }
   },
 
   async deleteService(id: string): Promise<void> {
     if (isCloudActive() && supabase) {
-      const { error } = await supabase.from('services').delete().eq('id', id);
-      if (error) throw error;
+      // Find service first so we can remove any duplicate rows with the exact same name
+      const { data: target } = await supabase.from('services').select('id, name').eq('id', id).maybeSingle();
+      if (target?.name) {
+        const { error } = await supabase.from('services').delete().ilike('name', target.name.trim());
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('services').delete().eq('id', id);
+        if (error) throw error;
+      }
     } else {
       const services = getLocal<Service[]>('services', []);
-      setLocal('services', services.filter(s => s.id !== id));
+      const target = services.find(s => s.id === id);
+      const targetName = (target?.name || '').trim().toLowerCase();
+
+      const filtered = services.filter(s => {
+        if (s.id === id) return false;
+        if (targetName && (s.name || '').trim().toLowerCase() === targetName) return false;
+        return true;
+      });
+      setLocal('services', filtered);
     }
   },
 

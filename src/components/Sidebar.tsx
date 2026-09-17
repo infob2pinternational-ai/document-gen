@@ -127,7 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     items: NavItem[];
   }
 
-  const isFinanceRole = userRole === 'owner' || userRole === 'admin' || userRole === 'accounts' || (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com' || (user?.email || '').toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com';
+  const isFinanceRole = userRole === 'owner' || userRole === 'admin' || userRole === 'accounts' || (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com' || (user?.email || '').toLowerCase().trim() === 'sarathjohnpanengadan@gmail.com' || (user?.email || '').toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com';
 
   const baseSections: NavSection[] = [
     {
