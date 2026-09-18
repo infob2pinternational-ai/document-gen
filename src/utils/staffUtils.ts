@@ -6,6 +6,14 @@ export interface StaffOption {
   label: string;
 }
 
+// Display/assignment compatibility only; never use this to authorize a login.
+export function normalizeStaffEmail(email?: string | null): string {
+  const clean = (email || '').toLowerCase().trim();
+  return clean === 'sarathjohnpanegdan@gmail.com'
+    ? 'sarathjohnpanengadan@gmail.com'
+    : clean;
+}
+
 /**
  * Formats an email into a professional, human-readable staff name.
  * Recognizes core leadership and formats standard email formats nicely.
@@ -52,18 +60,17 @@ export function getAvailableStaffList(
 
   // Always ensure known company leadership / key staff are available
   staffMap.set('sarathjohnpanengadan@gmail.com', 'Sarath John Panengadan');
-  staffMap.set('sarathjohnpanegdan@gmail.com', 'Sarath John Panengadan');
   staffMap.set('fransonputhukkara@gmail.com', 'Franson Puthukkara');
 
   // Add currently logged in user if valid
   if (currentUserEmail && currentUserEmail.includes('@') && !isDummyStaffEmail(currentUserEmail)) {
-    staffMap.set(currentUserEmail.toLowerCase().trim(), formatStaffDisplayName(currentUserEmail));
+    staffMap.set(normalizeStaffEmail(currentUserEmail), formatStaffDisplayName(currentUserEmail));
   }
 
   // Add staff from existing leads
   if (leads && leads.length > 0) {
     leads.forEach(l => {
-      const email = (l.assigned_telecaller_email || '').toLowerCase().trim();
+      const email = normalizeStaffEmail(l.assigned_telecaller_email);
       if (email && email.includes('@') && !isDummyStaffEmail(email)) {
         if (!staffMap.has(email)) {
           staffMap.set(email, formatStaffDisplayName(email));
@@ -75,7 +82,7 @@ export function getAvailableStaffList(
   // Add staff from existing follow-ups
   if (followUps && followUps.length > 0) {
     followUps.forEach(f => {
-      const email = (f.assigned_staff_email || '').toLowerCase().trim();
+      const email = normalizeStaffEmail(f.assigned_staff_email);
       if (email && email.includes('@') && !isDummyStaffEmail(email)) {
         if (!staffMap.has(email)) {
           staffMap.set(email, formatStaffDisplayName(email));
@@ -84,7 +91,7 @@ export function getAvailableStaffList(
     });
   }
 
-  const currentClean = (currentUserEmail || '').toLowerCase().trim();
+  const currentClean = normalizeStaffEmail(currentUserEmail);
 
   // Convert to array and sort: current user first, then alphabetically by name
   const list: StaffOption[] = Array.from(staffMap.entries()).map(([email, name]) => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useCrmRefresh } from './hooks/useCrmRefresh';
 import type { CompanyProfile, Document, Customer, Service, AppTheme } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
@@ -134,6 +135,8 @@ function App() {
   const simulatedRole: UserRole = import.meta.env.DEV ? (isOwner ? 'owner' : isItAdmin ? 'admin' : devSimulatedRole) : authRole;
   const currentUserEmail = user?.email || `${simulatedRole}@b2p.com`;
   const hasFinanceAccess = simulatedRole === 'owner' || simulatedRole === 'admin' || simulatedRole === 'accounts' || isItAdmin || isOwner;
+  useCrmRefresh(user?.id, activeProfile?.id,
+    isSupabaseConfigured() && (authRole === 'owner' || authRole === 'admin') && !publicViewDocId);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);

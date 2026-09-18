@@ -2,6 +2,7 @@ import type { Lead, LeadActivity, LeadStatus } from '../types';
 import { metricsService } from './metricsService';
 import { supabase, isCloudActive } from './db';
 import { generateUUID } from '../utils/uuid';
+import { normalizeStaffEmail } from '../utils/staffUtils';
 
 const LEADS_KEY = 'docgen_leads';
 const ACTIVITIES_KEY = 'docgen_lead_activities';
@@ -188,7 +189,7 @@ async function persistCrmRowDeleted(storageKey: string, table: CrmLeadsTable, fu
 
 /** Pulls this company's leads + lead activities down from Supabase and
  * merges into the local cache, never wiping existing local records. */
-export async function hydrateLeadsFromCloud(companyId?: string): Promise<void> {
+export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = () => true): Promise<void> {
   if (!isCloudActive() || !supabase) return;
   try {
     const [cloudLeads, cloudActivities] = await Promise.all([
@@ -196,11 +197,17 @@ export async function hydrateLeadsFromCloud(companyId?: string): Promise<void> {
       loadCrmTable<LeadActivity>(ACTIVITIES_KEY, 'lead_activities', companyId)
     ]);
 
+    if (!shouldApply()) return;
+
     if (cloudLeads && cloudLeads.length > 0) {
       const localLeads = getStoredLeads();
       const localMap = new Map(localLeads.map(l => [l.id, l]));
       const merged: Lead[] = cloudLeads.map((cl: any, idx: number) => {
         const existing = localMap.get(cl.id);
+        // Preserve a newer local edit while an older cloud read is in flight.
+        if (existing && Date.parse(existing.updated_at || '') > Date.parse(cl.updated_at || '')) {
+          return existing;
+        }
         const seq = 1001 + idx;
         return {
           ...cl,
@@ -261,7 +268,12 @@ function getStoredLeads(): Lead[] {
     return JSON.parse(JSON.stringify(SEED_LEADS));
   }
   try {
-    return JSON.parse(raw);
+    return (JSON.parse(raw) as Lead[]).map(lead => ({
+      ...lead,
+      assigned_telecaller_email: lead.assigned_telecaller_email
+        ? normalizeStaffEmail(lead.assigned_telecaller_email)
+        : lead.assigned_telecaller_email
+    }));
   } catch (e) {
     return JSON.parse(JSON.stringify(SEED_LEADS));
   }

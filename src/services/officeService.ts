@@ -9,6 +9,7 @@ import type {
   Lead
 } from '../types';
 import { leadService, hydrateLeadsFromCloud } from './leadService';
+import { normalizeStaffEmail } from '../utils/staffUtils';
 import { metricsService } from './metricsService';
 import { supabase, isCloudActive } from './db';
 import { generateUUID } from '../utils/uuid';
@@ -308,9 +309,9 @@ async function persistOfficeRowDeleted(storageKey: string, table: CrmOfficeTable
  * Supabase and merges into the local cache. A no-op when no cloud session
  * is active. Call once on login and again on company switch, exactly
  * like financeService.hydrateFromCloud(). */
-export async function hydrateCrmFromCloud(companyId?: string): Promise<void> {
-  await hydrateLeadsFromCloud(companyId);
-  if (!isCloudActive() || !supabase) return;
+export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () => true): Promise<void> {
+  await hydrateLeadsFromCloud(companyId, shouldApply);
+  if (!shouldApply() || !isCloudActive() || !supabase) return;
   try {
     const [resources, bookings, followUps, quotations] = await Promise.all([
       loadOfficeTable<Resource>(RESOURCES_KEY, 'resources', companyId),
@@ -318,6 +319,7 @@ export async function hydrateCrmFromCloud(companyId?: string): Promise<void> {
       loadOfficeTable<FollowUp>(FOLLOW_UPS_KEY, 'follow_ups', companyId),
       loadOfficeTable<CrmQuotation>(QUOTATIONS_KEY, 'crm_quotations', companyId)
     ]);
+    if (!shouldApply()) return;
     if (resources && resources.length > 0) {
       localStorage.setItem(RESOURCES_KEY, JSON.stringify(resources));
     }
@@ -407,7 +409,10 @@ export const officeService = {
   // Reports, Customer360Modal, QuotationModal, FollowUpModal,
   // LeadDetailModal) calls them with zero arguments.
   getFollowUps(filter: 'today' | 'upcoming' | 'overdue' | 'completed' | 'all' = 'all', companyId?: string): FollowUp[] {
-    const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
+    const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS).map(item => ({
+      ...item,
+      assigned_staff_email: normalizeStaffEmail(item.assigned_staff_email)
+    }));
     const today = getTodayStr();
     const scopeId = companyId || leadService.getActiveCompany();
 
