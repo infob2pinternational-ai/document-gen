@@ -76,6 +76,75 @@ test('CRM hydration ignores obsolete requests and preserves newer local lead edi
   }
 });
 
+test('CRM hydration replaces stale active-company lead cache with real cloud state', async () => {
+  const companyId = '11111111-1111-4111-8111-111111111111';
+  const otherCompanyId = '22222222-2222-4222-8222-222222222222';
+  const staleCurrent = { id: 'stale-current', company_id: companyId, customer_name: 'Old', phone: '1', updated_at: '2026-09-18T10:00:00Z' };
+  const staleDefault = { id: 'stale-default', company_id: 'default', customer_name: 'Default Old', phone: '2', updated_at: '2026-09-18T10:00:00Z' };
+  const otherCompany = { id: 'other-company', company_id: otherCompanyId, customer_name: 'Other', phone: '3', updated_at: '2026-09-18T10:00:00Z' };
+  const rows = new Map([['docgen_leads', JSON.stringify([staleCurrent, staleDefault, otherCompany])]]);
+  const original = globalThis.localStorage;
+  globalThis.localStorage = { getItem: key => rows.get(key) ?? null, setItem: (key, value) => rows.set(key, value) };
+  try {
+    const { hydrateLeadsFromCloud } = await load('../src/services/leadService.ts', {
+      './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+      './db': asModule('export const isCloudActive = () => true; export const supabase = { from(table) { return { select() { return { eq() { return Promise.resolve({ data: [] }); } }; } }; } };'),
+      '../utils/uuid': asModule('export const generateUUID = () => "test-id";'),
+      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+    });
+    await hydrateLeadsFromCloud(companyId);
+    const leads = JSON.parse(rows.get('docgen_leads'));
+    assert.deepEqual(leads.map(row => row.id), ['other-company']);
+  } finally {
+    if (original === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = original;
+  }
+});
+
+test('office hydration replaces stale active-company dashboard cache with real cloud state', async () => {
+  const companyId = '11111111-1111-4111-8111-111111111111';
+  const otherCompanyId = '22222222-2222-4222-8222-222222222222';
+  const rows = new Map([
+    ['docgen_bookings', JSON.stringify([
+      { id: 'stale-booking', company_id: companyId },
+      { id: 'other-booking', company_id: otherCompanyId }
+    ])],
+    ['docgen_follow_ups', JSON.stringify([
+      { id: 'stale-follow', company_id: companyId },
+      { id: 'other-follow', company_id: otherCompanyId }
+    ])],
+    ['docgen_crm_quotations', JSON.stringify([
+      { id: 'stale-quote', company_id: companyId },
+      { id: 'other-quote', company_id: otherCompanyId }
+    ])]
+  ]);
+  const original = globalThis.localStorage;
+  globalThis.localStorage = { getItem: key => rows.get(key) ?? null, setItem: (key, value) => rows.set(key, value) };
+  try {
+    const { hydrateCrmFromCloud } = await load('../src/services/officeService.ts', {
+      './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+      './leadService': asModule('export const leadService = { getActiveCompany() { return null; }, addLeadActivity() {} }; export async function hydrateLeadsFromCloud() {}'),
+      './db': asModule(`const data = {
+        resources: [{ id: 'resource-1' }],
+        bookings: [],
+        follow_ups: [],
+        crm_quotations: []
+      };
+      export const isCloudActive = () => true;
+      export const supabase = { from(table) { return { select() { const result = { data: data[table] || [] }; return table === 'resources' ? Promise.resolve(result) : { eq() { return Promise.resolve(result); } }; } }; } };`),
+      '../utils/uuid': asModule('export const generateUUID = () => "test-id";'),
+      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+    });
+    await hydrateCrmFromCloud(companyId);
+    assert.deepEqual(JSON.parse(rows.get('docgen_bookings')).map(row => row.id), ['other-booking']);
+    assert.deepEqual(JSON.parse(rows.get('docgen_follow_ups')).map(row => row.id), ['other-follow']);
+    assert.deepEqual(JSON.parse(rows.get('docgen_crm_quotations')).map(row => row.id), ['other-quote']);
+  } finally {
+    if (original === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = original;
+  }
+});
+
 test('owner refresh is scoped, avoids overlapping reads and stops after cleanup', async () => {
   const reactUrl = asModule('export let effect; export function useEffect(fn) { effect = fn; }');
   const officeUrl = asModule('export let handler; export function setHandler(fn) { handler = fn; } export function hydrateCrmFromCloud(...args) { return handler(...args); }');

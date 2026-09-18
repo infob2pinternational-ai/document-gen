@@ -21,11 +21,16 @@ export const Reports: React.FC<ReportsProps> = ({
   const [leads, setLeads] = useState<Lead[]>([]);
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
   const [staffFilter, setStaffFilter] = useState<string>(userRole === 'telecaller' ? userEmail : 'all');
+  const isRestrictedStaff = userRole === 'telecaller';
 
   const refreshAll = () => {
     setLeads(leadService.getLeads());
     setQuotations(officeService.getQuotations());
   };
+
+  useEffect(() => {
+    setStaffFilter(isRestrictedStaff ? userEmail : 'all');
+  }, [isRestrictedStaff, userEmail]);
 
   useEffect(() => {
     refreshAll();
@@ -104,7 +109,7 @@ export const Reports: React.FC<ReportsProps> = ({
           </p>
         </div>
 
-        {userRole !== 'telecaller' && (
+        {!isRestrictedStaff && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>STAFF SCOPE:</span>
             <select

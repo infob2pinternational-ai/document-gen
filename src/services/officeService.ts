@@ -235,28 +235,44 @@ function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
   return payload;
 }
 
-async function loadOfficeTable<T>(storageKey: string, table: CrmOfficeTable, companyId?: string | null): Promise<T[]> {
-  if (isCloudActive() && supabase) {
-    try {
-      let query = supabase.from(table).select('*');
-      if (companyId && table !== 'resources' && UUID_REGEX.test(companyId)) {
-        query = query.eq('company_id', companyId);
-      }
-      const { data, error } = await query;
-      if (!error && data) return data as T[];
-      if (error) {
-        console.warn(`[officeService] Failed to query ${table} from Supabase:`, error.message || error);
-      }
-    } catch (err) {
-      console.warn(`[officeService] Error querying ${table} from Supabase:`, err);
-    }
-  }
+async function queryOfficeTableFromCloud<T>(table: CrmOfficeTable, companyId?: string | null): Promise<T[] | null> {
+  if (!isCloudActive() || !supabase) return null;
   try {
-    const raw = localStorage.getItem(storageKey);
-    return raw ? (JSON.parse(raw) as T[]) : [];
-  } catch {
-    return [];
+    let query = supabase.from(table).select('*');
+    if (companyId && table !== 'resources' && UUID_REGEX.test(companyId)) {
+      query = query.eq('company_id', companyId);
+    }
+    const { data, error } = await query;
+    if (!error && data) return data as T[];
+    if (error) {
+      console.warn(`[officeService] Failed to query ${table} from Supabase:`, error.message || error);
+    }
+  } catch (err) {
+    console.warn(`[officeService] Error querying ${table} from Supabase:`, err);
   }
+  return null;
+}
+
+function belongsToDifferentExplicitCompany(row: { company_id?: string | null }, companyId?: string | null): boolean {
+  if (!companyId || !UUID_REGEX.test(companyId)) return false;
+  return Boolean(row.company_id && row.company_id !== 'default' && row.company_id !== companyId);
+}
+
+function replaceCompanyScopedCache<T extends { id: string; company_id?: string | null }>(
+  storageKey: string,
+  localRows: T[],
+  cloudRows: T[],
+  companyId?: string | null
+): T[] {
+  if (!companyId || !UUID_REGEX.test(companyId)) {
+    localStorage.setItem(storageKey, JSON.stringify(cloudRows));
+    return cloudRows;
+  }
+  const cloudIds = new Set(cloudRows.map(row => row.id));
+  const preserved = localRows.filter(row => belongsToDifferentExplicitCompany(row, companyId) && !cloudIds.has(row.id));
+  const merged = [...cloudRows, ...preserved];
+  localStorage.setItem(storageKey, JSON.stringify(merged));
+  return merged;
 }
 
 async function persistOfficeRow<T extends { id: string }>(storageKey: string, table: CrmOfficeTable, fullLocalArray: T[], changedRow: T): Promise<void> {
@@ -314,24 +330,20 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
   if (!shouldApply() || !isCloudActive() || !supabase) return;
   try {
     const [resources, bookings, followUps, quotations] = await Promise.all([
-      loadOfficeTable<Resource>(RESOURCES_KEY, 'resources', companyId),
-      loadOfficeTable<Booking>(BOOKINGS_KEY, 'bookings', companyId),
-      loadOfficeTable<FollowUp>(FOLLOW_UPS_KEY, 'follow_ups', companyId),
-      loadOfficeTable<CrmQuotation>(QUOTATIONS_KEY, 'crm_quotations', companyId)
+      queryOfficeTableFromCloud<Resource>('resources', companyId),
+      queryOfficeTableFromCloud<Booking>('bookings', companyId),
+      queryOfficeTableFromCloud<FollowUp>('follow_ups', companyId),
+      queryOfficeTableFromCloud<CrmQuotation>('crm_quotations', companyId)
     ]);
     if (!shouldApply()) return;
     if (resources && resources.length > 0) {
       localStorage.setItem(RESOURCES_KEY, JSON.stringify(resources));
     }
-    if (bookings && bookings.length > 0) {
+    if (bookings) {
       const localBookings = getLocal<Booking[]>(BOOKINGS_KEY, SEED_BOOKINGS);
-      const merged = [...bookings];
-      for (const loc of localBookings) {
-        if (!merged.some(b => b.id === loc.id)) merged.push(loc);
-      }
-      localStorage.setItem(BOOKINGS_KEY, JSON.stringify(merged));
+      replaceCompanyScopedCache(BOOKINGS_KEY, localBookings, bookings, companyId);
     }
-    if (followUps && followUps.length > 0) {
+    if (followUps) {
       const localFollowUps = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
       const localMap = new Map(localFollowUps.map(f => [f.id, f]));
       const mappedCloud: FollowUp[] = (followUps as any[]).map(fu => {
@@ -348,19 +360,11 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
           lead_number: existing?.lead_number || fu.lead_number
         };
       });
-      const merged = [...mappedCloud];
-      for (const loc of localFollowUps) {
-        if (!merged.some(f => f.id === loc.id)) merged.push(loc);
-      }
-      localStorage.setItem(FOLLOW_UPS_KEY, JSON.stringify(merged));
+      replaceCompanyScopedCache(FOLLOW_UPS_KEY, localFollowUps, mappedCloud, companyId);
     }
-    if (quotations && quotations.length > 0) {
+    if (quotations) {
       const localQuotations = getLocal<CrmQuotation[]>(QUOTATIONS_KEY, SEED_QUOTATIONS);
-      const merged = [...quotations];
-      for (const loc of localQuotations) {
-        if (!merged.some(q => q.id === loc.id)) merged.push(loc);
-      }
-      localStorage.setItem(QUOTATIONS_KEY, JSON.stringify(merged));
+      replaceCompanyScopedCache(QUOTATIONS_KEY, localQuotations, quotations, companyId);
     }
     metricsService.notifyChange();
   } catch (e) {
