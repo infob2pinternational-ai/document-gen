@@ -81,14 +81,6 @@ function parseDelimitedText(text: string): string[][] {
   return lines;
 }
 
-function colLetterToIndex(colStr: string): number {
-  let index = 0;
-  for (let i = 0; i < colStr.length; i++) {
-    index = index * 26 + (colStr.charCodeAt(i) - 64);
-  }
-  return index - 1;
-}
-
 /**
  * Lightweight XLSX reader using JSZip (extracts sheet1.xml & sharedStrings.xml)
  */
@@ -130,36 +122,14 @@ async function parseXlsxFile(file: File): Promise<string[][]> {
     for (let c = 0; c < cNodes.length; c++) {
       const cNode = cNodes[c];
       const type = cNode.getAttribute('t');
-      const cellRef = cNode.getAttribute('r') || '';
-      const match = cellRef.match(/^([A-Z]+)(\d+)$/);
-      let colIdx = c;
-      if (match) {
-        colIdx = colLetterToIndex(match[1]);
+      const vNode = cNode.getElementsByTagName('v')[0];
+      let val = vNode ? vNode.textContent || '' : '';
+
+      if (type === 's' && sharedStrings[parseInt(val, 10)]) {
+        val = sharedStrings[parseInt(val, 10)];
       }
 
-      let val = '';
-      if (type === 'inlineStr') {
-        const isNode = cNode.getElementsByTagName('is')[0];
-        val = isNode ? isNode.textContent || '' : '';
-      } else {
-        const vNode = cNode.getElementsByTagName('v')[0];
-        val = vNode ? vNode.textContent || '' : '';
-        if (type === 's') {
-          const sIdx = parseInt(val, 10);
-          if (!isNaN(sIdx) && sharedStrings[sIdx] !== undefined) {
-            val = sharedStrings[sIdx];
-          }
-        }
-      }
-
-      rowData[colIdx] = val.trim();
-    }
-
-    // Fill any sparse column gaps with empty string
-    for (let i = 0; i < rowData.length; i++) {
-      if (rowData[i] === undefined) {
-        rowData[i] = '';
-      }
+      rowData.push(val.trim());
     }
 
     if (rowData.some(cell => cell !== '')) {
@@ -306,8 +276,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
       setImportProgress(100);
       if (res.failedCount > 0) {
-        const sampleErr = res.errors[0] ? `\n\nDetail: ${res.errors[0]}` : '';
-        alert(`Import completed with partial warnings:\n• ${res.importedCount} records imported successfully.\n• ${res.failedCount} rows failed and were safely logged to system errors.${sampleErr}`);
+        alert(`Import completed with partial warnings:\n• ${res.importedCount} records imported successfully.\n• ${res.failedCount} rows failed and were safely logged to system errors.`);
       }
       setTimeout(() => {
         onImportSuccess(res.importedCount, res.activitiesCreated);

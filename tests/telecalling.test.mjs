@@ -28,11 +28,10 @@ const leadServiceMock = {
   getLead(id) { return this.leads.find(l => l.id === id) || null; },
   getLeadById(id) { return this.leads.find(l => l.id === id) || null; },
   saveLead(lead) {
-    const record = { id: lead.id || `lead-${Date.now()}-${Math.random()}`, ...lead };
-    const idx = this.leads.findIndex(l => l.id === record.id);
-    if (idx >= 0) this.leads[idx] = { ...this.leads[idx], ...record };
-    else this.leads.push(record);
-    return record;
+    const idx = this.leads.findIndex(l => l.id === lead.id);
+    if (idx >= 0) this.leads[idx] = { ...this.leads[idx], ...lead };
+    else this.leads.push(lead);
+    return lead;
   },
   getLeadActivities(leadId) {
     if (!leadId) return this.activities;
@@ -475,54 +474,4 @@ test('logCallResult: idempotency prevents duplicate call count and duplicate act
   assert.equal(leadServiceMock.getLead('lead-idempotent-1').call_count, 1);
   assert.equal(leadServiceMock.activities.length, 1);
 });
-
-// 11. Flexible Date Parsing & Excel Import with Indian Dates
-test('parseFlexibleDateToIso and executeExcelImport handle Indian/Excel date formats safely', async () => {
-  // Test dateUtils parser directly
-  assert.ok(dateUtils.parseFlexibleDateToIso('17/09/2026')?.startsWith('2026-09-17'));
-  assert.ok(dateUtils.parseFlexibleDateToIso('17-09-2026')?.startsWith('2026-09-17'));
-  assert.ok(dateUtils.parseFlexibleDateToIso('17.09.2026')?.startsWith('2026-09-17'));
-  assert.ok(dateUtils.parseFlexibleDateToIso('45548')?.length > 0);
-  assert.equal(dateUtils.parseFlexibleDateToIso('N/A'), undefined);
-  assert.equal(dateUtils.parseFlexibleDateToIso('invalid-text'), undefined);
-
-  // Test executeExcelImport with Indian formatted dates
-  leadServiceMock.leads = [];
-  leadServiceMock.activities = [];
-
-  const rows = [
-    {
-      company_name: 'Kerala Spices Co',
-      customer_name: 'Mathew',
-      phone: '9847111222',
-      date: '17/09/2026',
-      remarks: 'Interested in quotation'
-    },
-    {
-      company_name: 'Malabar Logistics',
-      customer_name: 'Faizal',
-      phone: '9847333444',
-      date: '18-09-2026',
-      remarks: 'Call back next week'
-    },
-    {
-      company_name: 'Calicut Traders',
-      customer_name: 'Ramesh',
-      phone: '9847555666',
-      date: 'N/A',
-      remarks: 'Not reachable'
-    }
-  ];
-
-  const importResult = await telecallingService.executeExcelImport(rows, {
-    assignedTelecallerEmail: 'anjali@b2p.com',
-    importUserEmail: 'admin@b2p.com'
-  });
-
-  assert.equal(importResult.importedCount, 3);
-  assert.equal(importResult.failedCount, 0);
-  assert.equal(leadServiceMock.leads.length, 3);
-  assert.equal(leadServiceMock.activities.length, 3);
-});
-
 

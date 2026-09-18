@@ -444,12 +444,12 @@ export const leadService = {
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   },
 
-  async addLeadActivity(activity: Omit<LeadActivity, 'id' | 'created_at'> & { created_at?: string }): Promise<LeadActivity> {
+  async addLeadActivity(activity: Omit<LeadActivity, 'id' | 'created_at'>): Promise<LeadActivity> {
     const activities = getStoredActivities();
     const newAct: LeadActivity = {
       ...activity,
       id: generateUUID(),
-      created_at: activity.created_at || new Date().toISOString()
+      created_at: new Date().toISOString()
     };
     activities.unshift(newAct);
     await persistCrmRow(ACTIVITIES_KEY, 'lead_activities', activities, newAct);
