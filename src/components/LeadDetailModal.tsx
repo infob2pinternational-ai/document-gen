@@ -35,18 +35,18 @@ interface LeadDetailModalProps {
 }
 
 const PIPELINE_STAGES: { key: LeadStatus; label: string; stepNumber: number }[] = [
-  { key: 'new', label: '1. New Intake', stepNumber: 1 },
-  { key: 'telecaller_working', label: '2. Working', stepNumber: 2 },
-  { key: 'requirement_collected', label: '3. Req Collected', stepNumber: 3 },
-  { key: 'sent_to_admin', label: '4. Sent to Admin', stepNumber: 4 },
-  { key: 'quotation_preparing', label: '5. Quoting', stepNumber: 5 },
-  { key: 'waiting_owner_approval', label: '6. Owner Approval', stepNumber: 6 },
-  { key: 'quotation_sent', label: '7. Quote Sent', stepNumber: 7 },
-  { key: 'follow_up', label: '8. Follow-up', stepNumber: 8 },
-  { key: 'confirmed', label: '9. Confirmed (Won)', stepNumber: 9 },
-  { key: 'owner_handover', label: '10. Handover', stepNumber: 10 },
-  { key: 'future', label: '11. Future Lead', stepNumber: 11 },
-  { key: 'lost', label: '12. Lost Lead', stepNumber: 12 }
+  { key: 'new', label: 'New lead', stepNumber: 1 },
+  { key: 'telecaller_working', label: 'Calling', stepNumber: 2 },
+  { key: 'requirement_collected', label: 'Details collected', stepNumber: 3 },
+  { key: 'sent_to_admin', label: 'Sent to admin', stepNumber: 4 },
+  { key: 'quotation_preparing', label: 'Quotation preparing', stepNumber: 5 },
+  { key: 'waiting_owner_approval', label: 'Waiting owner approval', stepNumber: 6 },
+  { key: 'quotation_sent', label: 'Quotation sent', stepNumber: 7 },
+  { key: 'follow_up', label: 'Follow-up', stepNumber: 8 },
+  { key: 'confirmed', label: 'Confirmed', stepNumber: 9 },
+  { key: 'owner_handover', label: 'Owner handover', stepNumber: 10 },
+  { key: 'future', label: 'Future lead', stepNumber: 11 },
+  { key: 'lost', label: 'Lost', stepNumber: 12 }
 ];
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
@@ -189,14 +189,19 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           </div>
         </div>
 
-        {/* 2. Horizontally Scrollable 12-Stage Pipeline Stepper */}
+        {/* 2. Horizontally Scrollable Lead Progress Stepper */}
         <div className="pipeline-track">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-            <span style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.05em', color: '#64748b', textTransform: 'uppercase' }}>
-              WORKFLOW PIPELINE (12 STAGES)
-            </span>
-            <span style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>
-              Scroll to view all →
+            <div>
+              <span style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.05em', color: '#64748b', textTransform: 'uppercase' }}>
+                Lead Progress
+              </span>
+              <div style={{ fontSize: '0.6875rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                Shows the current step for this enquiry. Click a step only when you want to update the lead status.
+              </div>
+            </div>
+            <span style={{ fontSize: '0.6875rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+              Scroll →
             </span>
           </div>
 
