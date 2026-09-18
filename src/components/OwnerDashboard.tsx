@@ -59,6 +59,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
   const [payments, setPayments] = useState<PaymentReceived[]>([]);
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [financeMetrics, setFinanceMetrics] = useState<any>(null);
+  const [lastDataRefresh, setLastDataRefresh] = useState<string>('');
 
   // Modals for In-Cockpit Immediate Actions
   const [quotationModalOpen, setQuotationModalOpen] = useState(false);
@@ -92,6 +93,11 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
     });
     allActs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     setActivities(allActs);
+    setLastDataRefresh(new Date().toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }));
   };
 
   useEffect(() => {
@@ -429,6 +435,11 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
           </div>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
             Real-time business intelligence, actionable approvals, revenue velocity, and fleet utilization.
+            {lastDataRefresh && (
+              <span style={{ marginLeft: '0.45rem', color: 'var(--text-muted)' }}>
+                Synced {lastDataRefresh}
+              </span>
+            )}
           </p>
         </div>
 

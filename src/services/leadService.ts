@@ -100,28 +100,44 @@ function sanitizeActivityForSupabase(row: any) {
   return payload;
 }
 
-async function loadCrmTable<T>(storageKey: string, table: CrmLeadsTable, companyId?: string | null): Promise<T[]> {
-  if (isCloudActive() && supabase) {
-    try {
-      let query = supabase.from(table).select('*');
-      if (companyId && UUID_REGEX.test(companyId)) {
-        query = query.eq('company_id', companyId);
-      }
-      const { data, error } = await query;
-      if (!error && data) return data as T[];
-      if (error) {
-        console.warn(`[leadService] Failed to query ${table} from Supabase:`, error.message || error);
-      }
-    } catch (err) {
-      console.warn(`[leadService] Error querying ${table} from Supabase:`, err);
-    }
-  }
+async function queryCrmTableFromCloud<T>(table: CrmLeadsTable, companyId?: string | null): Promise<T[] | null> {
+  if (!isCloudActive() || !supabase) return null;
   try {
-    const raw = localStorage.getItem(storageKey);
-    return raw ? (JSON.parse(raw) as T[]) : [];
-  } catch {
-    return [];
+    let query = supabase.from(table).select('*');
+    if (companyId && UUID_REGEX.test(companyId)) {
+      query = query.eq('company_id', companyId);
+    }
+    const { data, error } = await query;
+    if (!error && data) return data as T[];
+    if (error) {
+      console.warn(`[leadService] Failed to query ${table} from Supabase:`, error.message || error);
+    }
+  } catch (err) {
+    console.warn(`[leadService] Error querying ${table} from Supabase:`, err);
   }
+  return null;
+}
+
+function belongsToDifferentExplicitCompany(row: { company_id?: string | null }, companyId?: string | null): boolean {
+  if (!companyId || !UUID_REGEX.test(companyId)) return false;
+  return Boolean(row.company_id && row.company_id !== 'default' && row.company_id !== companyId);
+}
+
+function replaceCompanyScopedCache<T extends { id: string; company_id?: string | null }>(
+  storageKey: string,
+  localRows: T[],
+  cloudRows: T[],
+  companyId?: string | null
+): T[] {
+  if (!companyId || !UUID_REGEX.test(companyId)) {
+    localStorage.setItem(storageKey, JSON.stringify(cloudRows));
+    return cloudRows;
+  }
+  const cloudIds = new Set(cloudRows.map(row => row.id));
+  const preserved = localRows.filter(row => belongsToDifferentExplicitCompany(row, companyId) && !cloudIds.has(row.id));
+  const merged = [...cloudRows, ...preserved];
+  localStorage.setItem(storageKey, JSON.stringify(merged));
+  return merged;
 }
 
 async function persistCrmRow<T extends { id: string }>(storageKey: string, table: CrmLeadsTable, fullLocalArray: T[], changedRow: T): Promise<void> {
@@ -177,13 +193,13 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
   if (!isCloudActive() || !supabase) return;
   try {
     const [cloudLeads, cloudActivities] = await Promise.all([
-      loadCrmTable<Lead>(LEADS_KEY, 'leads', companyId),
-      loadCrmTable<LeadActivity>(ACTIVITIES_KEY, 'lead_activities', companyId)
+      queryCrmTableFromCloud<Lead>('leads', companyId),
+      queryCrmTableFromCloud<LeadActivity>('lead_activities', companyId)
     ]);
 
     if (!shouldApply()) return;
 
-    if (cloudLeads && cloudLeads.length > 0) {
+    if (cloudLeads) {
       const localLeads = getStoredLeads();
       const localMap = new Map(localLeads.map(l => [l.id, l]));
       const merged: Lead[] = cloudLeads.map((cl: any, idx: number) => {
@@ -198,15 +214,10 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
           lead_number: cl.lead_number || existing?.lead_number || `B2P-LD-${seq}`
         };
       });
-      for (const loc of localLeads) {
-        if (!merged.some(c => c.id === loc.id)) {
-          merged.push(loc);
-        }
-      }
-      localStorage.setItem(LEADS_KEY, JSON.stringify(merged));
+      replaceCompanyScopedCache(LEADS_KEY, localLeads, merged, companyId);
     }
 
-    if (cloudActivities && cloudActivities.length > 0) {
+    if (cloudActivities) {
       const localActs = getStoredActivities();
       const mappedCloud: LeadActivity[] = (cloudActivities as any[]).map(ca => ({
         id: ca.id,
@@ -217,13 +228,7 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
         note: ca.notes || ca.note || '',
         created_at: ca.created_at
       }));
-      const mergedActs = [...mappedCloud];
-      for (const act of localActs) {
-        if (!mergedActs.some(c => c.id === act.id)) {
-          mergedActs.push(act);
-        }
-      }
-      localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(mergedActs));
+      replaceCompanyScopedCache(ACTIVITIES_KEY, localActs, mappedCloud, companyId);
     }
 
     metricsService.notifyChange();
