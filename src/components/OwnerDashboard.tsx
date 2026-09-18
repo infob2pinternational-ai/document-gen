@@ -13,7 +13,6 @@ import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
 import { metricsService, getDateRangeBounds, isDateInBounds, type DateFilterType } from '../services/metricsService';
 import { financeService } from '../services/financeService';
-import { telecallingService } from '../services/telecallingService';
 import { QuotationModal } from './QuotationModal';
 import { FollowUpModal } from './FollowUpModal';
 import { 
@@ -27,8 +26,7 @@ import {
   ChevronRight, 
   Activity, 
   Layers,
-  UserCheck,
-  PhoneCall
+  UserCheck
 } from 'lucide-react';
 
 interface OwnerDashboardProps {
@@ -237,9 +235,6 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
 
   // Telecaller Performance Data (Dynamically derived from real application records)
   const telecallerMetrics = metricsService.getTelecallerMetrics();
-  const telecallingTodayReport = useMemo(() => {
-    return telecallingService.getDailyActivityReport();
-  }, [leads, activities]);
 
   // Lead Pipeline Funnel Breakdown
   const leadPipelineStages = useMemo(() => {
@@ -523,34 +518,6 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
         gap: '0.85rem'
       }}>
         
-        {/* KPI 0: Telecalling Today */}
-        <div 
-          onClick={() => onNavigateTab('telecalling-eod-report')}
-          className="glass-panel glass-card-hoverable"
-          style={{ padding: '1rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderLeft: '4px solid #10b981' }}
-          title="Click to open End-of-Day Telecalling Report"
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
-              <PhoneCall size={17} />
-            </div>
-            <span style={{ fontSize: '0.6875rem', fontWeight: 700, background: 'rgba(16, 185, 129, 0.1)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.15rem 0.45rem', borderRadius: '9999px' }}>
-              {telecallingTodayReport.overall.called} Called Today
-            </span>
-          </div>
-          <div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>
-              {telecallingTodayReport.overall.connected} Connected
-            </div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              {telecallingTodayReport.overall.remaining} Pending ({telecallingTodayReport.overall.interested} Interested)
-            </div>
-          </div>
-          <div style={{ fontSize: '0.6875rem', color: 'var(--brand-blue)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: 'auto' }}>
-            <span>View End-of-Day Report</span> <ChevronRight size={12} />
-          </div>
-        </div>
-
         {/* KPI 1: Leads & Inquiries */}
         <div 
           onClick={() => onNavigateTab('leads')}
@@ -1244,67 +1211,60 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
               <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Telecaller Activity Today
+                Team Performance
               </h2>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Live daily activity telemetry (Asia/Kolkata)
+                Dynamic velocity derived from active accounts
               </span>
             </div>
             <button 
-              onClick={() => onNavigateTab('telecalling-eod-report')}
+              onClick={() => onNavigateTab('reports')}
               className="btn-ghost" 
               style={{ fontSize: '0.72rem', color: 'var(--brand-blue)', fontWeight: 600, padding: '0.2rem 0.5rem' }}
             >
-              End-of-Day Report →
+              Full Analytics
             </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1 }}>
             {telecallerMetrics.length > 0 ? (
-              telecallerMetrics.map((staff) => {
-                const tcToday = telecallingTodayReport.telecallers.find(t => t.email.toLowerCase() === staff.email.toLowerCase());
-                const todayCalls = tcToday ? tcToday.totalCalls : 0;
-                const todayConnected = tcToday ? tcToday.connected : 0;
-
-                return (
-                  <div 
-                    key={staff.email}
-                    onClick={() => onNavigateTab('telecalling-eod-report')}
-                    className="glass-card-hoverable"
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.75)',
-                      border: '1px solid rgba(226, 232, 240, 0.8)',
-                      borderRadius: '10px',
-                      padding: '0.65rem 0.8rem',
-                      cursor: 'pointer'
-                    }}
-                    title={`Click to view End-of-Day report for ${staff.name}`}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                        <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--brand-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800 }}>
-                          {staff.name.charAt(0)}
-                        </div>
-                        <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--text-primary)' }}>
-                          {staff.name}
-                        </span>
+              telecallerMetrics.map((staff) => (
+                <div 
+                  key={staff.email}
+                  onClick={() => onNavigateTab('reports')}
+                  className="glass-card-hoverable"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.75)',
+                    border: '1px solid rgba(226, 232, 240, 0.8)',
+                    borderRadius: '10px',
+                    padding: '0.65rem 0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--brand-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800 }}>
+                        {staff.name.charAt(0)}
                       </div>
-                      <div className="mono" style={{ fontSize: '0.75rem', fontWeight: 800, color: todayCalls > 0 ? '#10b981' : 'var(--text-muted)' }}>
-                        {todayCalls} calls today
-                      </div>
+                      <span style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-primary)' }}>
+                        {staff.name}
+                      </span>
                     </div>
-
-                    <div style={{ height: '4px', background: 'rgba(226, 232, 240, 0.7)', borderRadius: '9999px', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(100, Math.max(8, (todayCalls / 50) * 100))}%`, height: '100%', background: todayCalls > 25 ? '#10b981' : '#3b82f6', borderRadius: '9999px' }} />
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                      <span>{todayConnected} connected • {staff.assignedLeads} leads assigned</span>
-                      <span style={{ color: 'var(--brand-blue)', fontWeight: 600 }}>View report →</span>
+                    <div className="mono" style={{ fontSize: '0.72rem', fontWeight: 700, color: staff.conversionRate > 20 ? '#059669' : '#d97706' }}>
+                      {staff.conversionRate}% Win ({staff.confirmed})
                     </div>
                   </div>
-                );
-              })
+
+                  <div style={{ height: '4px', background: 'rgba(226, 232, 240, 0.7)', borderRadius: '9999px', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.min(100, Math.max(10, staff.conversionRate))}%`, height: '100%', background: staff.conversionRate > 20 ? '#10b981' : '#f59e0b', borderRadius: '9999px' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                    <span>{staff.assignedLeads} leads assigned</span>
+                    <span>{staff.followUpsDue} follow-ups due</span>
+                  </div>
+                </div>
+              ))
             ) : (
               <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                 No active staff assignments in current records.

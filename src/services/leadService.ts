@@ -57,8 +57,6 @@ function sanitizeLeadForSupabase(row: any) {
     payload.customer_id = row.customer_id;
   }
   if (row.company_name) payload.company_name = row.company_name;
-  if (row.alternate_phone) payload.alternate_phone = row.alternate_phone;
-  if (row.email) payload.email = row.email;
   if (row.whatsapp_number) payload.whatsapp_number = row.whatsapp_number;
   if (row.address) payload.address = row.address;
   if (row.location) payload.location = row.location;
@@ -71,12 +69,6 @@ function sanitizeLeadForSupabase(row: any) {
   if (row.assigned_telecaller_email) payload.assigned_telecaller_email = row.assigned_telecaller_email;
   if (row.notes) payload.notes = row.notes;
   if (row.remarks) payload.remarks = row.remarks;
-  if (row.last_call_at) payload.last_call_at = row.last_call_at;
-  if (row.last_call_outcome) payload.last_call_outcome = row.last_call_outcome;
-  if (row.last_call_remark) payload.last_call_remark = row.last_call_remark;
-  if (row.call_count !== undefined) payload.call_count = Number(row.call_count);
-  if (row.last_contacted_by_email) payload.last_contacted_by_email = row.last_contacted_by_email;
-  if (row.is_telecalling_lead !== undefined) payload.is_telecalling_lead = Boolean(row.is_telecalling_lead);
 
   if (row.required_date && typeof row.required_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.required_date)) {
     payload.required_date = row.required_date;
@@ -97,22 +89,14 @@ function sanitizeActivityForSupabase(row: any) {
   const payload: any = {
     id: row.id,
     lead_id: row.lead_id,
-    action: row.action || row.type || 'activity',
-    user_email: row.user_email || row.performed_by || 'Staff',
-    note: row.note || row.notes || '',
-    activity_type: row.activity_type || 'call',
+    type: row.action || row.type || 'activity',
+    performed_by: row.user_email || row.performed_by || 'Staff',
+    notes: row.note || row.notes || '',
     created_at: row.created_at || new Date().toISOString()
   };
   if (row.company_id && UUID_REGEX.test(row.company_id)) {
     payload.company_id = row.company_id;
   }
-  if (row.call_outcome) payload.call_outcome = row.call_outcome;
-  if (row.phone_used) payload.phone_used = row.phone_used;
-  if (row.contact_person) payload.contact_person = row.contact_person;
-  if (row.next_follow_up_at) payload.next_follow_up_at = row.next_follow_up_at;
-  if (row.previous_status) payload.previous_status = row.previous_status;
-  if (row.new_status) payload.new_status = row.new_status;
-  if (row.updated_at) payload.updated_at = row.updated_at;
   return payload;
 }
 
@@ -356,8 +340,6 @@ export const leadService = {
       customer_name: lead.customer_name,
       company_name: lead.company_name,
       phone: lead.phone,
-      alternate_phone: lead.alternate_phone,
-      email: lead.email,
       whatsapp_number: lead.whatsapp_number || lead.phone,
       address: lead.address,
       location: lead.location,
@@ -375,12 +357,6 @@ export const leadService = {
       next_follow_up_at: lead.next_follow_up_at,
       notes: lead.notes,
       remarks: lead.remarks,
-      last_call_at: lead.last_call_at,
-      last_call_outcome: lead.last_call_outcome,
-      last_call_remark: lead.last_call_remark,
-      call_count: lead.call_count !== undefined ? Number(lead.call_count) : 0,
-      last_contacted_by_email: lead.last_contacted_by_email,
-      is_telecalling_lead: lead.is_telecalling_lead !== undefined ? Boolean(lead.is_telecalling_lead) : true,
       created_at: lead.created_at || now,
       updated_at: now
     };
@@ -444,12 +420,12 @@ export const leadService = {
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   },
 
-  async addLeadActivity(activity: Omit<LeadActivity, 'id' | 'created_at'> & { created_at?: string }): Promise<LeadActivity> {
+  async addLeadActivity(activity: Omit<LeadActivity, 'id' | 'created_at'>): Promise<LeadActivity> {
     const activities = getStoredActivities();
     const newAct: LeadActivity = {
       ...activity,
       id: generateUUID(),
-      created_at: activity.created_at || new Date().toISOString()
+      created_at: new Date().toISOString()
     };
     activities.unshift(newAct);
     await persistCrmRow(ACTIVITIES_KEY, 'lead_activities', activities, newAct);
