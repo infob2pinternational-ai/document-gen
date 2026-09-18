@@ -44,7 +44,7 @@ function sanitizeLeadForSupabase(row: any) {
     id: row.id,
     customer_name: row.customer_name,
     phone: row.phone,
-    priority: row.priority || 'WARM',
+    priority: String(row.priority || 'WARM').toLowerCase(),
     status: row.status || 'new',
     created_at: row.created_at || new Date().toISOString(),
     updated_at: row.updated_at || new Date().toISOString()
@@ -282,6 +282,7 @@ function getStoredLeads(): Lead[] {
   try {
     return (JSON.parse(raw) as Lead[]).map(lead => ({
       ...lead,
+      priority: String(lead.priority || 'warm').toUpperCase() as Lead['priority'],
       assigned_telecaller_email: lead.assigned_telecaller_email
         ? normalizeStaffEmail(lead.assigned_telecaller_email)
         : lead.assigned_telecaller_email
