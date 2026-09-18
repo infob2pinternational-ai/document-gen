@@ -15,6 +15,66 @@ async function load(path, replacements = {}) {
 }
 const staff = await load('../src/utils/staffUtils.ts');
 
+test('shared lead save requires cloud confirmation and is visible from a fresh browser cache', async () => {
+  const original = globalThis.localStorage;
+  const rows = new Map();
+  globalThis.localStorage = { getItem: key => rows.get(key) ?? null, setItem: (key, value) => rows.set(key, value) };
+  const dbUrl = asModule(`
+    export let failure = 'Permission denied';
+    export let active = true;
+    export function setFailure(value) { failure = value; }
+    export function setActive(value) { active = value; }
+    const leads = new Map();
+    export const isCloudActive = () => active;
+    export const supabase = { from(table) { return {
+      upsert(row) {
+        if (table !== 'leads') return Promise.resolve({ error: null });
+        return { select() { return { async single() {
+          if (failure) return { error: { message: failure } };
+          leads.set(row.id, row);
+          return { data: { id: row.id }, error: null };
+        } }; } };
+      },
+      select() { return { async eq(column, value) {
+        return { data: table === 'leads' ? [...leads.values()].filter(row => row[column] === value) : [] };
+      } }; }
+    }; } };
+  `);
+  try {
+    const db = await import(dbUrl);
+    const { leadService, hydrateLeadsFromCloud } = await load('../src/services/leadService.ts', {
+      './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+      './db': dbUrl,
+      '../utils/uuid': asModule('export const generateUUID = () => "shared-lead";'),
+      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+    });
+    const company = '11111111-1111-4111-8111-111111111111';
+    const input = { company_id: company, customer_name: 'Shared enquiry', phone: '1234567890' };
+    await assert.rejects(leadService.saveLead(input), /Permission denied/);
+    assert.equal(leadService.getLeads(company).length, 0);
+    db.setActive(false);
+    await assert.rejects(leadService.saveLead(input), /sign in again/);
+    db.setActive(true);
+    db.setFailure(null);
+    const saved = await leadService.saveLead(input, 'creator@example.com');
+    rows.clear();
+    await hydrateLeadsFromCloud(company);
+    assert.equal(leadService.getLeads(company)[0].id, saved.id);
+    assert.equal(leadService.getLeads('22222222-2222-4222-8222-222222222222').length, 0);
+    db.setFailure('Network unavailable');
+    await assert.rejects(leadService.saveLead({ ...saved, customer_name: 'Unsaved edit' }), /Network unavailable/);
+    assert.equal(leadService.getLeads(company)[0].customer_name, 'Shared enquiry');
+  } finally {
+    if (original === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = original;
+  }
+});
+
+test('automatic CRM refresh is enabled for staff as well as owners', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /useCrmRefresh\(user\?\.id, activeProfile\?\.id,\s*isSupabaseConfigured\(\) && !publicViewDocId\)/);
+});
+
 test('owner is listed once even when old assignments use the misspelled address', () => {
   const leads = [{ assigned_telecaller_email: 'sarathjohnpanegdan@gmail.com' }];
   const followUps = [{ assigned_staff_email: 'SARATHJOHNPANENGADAN@gmail.com ' }];
