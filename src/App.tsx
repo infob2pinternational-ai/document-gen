@@ -618,7 +618,7 @@ function App() {
         const dueFollowUps = officeService.getFollowUps('all', activeProfile.id)
           .filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED')
           .filter(f => {
-            const dueAt = new Date(`${f.due_date}T${f.due_time || '10:00'}:00`);
+            const dueAt = new Date(`${f.due_date}T${(f.due_time || '10:00').slice(0, 5)}:00`);
             return !Number.isNaN(dueAt.getTime()) && dueAt <= now;
           })
           .filter(f => {

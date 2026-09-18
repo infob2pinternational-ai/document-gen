@@ -125,7 +125,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <TrendingUp size={24} />
             </div>
             <div>
-              <p style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>Revenue (Paid)</p>
+              <p style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>Approved Invoice Value</p>
               <h3 className="mono" style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.25rem' }}>
                 {formatCurrency(stats.revenue, activeProfile?.currency || 'INR')}
               </h3>
@@ -385,7 +385,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       DOCUMENTS count above stays visible for everyone. */}
                   {!hideFinancials && (
                     <div style={{ textAlign: 'right' }}>
-                      <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.7rem' }}>COLLECTED REVENUE</span>
+                      <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.7rem' }}>APPROVED INVOICE VALUE</span>
                       <span className="mono" style={{ fontWeight: 600, color: 'var(--accent-success)' }}>
                         {formatCurrency(revenue, profile.currency)}
                       </span>
