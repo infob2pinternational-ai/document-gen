@@ -6,6 +6,13 @@ export interface StaffOption {
   label: string;
 }
 
+const KNOWN_ACTIVE_STAFF: Array<{ email: string; name: string }> = [
+  { email: 'sarathjohnpanengadan@gmail.com', name: 'Sarath John Panengadan' },
+  { email: 'fransonputhukkara@gmail.com', name: 'Franson Puthukkara' },
+  { email: 'sivasatheesan33@gmail.com', name: 'Sivasatheesan33' },
+  { email: 'brutf5354@gmail.com', name: 'Brutf5354' }
+];
+
 // Display/assignment compatibility only; never use this to authorize a login.
 export function normalizeStaffEmail(email?: string | null): string {
   const clean = (email || '').toLowerCase().trim();
@@ -27,6 +34,8 @@ export function formatStaffDisplayName(email?: string | null): string {
   // Known company staff / leaders
   if (clean === 'fransonputhukkara@gmail.com') return 'Franson Puthukkara';
   if (clean === 'sarathjohnpanengadan@gmail.com' || clean === 'sarathjohnpanegdan@gmail.com') return 'Sarath John Panengadan';
+  if (clean === 'sivasatheesan33@gmail.com') return 'Sivasatheesan33';
+  if (clean === 'brutf5354@gmail.com') return 'Brutf5354';
   if (clean === 'owner@b2p.com') return 'Sarath John Panengadan (Owner)';
   if (clean === 'admin@b2p.com') return 'Franson Puthukkara (IT Admin)';
   if (clean === 'accounts@b2p.com') return 'Accounts Desk';
@@ -58,9 +67,10 @@ export function getAvailableStaffList(
 ): StaffOption[] {
   const staffMap = new Map<string, string>();
 
-  // Always ensure known company leadership / key staff are available
-  staffMap.set('sarathjohnpanengadan@gmail.com', 'Sarath John Panengadan');
-  staffMap.set('fransonputhukkara@gmail.com', 'Franson Puthukkara');
+  // Always ensure known confirmed app users are available for assignment.
+  KNOWN_ACTIVE_STAFF.forEach(staff => {
+    staffMap.set(normalizeStaffEmail(staff.email), staff.name);
+  });
 
   // Add currently logged in user if valid
   if (currentUserEmail && currentUserEmail.includes('@') && !isDummyStaffEmail(currentUserEmail)) {

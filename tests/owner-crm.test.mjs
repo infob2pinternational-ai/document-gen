@@ -35,6 +35,20 @@ test('staff normalization preserves distinct staff accounts', () => {
   assert.equal(staff.normalizeStaffEmail(null), '');
 });
 
+test('known confirmed staff accounts are available before they receive records', () => {
+  const list = staff.getAvailableStaffList('fransonputhukkara@gmail.com', [], []);
+  assert.deepEqual(
+    list.map(row => row.email).sort(),
+    [
+      'brutf5354@gmail.com',
+      'fransonputhukkara@gmail.com',
+      'sarathjohnpanengadan@gmail.com',
+      'sivasatheesan33@gmail.com'
+    ].sort()
+  );
+  assert.equal(list.filter(row => row.email === 'sarathjohnpanegdan@gmail.com').length, 0);
+});
+
 test('CRM hydration ignores obsolete requests and preserves newer local lead edits', async () => {
   const newer = { id: 'lead-1', assigned_telecaller_email: 'sarathjohnpanegdan@gmail.com', updated_at: '2026-09-18T12:00:00Z', status: 'confirmed' };
   const older = { ...newer, updated_at: '2026-09-18T11:00:00Z', status: 'new' };
