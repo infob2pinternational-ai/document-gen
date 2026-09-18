@@ -351,13 +351,13 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
         return {
           ...fu,
           due_date: fu.follow_up_date || fu.due_date || existing?.due_date || new Date().toISOString().split('T')[0],
-          due_time: existing?.due_time || '10:00',
-          reason: existing?.reason || fu.notes || 'Follow-up',
-          customer_name: existing?.customer_name || fu.customer_name || 'Customer',
-          phone: existing?.phone || fu.phone || '',
-          company_name: existing?.company_name || fu.company_name,
-          lead_id: existing?.lead_id || fu.lead_id,
-          lead_number: existing?.lead_number || fu.lead_number
+          due_time: fu.due_time ?? existing?.due_time ?? '10:00',
+          reason: fu.reason ?? fu.notes ?? existing?.reason ?? 'Follow-up',
+          customer_name: fu.customer_name ?? existing?.customer_name ?? 'Customer',
+          phone: fu.phone ?? existing?.phone ?? '',
+          company_name: fu.company_name !== undefined ? fu.company_name : existing?.company_name,
+          lead_id: fu.lead_id !== undefined ? fu.lead_id : existing?.lead_id,
+          lead_number: fu.lead_number !== undefined ? fu.lead_number : existing?.lead_number
         };
       });
       replaceCompanyScopedCache(FOLLOW_UPS_KEY, localFollowUps, mappedCloud, companyId);

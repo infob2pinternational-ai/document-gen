@@ -63,13 +63,13 @@ export const Home: React.FC<HomeProps> = ({ userName, activeProfile, documents, 
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
         <div className="owner-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Revenue</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Approved Invoice Value</div>
           <div className="mono" style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10b981' }}>
             {formatCurrency(stats.revenue, activeProfile?.currency)}
           </div>
         </div>
         <div className="owner-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Outstanding</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Pending Approval Value</div>
           <div className="mono" style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f59e0b' }}>
             {formatCurrency(stats.outstanding, activeProfile?.currency)}
           </div>

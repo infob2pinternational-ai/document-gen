@@ -13,6 +13,7 @@ import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
 import { metricsService, getDateRangeBounds, isDateInBounds, type DateFilterType } from '../services/metricsService';
 import { financeService } from '../services/financeService';
+import { bookingsOnDate, localDateKey } from '../utils/dashboardStats';
 import { QuotationModal } from './QuotationModal';
 import { FollowUpModal } from './FollowUpModal';
 import { 
@@ -120,7 +121,11 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
   }, [dateFilter, customStartDate, customEndDate]);
 
   // Today ISO Date string for live comparison
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [todayStr, setTodayStr] = useState(() => localDateKey());
+  useEffect(() => {
+    const timer = window.setInterval(() => setTodayStr(localDateKey()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Filtered in-window records
   const leadsInWindow = useMemo(() => {
@@ -172,8 +177,8 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
     return leads.filter(l => l.status === 'confirmed' && isDateInBounds(l.updated_at || l.created_at, dateBounds));
   }, [leads, dateBounds]);
   const activeBookingsCount = useMemo(() => {
-    return bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'TENTATIVE').length;
-  }, [bookings]);
+    return bookingsOnDate(bookings, todayStr).length;
+  }, [bookings, todayStr]);
 
   // 5. Pipeline Financial Value
   const activePipelineQuotations = useMemo(() => {
@@ -207,16 +212,16 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
 
   // 7. Fleet Availability & Occupancy
   const activeBookedResourceIds = useMemo(() => {
-    const activeBkgs = bookings.filter(b => b.status === 'TENTATIVE' || b.status === 'CONFIRMED');
+    const activeBkgs = bookingsOnDate(bookings, todayStr);
     const set = new Set<string>();
     activeBkgs.forEach(b => {
       if (b.resource_id) set.add(b.resource_id);
     });
     return set;
-  }, [bookings]);
+  }, [bookings, todayStr]);
 
   const totalFleetUnits = resources.filter(r => r.is_active !== false).length;
-  const bookedFleetUnits = activeBookedResourceIds.size;
+  const bookedFleetUnits = resources.filter(r => r.is_active !== false && activeBookedResourceIds.has(r.id)).length;
   const availableFleetUnits = Math.max(0, totalFleetUnits - bookedFleetUnits);
 
   // Category Fleet Breakdown
@@ -437,7 +442,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
             Real-time business intelligence, actionable approvals, revenue velocity, and fleet utilization.
             {lastDataRefresh && (
               <span style={{ marginLeft: '0.45rem', color: 'var(--text-muted)' }}>
-                Synced {lastDataRefresh}
+                View refreshed {lastDataRefresh}
               </span>
             )}
           </p>

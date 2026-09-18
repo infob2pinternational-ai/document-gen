@@ -171,6 +171,7 @@ test('office hydration replaces stale active-company dashboard cache with real c
     ])],
     ['docgen_follow_ups', JSON.stringify([
       { id: 'stale-follow', company_id: companyId },
+      { id: 'shared-follow', company_id: companyId, due_time: '10:00', customer_name: 'Old name', phone: 'old' },
       { id: 'other-follow', company_id: otherCompanyId }
     ])],
     ['docgen_crm_quotations', JSON.stringify([
@@ -187,7 +188,7 @@ test('office hydration replaces stale active-company dashboard cache with real c
       './db': asModule(`const data = {
         resources: [{ id: 'resource-1' }],
         bookings: [],
-        follow_ups: [],
+        follow_ups: [{ id: 'shared-follow', company_id: '${companyId}', due_date: '2026-09-18', due_time: '14:30:00', customer_name: 'Updated name', phone: '' }],
         crm_quotations: []
       };
       export const isCloudActive = () => true;
@@ -197,7 +198,11 @@ test('office hydration replaces stale active-company dashboard cache with real c
     });
     await hydrateCrmFromCloud(companyId);
     assert.deepEqual(JSON.parse(rows.get('docgen_bookings')).map(row => row.id), ['other-booking']);
-    assert.deepEqual(JSON.parse(rows.get('docgen_follow_ups')).map(row => row.id), ['other-follow']);
+    const followUps = JSON.parse(rows.get('docgen_follow_ups'));
+    assert.deepEqual(followUps.map(row => row.id), ['shared-follow', 'other-follow']);
+    assert.equal(followUps[0].due_time, '14:30:00');
+    assert.equal(followUps[0].customer_name, 'Updated name');
+    assert.equal(followUps[0].phone, '');
     assert.deepEqual(JSON.parse(rows.get('docgen_crm_quotations')).map(row => row.id), ['other-quote']);
   } finally {
     if (original === undefined) delete globalThis.localStorage;
