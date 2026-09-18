@@ -169,7 +169,7 @@ function App() {
   const currentUserEmail = user?.email || `${simulatedRole}@b2p.com`;
   const hasFinanceAccess = simulatedRole === 'owner' || simulatedRole === 'admin' || simulatedRole === 'accounts' || isItAdmin || isOwner;
   useCrmRefresh(user?.id, activeProfile?.id,
-    isSupabaseConfigured() && (authRole === 'owner' || authRole === 'admin') && !publicViewDocId);
+    isSupabaseConfigured() && !publicViewDocId);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);

@@ -141,6 +141,30 @@ function replaceCompanyScopedCache<T extends { id: string; company_id?: string |
 }
 
 async function persistCrmRow<T extends { id: string }>(storageKey: string, table: CrmLeadsTable, fullLocalArray: T[], changedRow: T): Promise<void> {
+  // A configured shared CRM must not report a browser-only lead as saved.
+  if (table === 'leads' && supabase) {
+    if (!isCloudActive()) {
+      throw new Error('Lead was not saved. Please sign in again to save it to the shared CRM.');
+    }
+    try {
+      const { data, error } = await supabase.from(table)
+        .upsert(sanitizeLeadForSupabase(changedRow))
+        .select('id')
+        .single();
+      if (error) throw error;
+      if (data?.id !== changedRow.id) throw new Error('The server did not confirm the saved lead.');
+    } catch (err: any) {
+      throw new Error(`Lead could not be saved to the shared CRM: ${err?.message || 'Connection failed'}. Keep this form open and retry.`);
+    }
+    // Re-read after the request so another completed save is not overwritten.
+    const current = getStoredLeads();
+    const index = current.findIndex(row => row.id === changedRow.id);
+    if (index < 0) current.unshift(changedRow as unknown as Lead);
+    else current[index] = changedRow as unknown as Lead;
+    localStorage.setItem(storageKey, JSON.stringify(current));
+    metricsService.notifyChange();
+    return;
+  }
   // 1. ALWAYS persist to local cache first so it is synchronous, reliable and instant
   try {
     localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
@@ -187,8 +211,7 @@ async function persistCrmRowDeleted(storageKey: string, table: CrmLeadsTable, fu
   }
 }
 
-/** Pulls this company's leads + lead activities down from Supabase and
- * merges into the local cache, never wiping existing local records. */
+/** Replaces the active company's cache with the shared Supabase records. */
 export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = () => true): Promise<void> {
   if (!isCloudActive() || !supabase) return;
   try {
