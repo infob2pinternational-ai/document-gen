@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { FollowUp } from '../types';
 import { officeService } from '../services/officeService';
 import { metricsService } from '../services/metricsService';
@@ -10,17 +10,10 @@ import {
   CheckCircle2, 
   Phone, 
   MessageSquare, 
-  Edit,
-  BellRing,
-  Volume2,
-  X,
-  ChevronDown,
-  ChevronUp
+  Edit
 } from 'lucide-react';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { formatStaffDisplayName } from '../utils/staffUtils';
-import { playFollowUpReminderSound } from '../utils/audio';
-import { getDueFollowUpsForUser, type DueFollowUpItem } from '../utils/followUpReminders';
 
 interface FollowUpsProps {
   role?: string;
@@ -29,25 +22,14 @@ interface FollowUpsProps {
 }
 
 export const FollowUps: React.FC<FollowUpsProps> = ({
-  role = '',
   userEmail = '',
   onOpenLead
 }) => {
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all'>('today');
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [dueReminders, setDueReminders] = useState<DueFollowUpItem[]>([]);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [bannerCollapsed, setBannerCollapsed] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
-
-  const lastSoundPlayedRef = useRef<number>(0);
-
-  const isOwner = role === 'owner' || 
-    userEmail.toLowerCase().trim() === 'sarathjohnpanengadan@gmail.com' || 
-    userEmail.toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' || 
-    userEmail.toLowerCase().trim() === 'owner@b2p.com';
 
   const refreshFollowUps = () => {
     let list: FollowUp[] = [];
@@ -57,30 +39,13 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
       list = officeService.getFollowUps(activeTab as any);
     }
     setFollowUps(list);
-
-    // Calculate due reminders for the currently assigned user
-    const allList = officeService.getFollowUps('all');
-    const due = getDueFollowUpsForUser(allList, userEmail, isOwner);
-    setDueReminders(due);
   };
 
   useEffect(() => {
     refreshFollowUps();
     const unsub = metricsService.subscribe(refreshFollowUps);
     return unsub;
-  }, [activeTab, userEmail]);
-
-  // Audio reminder sound chime when due reminders exist
-  useEffect(() => {
-    if (dueReminders.length > 0 && !bannerDismissed) {
-      const now = Date.now();
-      // Play reminder chime once per 60 seconds when due items exist
-      if (now - lastSoundPlayedRef.current > 60000) {
-        lastSoundPlayedRef.current = now;
-        playFollowUpReminderSound();
-      }
-    }
-  }, [dueReminders.length, bannerDismissed]);
+  }, [activeTab]);
 
   const handleOpenAdd = () => {
     setEditingFollowUp(null);
@@ -135,235 +100,6 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       
-      {/* ── Follow-up Reminders Alert Banner ─────────────────────────────── */}
-      {dueReminders.length > 0 && !bannerDismissed && (
-        <div 
-          className="glass-panel animate-fade-in" 
-          style={{
-            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(245, 158, 11, 0.12))',
-            border: '1.5px solid rgba(245, 158, 11, 0.45)',
-            borderRadius: 'var(--radius-md)',
-            padding: '1.1rem 1.35rem',
-            boxShadow: '0 4px 20px -2px rgba(245, 158, 11, 0.18)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.85rem'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                background: '#fef3c7',
-                color: '#b45309',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 0 12px rgba(245, 158, 11, 0.35)',
-                flexShrink: 0
-              }}>
-                <BellRing size={20} />
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    Follow-up Reminders for You
-                  </h3>
-                  <span style={{
-                    background: dueReminders.some(d => d.isOverdue) ? '#ef4444' : '#f59e0b',
-                    color: '#ffffff',
-                    padding: '0.15rem 0.55rem',
-                    borderRadius: '12px',
-                    fontSize: '0.72rem',
-                    fontWeight: 800
-                  }}>
-                    {dueReminders.length} Task{dueReminders.length > 1 ? 's' : ''} Due
-                  </span>
-                </div>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Assigned client callback reminders scheduled for today or requiring urgent contact.
-                </p>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() => playFollowUpReminderSound()}
-                className="btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                title="Play chime audio"
-              >
-                <Volume2 size={13} />
-                <span>Test Chime</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setBannerCollapsed(!bannerCollapsed)}
-                className="btn-ghost"
-                style={{ padding: '0.35rem' }}
-                title={bannerCollapsed ? 'Expand list' : 'Collapse list'}
-              >
-                {bannerCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setBannerDismissed(true)}
-                className="btn-ghost"
-                style={{ padding: '0.35rem', color: 'var(--text-muted)' }}
-                title="Dismiss Banner"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Cards for each due task */}
-          {!bannerCollapsed && (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
-              gap: '0.75rem',
-              marginTop: '0.25rem'
-            }}>
-              {dueReminders.map(dueItem => {
-                const item = dueItem.followUp;
-                return (
-                  <div 
-                    key={item.id}
-                    style={{
-                      background: 'var(--bg-card)',
-                      border: dueItem.isOverdue ? '1px solid #f87171' : '1px solid rgba(245, 158, 11, 0.4)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '0.85rem 1rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      gap: '0.65rem',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                            {item.customer_name}
-                          </div>
-                          {item.company_name && (
-                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{item.company_name}</div>
-                          )}
-                        </div>
-                        <span style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                          padding: '0.15rem 0.45rem',
-                          borderRadius: '4px',
-                          background: dueItem.isOverdue ? '#fee2e2' : '#fef3c7',
-                          color: dueItem.isOverdue ? '#b91c1c' : '#b45309'
-                        }}>
-                          {dueItem.isOverdue ? '⚠️ OVERDUE' : `⏰ ${dueItem.dueDateTimeStr}`}
-                        </span>
-                      </div>
-
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem', fontWeight: 500 }}>
-                        {item.reason}
-                      </div>
-
-                      {item.phone && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                          📞 {item.phone}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action buttons inside card */}
-                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.4rem', borderTop: '1px solid var(--border-subtle)' }}>
-                      <div style={{ display: 'flex', gap: '0.35rem' }}>
-                        {item.phone && (
-                          <a
-                            href={`tel:${item.phone}`}
-                            className="btn-secondary"
-                            style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none' }}
-                          >
-                            <Phone size={11} /> Call
-                          </a>
-                        )}
-                        {item.phone && (
-                          <a
-                            href={`https://wa.me/${normalizeIndianPhone(item.phone)}?text=${encodeURIComponent(`Hello ${item.customer_name}, following up from B2P International regarding your inquiry.`)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn-secondary"
-                            style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none' }}
-                          >
-                            <MessageSquare size={11} /> WA
-                          </a>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                        <select
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (val > 0) handleSnooze(item, val);
-                          }}
-                          defaultValue=""
-                          style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem', width: '80px' }}
-                        >
-                          <option value="" disabled>Snooze</option>
-                          <option value="15">+15m</option>
-                          <option value="30">+30m</option>
-                          <option value="60">+1hr</option>
-                          <option value="1440">Tomorrow</option>
-                        </select>
-
-                        <button
-                          type="button"
-                          onClick={() => handleQuickComplete(item)}
-                          className="btn-primary"
-                          style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem', background: '#16a34a', borderColor: '#16a34a', display: 'flex', alignItems: 'center', gap: '3px' }}
-                        >
-                          <CheckCircle2 size={12} />
-                          <span>Done</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Pill if user dismissed banner */}
-      {dueReminders.length > 0 && bannerDismissed && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={() => setBannerDismissed(false)}
-            className="btn-secondary"
-            style={{
-              fontSize: '0.75rem',
-              padding: '0.3rem 0.75rem',
-              background: '#fef3c7',
-              borderColor: '#f59e0b',
-              color: '#b45309',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem'
-            }}
-          >
-            <BellRing size={13} />
-            <span>Show {dueReminders.length} Due Reminder{dueReminders.length > 1 ? 's' : ''}</span>
-          </button>
-        </div>
-      )}
-
       {/* Header */}
       <div className="glass-panel" style={{
         display: 'flex',
