@@ -40,7 +40,7 @@ import type { UserRole } from './types';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { financeService } from './services/financeService';
 import { leadService } from './services/leadService';
-import { hydrateCrmFromCloud } from './services/officeService';
+import { hydrateCrmFromCloud, officeService } from './services/officeService';
 import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, CheckCircle, X, Zap, Coffee, Sparkles } from 'lucide-react';
 import { getRecoverableDrafts, deleteDraft, type DraftSummary } from './utils/drafts';
 
@@ -123,7 +123,7 @@ function App() {
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success'; title?: string; actionTab?: string } | null>(null);
 
   // Public View States
   const [publicViewDocId, setPublicViewDocId] = useState<string | null>(null);
@@ -603,6 +603,61 @@ function App() {
       supabase?.removeChannel(channel);
     };
   }, [supabase, activeProfile?.id, user?.id]);
+
+  // Simple CRM follow-up reminder. Owner/admin see all due reminders for
+  // the selected company; staff see reminders assigned to their login.
+  const lastFollowUpReminderKeyRef = React.useRef('');
+  useEffect(() => {
+    if (!user || !activeProfile?.id || publicViewDocId) return;
+
+    const checkFollowUpReminders = () => {
+      try {
+        const currentEmail = (currentUserEmail || '').toLowerCase().trim();
+        const canSeeAll = simulatedRole === 'owner' || simulatedRole === 'admin' || isOwner || isItAdmin;
+        const now = new Date();
+        const dueFollowUps = officeService.getFollowUps('all', activeProfile.id)
+          .filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED')
+          .filter(f => {
+            const dueAt = new Date(`${f.due_date}T${f.due_time || '10:00'}:00`);
+            return !Number.isNaN(dueAt.getTime()) && dueAt <= now;
+          })
+          .filter(f => {
+            if (canSeeAll) return true;
+            return (f.assigned_staff_email || '').toLowerCase().trim() === currentEmail;
+          });
+
+        if (dueFollowUps.length === 0) return;
+
+        const top = dueFollowUps[0];
+        const reminderKey = `${top.id}:${top.due_date}:${top.due_time}:${dueFollowUps.length}`;
+        if (lastFollowUpReminderKeyRef.current === reminderKey) return;
+        lastFollowUpReminderKeyRef.current = reminderKey;
+
+        playNotificationSound();
+        setToast({
+          type: 'info',
+          title: 'Follow-up Reminder',
+          message: `${dueFollowUps.length} follow-up${dueFollowUps.length > 1 ? 's are' : ' is'} due. Next: ${top.customer_name} - ${top.reason}`,
+          actionTab: 'follow-ups'
+        });
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification('B2P Follow-up Reminder', {
+              body: `${top.customer_name}: ${top.reason}`,
+              icon: '/billing/logo_b2p.png'
+            });
+          } catch (e) {}
+        }
+      } catch (err) {
+        console.warn('Follow-up reminder check failed:', err);
+      }
+    };
+
+    checkFollowUpReminders();
+    const timer = window.setInterval(checkFollowUpReminders, 60000);
+    return () => window.clearInterval(timer);
+  }, [user, activeProfile?.id, currentUserEmail, simulatedRole, isOwner, isItAdmin, publicViewDocId]);
 
   // Auto-clear toast alert after 10 seconds
   useEffect(() => {
@@ -1202,19 +1257,30 @@ function App() {
           alignItems: 'center',
           gap: '0.75rem',
           animation: 'slideIn 0.3s ease forwards',
-          maxWidth: '350px'
-        }}>
+          maxWidth: '350px',
+          cursor: toast.actionTab ? 'pointer' : 'default'
+        }}
+        onClick={() => {
+          if (toast.actionTab) {
+            setCurrentTab(toast.actionTab);
+            setToast(null);
+          }
+        }}
+      >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {toast.type === 'success' ? <CheckCircle size={20} color="#10b981" /> : <Bell size={20} color="#f59e0b" />}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-              {toast.type === 'success' ? 'Document Approved' : 'Awaiting Approval'}
+              {toast.title || (toast.type === 'success' ? 'Document Approved' : 'Awaiting Approval')}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem', lineHeight: '1.3' }}>{toast.message}</div>
           </div>
           <button 
-            onClick={() => setToast(null)} 
+            onClick={(event) => {
+              event.stopPropagation();
+              setToast(null);
+            }} 
             style={{ 
               background: 'transparent', 
               border: 'none', 
