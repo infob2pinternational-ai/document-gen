@@ -39,6 +39,39 @@ type CrmLeadsTable = 'leads' | 'lead_activities';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SUB_DISTRICTS_MAP_KEY = 'docgen_lead_subdistricts_v1';
+const LEAD_NUMBERS_MAP_KEY = 'docgen_lead_numbers_v1';
+
+export function compareLeadNumbers(a?: string, b?: string): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  const matchA = a.match(/(\d+)$/);
+  const matchB = b.match(/(\d+)$/);
+  const numA = matchA ? parseInt(matchA[1], 10) : NaN;
+  const numB = matchB ? parseInt(matchB[1], 10) : NaN;
+  if (!isNaN(numA) && !isNaN(numB)) {
+    return numA - numB;
+  }
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
+function getLeadNumberMap(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LEAD_NUMBERS_MAP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setLeadNumberInMap(leadId: string, leadNumber?: string): void {
+  if (!leadId || !leadNumber) return;
+  try {
+    const map = getLeadNumberMap();
+    map[leadId] = leadNumber;
+    localStorage.setItem(LEAD_NUMBERS_MAP_KEY, JSON.stringify(map));
+  } catch {}
+}
 
 function getSubDistrictMap(): Record<string, string> {
   try {
@@ -131,6 +164,9 @@ async function queryCrmTableFromCloud<T>(table: CrmLeadsTable, companyId?: strin
     if (companyId && UUID_REGEX.test(companyId)) {
       query = query.eq('company_id', companyId);
     }
+    if (query && typeof (query as any).order === 'function') {
+      query = (query as any).order('created_at', { ascending: true });
+    }
     const { data, error } = await query;
     if (!error && data) return data as T[];
     if (error) {
@@ -198,6 +234,9 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
     else current[index] = changedRow as unknown as Lead;
     localStorage.setItem(storageKey, JSON.stringify(current));
     if ((changedRow as any).id) {
+      if ((changedRow as any).lead_number) {
+        setLeadNumberInMap((changedRow as any).id, (changedRow as any).lead_number);
+      }
       setSubDistrictInMap((changedRow as any).id, (changedRow as any).sub_district);
     }
     metricsService.notifyChange();
@@ -264,27 +303,44 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
       const localLeads = getStoredLeads();
       const localMap = new Map(localLeads.map(l => [l.id, l]));
       const subDistrictMap = getSubDistrictMap();
-      const merged: Lead[] = cloudLeads.map((cl: any, idx: number) => {
+      const leadNumberMap = getLeadNumberMap();
+
+      // Deterministically sort cloud leads by created_at ascending so sequence numbering is strictly stable
+      const sortedCloud = [...cloudLeads].sort((a, b) => {
+        const timeA = Date.parse(a.created_at || '') || 0;
+        const timeB = Date.parse(b.created_at || '') || 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return (a.id || '').localeCompare(b.id || '');
+      });
+
+      const merged: Lead[] = sortedCloud.map((cl: any, idx: number) => {
         const existing = localMap.get(cl.id);
         const resolvedSubDistrict = cl.sub_district || existing?.sub_district || subDistrictMap[cl.id];
         if (resolvedSubDistrict) {
           setSubDistrictInMap(cl.id, resolvedSubDistrict);
         }
+        const seq = 1001 + idx;
+        const resolvedLeadNumber = cl.lead_number || existing?.lead_number || leadNumberMap[cl.id] || `B2P-LD-${seq}`;
+        setLeadNumberInMap(cl.id, resolvedLeadNumber);
+
         // Preserve a newer local edit while an older cloud read is in flight.
         if (existing && Date.parse(existing.updated_at || '') > Date.parse(cl.updated_at || '')) {
           return {
             ...existing,
+            lead_number: resolvedLeadNumber,
             sub_district: resolvedSubDistrict || existing.sub_district
           };
         }
-        const seq = 1001 + idx;
         return {
           ...existing,
           ...cl,
           sub_district: resolvedSubDistrict,
-          lead_number: cl.lead_number || existing?.lead_number || `B2P-LD-${seq}`
+          lead_number: resolvedLeadNumber
         };
       });
+
+      // Keep merged list strictly sorted in ascending order of lead number
+      merged.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
       replaceCompanyScopedCache(LEADS_KEY, localLeads, merged, companyId);
     }
 
@@ -329,8 +385,10 @@ function getStoredLeads(): Lead[] {
   }
   try {
     const subDistrictMap = getSubDistrictMap();
+    const leadNumberMap = getLeadNumberMap();
     return (JSON.parse(raw) as Lead[]).map(lead => ({
       ...lead,
+      lead_number: lead.lead_number || leadNumberMap[lead.id],
       sub_district: lead.sub_district || subDistrictMap[lead.id],
       priority: String(lead.priority || 'warm').toUpperCase() as Lead['priority'],
       assigned_telecaller_email: lead.assigned_telecaller_email
@@ -383,10 +441,10 @@ export const leadService = {
   getLeads(companyId?: string): Lead[] {
     const leads = getStoredLeads();
     const scopeId = companyId || activeCompanyId;
-    if (scopeId) {
-      return leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === scopeId);
-    }
-    return leads;
+    const scoped = scopeId
+      ? leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === scopeId)
+      : leads;
+    return scoped.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
   },
 
   getLeadById(id: string): Lead | null {
@@ -479,6 +537,9 @@ export const leadService = {
     }
 
     if (leadRecord.id) {
+      if (leadRecord.lead_number) {
+        setLeadNumberInMap(leadRecord.id, leadRecord.lead_number);
+      }
       setSubDistrictInMap(leadRecord.id, leadRecord.sub_district);
     }
 
@@ -487,6 +548,7 @@ export const leadService = {
 
   async deleteLead(id: string): Promise<void> {
     setSubDistrictInMap(id, undefined);
+    setLeadNumberInMap(id, undefined);
     const leads = getStoredLeads();
     const updated = leads.filter(l => l.id !== id);
     await persistCrmRowDeleted(LEADS_KEY, 'leads', updated, id);

@@ -139,7 +139,40 @@ export const Leads: React.FC<LeadsProps> = ({
     return matchSearch && matchStatus && matchPriority && matchSource && matchTelecaller;
   });
 
-  const incomingAdminLeads = leads.filter(l => l.status === 'sent_to_admin' || l.status === 'quotation_preparing');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const sortedLeads = useMemo(() => {
+    return [...filteredLeads].sort((a, b) => {
+      const matchA = (a.lead_number || a.id || '').match(/(\d+)$/);
+      const matchB = (b.lead_number || b.id || '').match(/(\d+)$/);
+      const numA = matchA ? parseInt(matchA[1], 10) : NaN;
+      const numB = matchB ? parseInt(matchB[1], 10) : NaN;
+      let diff = 0;
+      if (!isNaN(numA) && !isNaN(numB)) {
+        diff = numA - numB;
+      } else {
+        diff = (a.lead_number || a.id || '').localeCompare(b.lead_number || b.id || '', undefined, { numeric: true });
+      }
+      if (diff === 0) {
+        diff = (Date.parse(a.created_at || '') || 0) - (Date.parse(b.created_at || '') || 0);
+      }
+      return sortOrder === 'asc' ? diff : -diff;
+    });
+  }, [filteredLeads, sortOrder]);
+
+  const incomingAdminLeads = useMemo(() => {
+    return leads
+      .filter(l => l.status === 'sent_to_admin' || l.status === 'quotation_preparing')
+      .sort((a, b) => {
+        const matchA = (a.lead_number || a.id || '').match(/(\d+)$/);
+        const matchB = (b.lead_number || b.id || '').match(/(\d+)$/);
+        const numA = matchA ? parseInt(matchA[1], 10) : NaN;
+        const numB = matchB ? parseInt(matchB[1], 10) : NaN;
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+        return (a.lead_number || a.id || '').localeCompare(b.lead_number || b.id || '', undefined, { numeric: true });
+      });
+  }, [leads]);
+
   const leadCounts = metricsService.getLeadCounts(telecallerFilter === 'all' ? undefined : telecallerFilter);
   const hasActiveFilters = searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || sourceFilter !== 'all' || telecallerFilter !== 'all';
 
@@ -360,11 +393,22 @@ export const Leads: React.FC<LeadsProps> = ({
 
       {/* Main CRM Data Table */}
       <div className="table-container animate-fade-in">
-        {filteredLeads.length > 0 ? (
+        {sortedLeads.length > 0 ? (
           <table>
             <thead>
               <tr>
-                <th style={{ minWidth: '105px' }}>Lead ID</th>
+                <th 
+                  onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  style={{ minWidth: '115px', cursor: 'pointer', userSelect: 'none' }}
+                  title={`Click to sort ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>Lead ID</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--brand-blue)', fontWeight: 800 }}>
+                      {sortOrder === 'asc' ? '↑' : '↓'}
+                    </span>
+                  </div>
+                </th>
                 <th style={{ minWidth: '160px' }}>Company</th>
                 <th style={{ minWidth: '160px' }}>Customer Name</th>
                 <th style={{ minWidth: '160px' }}>Service Required</th>
@@ -377,7 +421,7 @@ export const Leads: React.FC<LeadsProps> = ({
               </tr>
             </thead>
             <tbody>
-              {filteredLeads.map(lead => {
+              {sortedLeads.map(lead => {
                 const statusMeta = STATUS_CONFIG[lead.status] || { label: lead.status, dotClass: 'status-dot-neutral' };
 
                 return (

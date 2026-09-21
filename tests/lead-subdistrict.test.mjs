@@ -151,3 +151,46 @@ test('cloud hydration preserves sub_district when cloud table lacks column', asy
   assert.equal(afterCloudSync.sub_district, 'Chalakudy');
   assert.equal(leadService.getSubDistrict('lead-test-456'), 'Chalakudy');
 });
+
+test('lead numbers are sorted in strictly ascending numerical order without shuffling', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem(key) { return store.get(key) ?? null; },
+    setItem(key, value) { store.set(key, String(value)); }
+  };
+
+  const dbUrl = asModule(`
+    export const isCloudActive = () => false;
+    export const supabase = null;
+  `);
+
+  const staff = await load('../src/utils/staffUtils.ts');
+
+  const { leadService, compareLeadNumbers } = await load('../src/services/leadService.ts', {
+    './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+    './db': dbUrl,
+    '../utils/uuid': asModule('export const generateUUID = () => "lead-rand-" + Math.random();'),
+    '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+  });
+
+  // Test compareLeadNumbers comparator directly
+  assert.ok(compareLeadNumbers('B2P-LD-1001', 'B2P-LD-1002') < 0);
+  assert.ok(compareLeadNumbers('B2P-LD-1002', 'B2P-LD-1001') > 0);
+  assert.ok(compareLeadNumbers('B2P-LD-1009', 'B2P-LD-1010') < 0);
+  assert.ok(compareLeadNumbers('B2P-LD-1009', 'B2P-LD-1020') < 0);
+  assert.equal(compareLeadNumbers('B2P-LD-1005', 'B2P-LD-1005'), 0);
+
+  // Save multiple leads in out-of-order sequence
+  await leadService.saveLead({ id: 'id-1005', lead_number: 'B2P-LD-1005', customer_name: 'Client 5', phone: '123' });
+  await leadService.saveLead({ id: 'id-1001', lead_number: 'B2P-LD-1001', customer_name: 'Client 1', phone: '123' });
+  await leadService.saveLead({ id: 'id-1012', lead_number: 'B2P-LD-1012', customer_name: 'Client 12', phone: '123' });
+  await leadService.saveLead({ id: 'id-1003', lead_number: 'B2P-LD-1003', customer_name: 'Client 3', phone: '123' });
+
+  // Verify getLeads() returns them strictly in ascending order: 1001, 1003, 1005, 1012
+  const leads = leadService.getLeads();
+  assert.equal(leads.length, 4);
+  assert.equal(leads[0].lead_number, 'B2P-LD-1001');
+  assert.equal(leads[1].lead_number, 'B2P-LD-1003');
+  assert.equal(leads[2].lead_number, 'B2P-LD-1005');
+  assert.equal(leads[3].lead_number, 'B2P-LD-1012');
+});
