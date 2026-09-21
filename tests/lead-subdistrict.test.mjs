@@ -335,4 +335,52 @@ test('reconcileLeadNumbers heals duplicate numbers (1015, 1016) and fills missin
   assert.equal(brandNewLead.lead_number, 'B2P-LD-1021');
 });
 
+test('LED Van Advertising subdivisions (3 Side, 2 Side, Single Side Van/Truck) are saved and retained', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem(key) { return store.get(key) ?? null; },
+    setItem(key, value) { store.set(key, String(value)); }
+  };
+
+  const dbUrl = asModule(`
+    export const isCloudActive = () => false;
+    export const supabase = null;
+  `);
+
+  const staff = await load('../src/utils/staffUtils.ts');
+
+  const { leadService } = await load('../src/services/leadService.ts', {
+    './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+    './db': dbUrl,
+    '../utils/uuid': asModule('export const generateUUID = () => "van-lead-" + Math.random();'),
+    '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+  });
+
+  const vanSpecs = [
+    '3 Side LED Van',
+    '2 Side LED Van',
+    'Single Side LED Van',
+    '3 Side LED Truck',
+    '2 Side LED Truck',
+    'Single Side LED Truck'
+  ];
+
+  for (const spec of vanSpecs) {
+    const saved = await leadService.saveLead({
+      customer_name: `Client for ${spec}`,
+      phone: '9847000111',
+      service_required: 'LED Van Advertising',
+      vehicle_service_type: spec
+    });
+
+    assert.equal(saved.service_required, 'LED Van Advertising');
+    assert.equal(saved.vehicle_service_type, spec);
+
+    const retrieved = leadService.getLeadById(saved.id);
+    assert.ok(retrieved);
+    assert.equal(retrieved.vehicle_service_type, spec);
+  }
+});
+
+
 

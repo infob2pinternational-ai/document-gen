@@ -124,7 +124,8 @@ export const Leads: React.FC<LeadsProps> = ({
       (l.phone && l.phone.includes(searchTerm)) ||
       (l.location && l.location.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (l.sub_district && l.sub_district.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (l.service_required && l.service_required.toLowerCase().includes(searchTerm.toLowerCase()));
+      (l.service_required && l.service_required.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (l.vehicle_service_type && l.vehicle_service_type.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchStatus = statusFilter === 'all' || l.status === statusFilter;
     const matchPriority = priorityFilter === 'all' || l.priority === priorityFilter;

@@ -27,6 +27,35 @@ const SERVICE_OPTIONS = [
   'Other Advertising'
 ];
 
+export const SERVICE_SUB_DIVISIONS: Record<string, string[]> = {
+  'LED Van Advertising': [
+    '3 Side LED Van',
+    '2 Side LED Van',
+    'Single Side LED Van',
+    '3 Side LED Truck',
+    '2 Side LED Truck',
+    'Single Side LED Truck',
+    '3 Side Van',
+    '2 Side Van',
+    'Single Side Van',
+    '3 Side Truck',
+    '2 Side Truck',
+    'Single Side Truck'
+  ],
+  'LED Wall': [
+    'P3.9 Outdoor Waterproof LED Screen',
+    'P3 Indoor High-Definition LED Screen',
+    'P2.5 Ultra HD Curved LED Wall',
+    'Stage Backdrop LED Wall'
+  ],
+  'Lookwalker': [
+    'Single Sided Lookwalker Promoter',
+    'Double Sided Backlit Lookwalker',
+    'Dual Lookwalker Promoter Crew',
+    'Multi-Promoter Lookwalker Squad'
+  ]
+};
+
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'facebook', label: 'Facebook' },
@@ -64,6 +93,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   
   const [serviceRequired, setServiceRequired] = useState(SERVICE_OPTIONS[0]);
   const [vehicleServiceType, setVehicleServiceType] = useState('');
+  const [isCustomVehicleSpec, setIsCustomVehicleSpec] = useState(false);
   const [requiredDate, setRequiredDate] = useState('');
   const [campaignLocation, setCampaignLocation] = useState('');
   const [numberOfDays, setNumberOfDays] = useState<number | ''>(1);
@@ -117,8 +147,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setBusinessType(lead.business_type || '');
       setLeadSource(lead.lead_source || 'phone');
       setSourceDetails(lead.source_details || '');
-      setServiceRequired(lead.service_required || SERVICE_OPTIONS[0]);
-      setVehicleServiceType(lead.vehicle_service_type || '');
+      const srv = lead.service_required || SERVICE_OPTIONS[0];
+      setServiceRequired(srv);
+      const vSpec = lead.vehicle_service_type || '';
+      setVehicleServiceType(vSpec);
+      const knownSpecs = SERVICE_SUB_DIVISIONS[srv] || [];
+      setIsCustomVehicleSpec(Boolean(vSpec && !knownSpecs.includes(vSpec)));
       setRequiredDate(lead.required_date || '');
       setCampaignLocation(lead.campaign_location || '');
       setNumberOfDays(lead.number_of_days !== undefined ? lead.number_of_days : 1);
@@ -141,6 +175,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setSourceDetails('');
       setServiceRequired(SERVICE_OPTIONS[0]);
       setVehicleServiceType('');
+      setIsCustomVehicleSpec(false);
       setRequiredDate('');
       setCampaignLocation('');
       setNumberOfDays(1);
@@ -506,7 +541,14 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Service Required *</label>
                 <select
                   value={serviceRequired}
-                  onChange={(e) => setServiceRequired(e.target.value)}
+                  onChange={(e) => {
+                    const nextSrv = e.target.value;
+                    setServiceRequired(nextSrv);
+                    if (!lead) {
+                      setVehicleServiceType('');
+                      setIsCustomVehicleSpec(false);
+                    }
+                  }}
                   style={{ fontSize: '0.8125rem' }}
                 >
                   {SERVICE_OPTIONS.map(srv => (
@@ -516,14 +558,67 @@ export const LeadModal: React.FC<LeadModalProps> = ({
               </div>
 
               <div>
-                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Vehicle / Equipment Spec</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 14ft High-Brightness LED Screen Van"
-                  value={vehicleServiceType}
-                  onChange={(e) => setVehicleServiceType(e.target.value)}
-                  style={{ fontSize: '0.8125rem' }}
-                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600, margin: 0 }}>
+                    {serviceRequired === 'LED Van Advertising' ? 'Van / Truck Sub-Division' : 'Vehicle / Equipment Spec'}
+                  </label>
+                  {SERVICE_SUB_DIVISIONS[serviceRequired] && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomVehicleSpec(!isCustomVehicleSpec)}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.6875rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                    >
+                      {isCustomVehicleSpec ? 'Select list' : 'Type custom'}
+                    </button>
+                  )}
+                </div>
+                {(!isCustomVehicleSpec && SERVICE_SUB_DIVISIONS[serviceRequired]) ? (
+                  <select
+                    value={vehicleServiceType}
+                    onChange={(e) => {
+                      if (e.target.value === '__OTHER__') {
+                        setIsCustomVehicleSpec(true);
+                        setVehicleServiceType('');
+                      } else {
+                        setVehicleServiceType(e.target.value);
+                      }
+                    }}
+                    style={{ fontSize: '0.8125rem' }}
+                  >
+                    <option value="">-- Select Sub-Division / Type --</option>
+                    {serviceRequired === 'LED Van Advertising' ? (
+                      <>
+                        <optgroup label="LED Vans">
+                          <option value="3 Side LED Van">3 Side LED Van</option>
+                          <option value="2 Side LED Van">2 Side LED Van</option>
+                          <option value="Single Side LED Van">Single Side LED Van</option>
+                        </optgroup>
+                        <optgroup label="LED Trucks">
+                          <option value="3 Side LED Truck">3 Side LED Truck</option>
+                          <option value="2 Side LED Truck">2 Side LED Truck</option>
+                          <option value="Single Side LED Truck">Single Side LED Truck</option>
+                        </optgroup>
+                      </>
+                    ) : (
+                      (SERVICE_SUB_DIVISIONS[serviceRequired] || []).map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))
+                    )}
+                    <option value="__OTHER__">+ Type Custom Spec / Size...</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder={
+                      serviceRequired === 'LED Van Advertising'
+                        ? "e.g. 3 Side LED Van / 14ft Hydraulic Truck"
+                        : "e.g. 14ft High-Brightness LED Screen Van"
+                    }
+                    value={vehicleServiceType}
+                    onChange={(e) => setVehicleServiceType(e.target.value)}
+                    style={{ fontSize: '0.8125rem' }}
+                  />
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '0.6rem' }}>
