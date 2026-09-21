@@ -65,12 +65,76 @@ function getLeadNumberMap(): Record<string, string> {
 }
 
 function setLeadNumberInMap(leadId: string, leadNumber?: string): void {
-  if (!leadId || !leadNumber) return;
+  if (!leadId) return;
   try {
     const map = getLeadNumberMap();
-    map[leadId] = leadNumber;
+    if (leadNumber) {
+      map[leadId] = leadNumber;
+    } else {
+      delete map[leadId];
+    }
     localStorage.setItem(LEAD_NUMBERS_MAP_KEY, JSON.stringify(map));
   } catch {}
+}
+
+export function reconcileLeadNumbers(leads: Lead[]): { leads: Lead[]; changed: boolean } {
+  if (!leads || leads.length === 0) return { leads: [], changed: false };
+
+  // Group leads by company to maintain company isolation
+  const byCompany = new Map<string, Lead[]>();
+  for (const lead of leads) {
+    const compKey = lead.company_id || 'default';
+    if (!byCompany.has(compKey)) byCompany.set(compKey, []);
+    byCompany.get(compKey)!.push(lead);
+  }
+
+  let totalChanged = false;
+  const result: Lead[] = [];
+
+  for (const [, compLeads] of byCompany.entries()) {
+    // Sort deterministically by created_at ascending, tiebreaker by id
+    const sorted = [...compLeads].sort((a, b) => {
+      const timeA = Date.parse(a.created_at || '') || 0;
+      const timeB = Date.parse(b.created_at || '') || 0;
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.id || '').localeCompare(b.id || '');
+    });
+
+    const seenNumbers = new Set<string>();
+    let hasDuplicates = false;
+    let hasMissing = false;
+
+    for (const l of sorted) {
+      if (!l.lead_number || !l.lead_number.startsWith('B2P-LD-')) {
+        hasMissing = true;
+        break;
+      }
+      if (seenNumbers.has(l.lead_number)) {
+        hasDuplicates = true;
+        break;
+      }
+      seenNumbers.add(l.lead_number);
+    }
+
+    // If duplicate lead numbers exist or numbers are missing, resequence consecutively
+    if (hasDuplicates || hasMissing) {
+      sorted.forEach((lead, idx) => {
+        const canonical = `B2P-LD-${1001 + idx}`;
+        if (lead.lead_number !== canonical) {
+          totalChanged = true;
+          lead.lead_number = canonical;
+          setLeadNumberInMap(lead.id, canonical);
+        }
+        result.push(lead);
+      });
+    } else {
+      for (const lead of sorted) {
+        result.push(lead);
+      }
+    }
+  }
+
+  return { leads: result, changed: totalChanged };
 }
 
 function getSubDistrictMap(): Record<string, string> {
@@ -137,8 +201,10 @@ function sanitizeLeadForSupabase(row: any) {
     payload.number_of_days = Number(row.number_of_days);
   }
 
-  // NOTE: 'lead_number' is an in-app sequence number and does not exist as a column in Supabase leads.
-  // We keep it in local storage Lead records and omit it from the Supabase payload.
+  if (row.lead_number) {
+    payload.lead_number = row.lead_number;
+  }
+
   return payload;
 }
 
@@ -222,6 +288,36 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
         data = retryResult.data;
         error = retryResult.error;
       }
+      if (error && (error.message?.includes('lead_number') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
+        console.warn('[leadService] lead_number column missing on Supabase leads table. Retrying cloud save without it. Please run the database migration.');
+        delete upsertPayload.lead_number;
+        const retryResult = await supabase.from(table)
+          .upsert(upsertPayload)
+          .select('id')
+          .single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
+      if (error && ((error as any).code === '23505' || error.message?.includes('unique_lead_number_per_company') || error.message?.includes('duplicate key'))) {
+        const companyLeads = getStoredLeads().filter(l => !l.company_id || l.company_id === 'default' || l.company_id === (changedRow as any).company_id);
+        const maxSeq = companyLeads.reduce((max, l) => {
+          if (l.lead_number && l.lead_number.startsWith('B2P-LD-')) {
+            const num = parseInt(l.lead_number.replace('B2P-LD-', ''), 10);
+            if (!isNaN(num) && num > max) return num;
+          }
+          return max;
+        }, 1000);
+        const newSeq = `B2P-LD-${maxSeq + 1}`;
+        upsertPayload.lead_number = newSeq;
+        (changedRow as any).lead_number = newSeq;
+        setLeadNumberInMap((changedRow as any).id, newSeq);
+        const retryResult = await supabase.from(table)
+          .upsert(upsertPayload)
+          .select('id')
+          .single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
       if (error) throw error;
       if (data?.id !== changedRow.id) throw new Error('The server did not confirm the saved lead.');
     } catch (err: any) {
@@ -288,6 +384,20 @@ async function persistCrmRowDeleted(storageKey: string, table: CrmLeadsTable, fu
   }
 }
 
+async function syncHealedLeadNumbersToCloud(reconciled: Lead[], cloudLeads: Lead[]): Promise<void> {
+  if (!isCloudActive() || !supabase) return;
+  const cloudMap = new Map(cloudLeads.map(cl => [cl.id, cl.lead_number]));
+  for (const lead of reconciled) {
+    if (lead.id && lead.lead_number && cloudMap.get(lead.id) !== lead.lead_number) {
+      try {
+        await supabase.from('leads').update({ lead_number: lead.lead_number }).eq('id', lead.id);
+      } catch (err) {
+        console.warn(`[leadService] Could not sync healed lead_number for ${lead.id}:`, err);
+      }
+    }
+  }
+}
+
 /** Replaces the active company's cache with the shared Supabase records. */
 export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = () => true): Promise<void> {
   if (!isCloudActive() || !supabase) return;
@@ -313,21 +423,19 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
         return (a.id || '').localeCompare(b.id || '');
       });
 
-      const merged: Lead[] = sortedCloud.map((cl: any, idx: number) => {
+      const merged: Lead[] = sortedCloud.map((cl: any) => {
         const existing = localMap.get(cl.id);
         const resolvedSubDistrict = cl.sub_district || existing?.sub_district || subDistrictMap[cl.id];
         if (resolvedSubDistrict) {
           setSubDistrictInMap(cl.id, resolvedSubDistrict);
         }
-        const seq = 1001 + idx;
-        const resolvedLeadNumber = cl.lead_number || existing?.lead_number || leadNumberMap[cl.id] || `B2P-LD-${seq}`;
-        setLeadNumberInMap(cl.id, resolvedLeadNumber);
+        const resolvedLeadNumber = cl.lead_number || existing?.lead_number || leadNumberMap[cl.id];
 
         // Preserve a newer local edit while an older cloud read is in flight.
         if (existing && Date.parse(existing.updated_at || '') > Date.parse(cl.updated_at || '')) {
           return {
             ...existing,
-            lead_number: resolvedLeadNumber,
+            lead_number: resolvedLeadNumber || existing.lead_number,
             sub_district: resolvedSubDistrict || existing.sub_district
           };
         }
@@ -339,9 +447,15 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
         };
       });
 
-      // Keep merged list strictly sorted in ascending order of lead number
-      merged.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
-      replaceCompanyScopedCache(LEADS_KEY, localLeads, merged, companyId);
+      // Run reconciliation to heal any duplicates or missing numbers
+      const { leads: reconciled, changed } = reconcileLeadNumbers(merged);
+      reconciled.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
+      replaceCompanyScopedCache(LEADS_KEY, localLeads, reconciled, companyId);
+
+      // In background, persist any healed or previously missing numbers back to cloud
+      if (changed || cloudLeads.some(cl => !cl.lead_number)) {
+        syncHealedLeadNumbersToCloud(reconciled, cloudLeads);
+      }
     }
 
     if (cloudActivities) {
@@ -386,7 +500,8 @@ function getStoredLeads(): Lead[] {
   try {
     const subDistrictMap = getSubDistrictMap();
     const leadNumberMap = getLeadNumberMap();
-    return (JSON.parse(raw) as Lead[]).map(lead => ({
+    const parsed: Lead[] = JSON.parse(raw);
+    const hydrated = parsed.map(lead => ({
       ...lead,
       lead_number: lead.lead_number || leadNumberMap[lead.id],
       sub_district: lead.sub_district || subDistrictMap[lead.id],
@@ -395,6 +510,14 @@ function getStoredLeads(): Lead[] {
         ? normalizeStaffEmail(lead.assigned_telecaller_email)
         : lead.assigned_telecaller_email
     }));
+
+    const { leads: reconciled, changed } = reconcileLeadNumbers(hydrated);
+    if (changed) {
+      try {
+        localStorage.setItem(LEADS_KEY, JSON.stringify(reconciled));
+      } catch {}
+    }
+    return reconciled;
   } catch (e) {
     return JSON.parse(JSON.stringify(SEED_LEADS));
   }
@@ -458,19 +581,32 @@ export const leadService = {
 
   async saveLead(lead: Partial<Lead> & { customer_name: string; phone: string }, userEmail: string = 'Staff'): Promise<Lead> {
     const leads = getStoredLeads();
-    const isNew = !lead.id || !leads.some(l => l.id === lead.id);
+    const existing = lead.id ? leads.find(l => l.id === lead.id) : undefined;
+    const isNew = !existing;
     const now = new Date().toISOString();
 
-    let leadNumber = lead.lead_number;
+    const companyId = lead.company_id || activeCompanyId || 'default';
+    const leadNumberMap = getLeadNumberMap();
+    let leadNumber = lead.lead_number || existing?.lead_number || (lead.id ? leadNumberMap[lead.id] : undefined);
+
     if (isNew && !leadNumber) {
-      const maxSeq = leads.reduce((max, l) => {
+      const companyLeads = leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === companyId);
+      const existingNums = new Set<number>();
+      let maxSeq = 1000;
+      for (const l of companyLeads) {
         if (l.lead_number && l.lead_number.startsWith('B2P-LD-')) {
           const num = parseInt(l.lead_number.replace('B2P-LD-', ''), 10);
-          if (!isNaN(num) && num > max) return num;
+          if (!isNaN(num)) {
+            existingNums.add(num);
+            if (num > maxSeq) maxSeq = num;
+          }
         }
-        return max;
-      }, 1000);
-      leadNumber = `B2P-LD-${maxSeq + 1}`;
+      }
+      let nextSeq = maxSeq + 1;
+      while (existingNums.has(nextSeq)) {
+        nextSeq++;
+      }
+      leadNumber = `B2P-LD-${nextSeq}`;
     }
 
     const leadRecord: Lead = {
