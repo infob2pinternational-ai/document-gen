@@ -92,6 +92,7 @@ function App() {
   const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(null);
   const [profilesLoading, setProfilesLoading] = useState(true);
+  const hasLoadedInitialProfilesRef = React.useRef(false);
   
   // Data States (Preloaded to prevent tab switching lag)
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -356,7 +357,17 @@ function App() {
       }
       if (session?.user) {
         localStorage.setItem('supabase_user', JSON.stringify(session.user));
-        setUser(session.user);
+        setUser((prevUser: any) => {
+          if (
+            prevUser &&
+            prevUser.id === session.user.id &&
+            prevUser.email === session.user.email &&
+            JSON.stringify(prevUser.user_metadata) === JSON.stringify(session.user.user_metadata)
+          ) {
+            return prevUser;
+          }
+          return session.user;
+        });
       } else {
         localStorage.removeItem('supabase_user');
         setUser(null);
@@ -718,7 +729,11 @@ function App() {
 
   // Load Company Profiles, Documents, Customers, and Services in parallel
   const loadData = async (selectNewId?: string) => {
-    setProfilesLoading(true);
+    // Only display full-screen loading on initial app mount; background
+    // refreshes must never unmount active components or clear in-progress form inputs.
+    if (!hasLoadedInitialProfilesRef.current) {
+      setProfilesLoading(true);
+    }
     try {
       const rawProfiles = await dbService.getProfiles();
       const profileList = rawProfiles.map(p => {
@@ -790,6 +805,7 @@ function App() {
     } catch (err) {
       console.error('Error loading application data:', err);
     } finally {
+      hasLoadedInitialProfilesRef.current = true;
       setProfilesLoading(false);
     }
   };
@@ -799,7 +815,7 @@ function App() {
     if (!isSupabaseConfigured() || user) {
       loadData();
     }
-  }, [user]);
+  }, [user?.id]);
 
   // Cross-references new-document drafts against the currently loaded
   // documents list, deleting (from actual storage, not just the

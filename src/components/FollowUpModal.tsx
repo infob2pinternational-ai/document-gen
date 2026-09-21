@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { FollowUp, Lead } from '../types';
 import { X, Clock, CheckCircle2 } from 'lucide-react';
@@ -42,7 +42,25 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
     return getAvailableStaffList(userEmail, allLeads, officeService.getFollowUps('all'));
   }, [userEmail, isOpen]);
 
+  const prevOpenRef = useRef(false);
+  const prevTargetRef = useRef<string | null>(null);
+
   useEffect(() => {
+    if (!isOpen) {
+      prevOpenRef.current = false;
+      return;
+    }
+
+    const currentTargetId = followUp?.id || prefilledLead?.id || 'new';
+    const justOpened = !prevOpenRef.current && isOpen;
+    const targetChanged = prevTargetRef.current !== currentTargetId;
+    prevOpenRef.current = isOpen;
+    prevTargetRef.current = currentTargetId;
+
+    if (!justOpened && !targetChanged) {
+      return;
+    }
+
     if (followUp) {
       setCustomerName(followUp.customer_name);
       setCompanyName(followUp.company_name || '');

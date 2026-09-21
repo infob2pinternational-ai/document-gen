@@ -223,7 +223,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       }
     };
     loadLibraries();
-  }, [activeProfile]);
+  }, [activeProfile?.id]);
 
   // One-time migration of the pre-Phase-A single-draft format into the
   // new per-document draft system. Safe to call on every mount - it's a
@@ -232,17 +232,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     migrateLegacyDraft();
   }, []);
 
-  // Flush any pending draft write immediately when the editor unmounts
-  // (navigating away, closing the tab is handled separately since drafts
-  // are NOT deleted on close - see handleCloseEditor equivalent below).
+  // Flush any pending draft write immediately when the editor unmounts,
+  // when navigating away, or when switching windows/tabs (blur, visibilitychange).
+  // This guarantees in-progress field edits are captured before any window switch.
   // draftSaver is stable for the component's lifetime (useState lazy
   // init, setter never called), so listing it here never causes this
   // effect to re-run - it still only fires its cleanup on unmount.
   useEffect(() => {
     const flushDraft = () => draftSaver.flush();
     window.addEventListener('pagehide', flushDraft);
+    window.addEventListener('blur', flushDraft);
+    document.addEventListener('visibilitychange', flushDraft);
     return () => {
       window.removeEventListener('pagehide', flushDraft);
+      window.removeEventListener('blur', flushDraft);
+      document.removeEventListener('visibilitychange', flushDraft);
       draftSaver.flush();
       draftSaver.cancel();
     };

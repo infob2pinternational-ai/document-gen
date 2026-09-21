@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { Customer, Lead, LeadPriority, LeadSource } from '../types';
 import { X, UserCheck } from 'lucide-react';
@@ -94,7 +94,25 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     return getAvailableStaffList(userEmail, leadService.getLeads());
   }, [userEmail, isOpen]);
 
+  const prevOpenRef = useRef(false);
+  const prevLeadRef = useRef<string | null>(null);
+
   useEffect(() => {
+    if (!isOpen) {
+      prevOpenRef.current = false;
+      return;
+    }
+
+    const currentLeadId = lead?.id || 'new';
+    const justOpened = !prevOpenRef.current && isOpen;
+    const leadChanged = prevLeadRef.current !== currentLeadId;
+    prevOpenRef.current = isOpen;
+    prevLeadRef.current = currentLeadId;
+
+    if (!justOpened && !leadChanged) {
+      return;
+    }
+
     if (lead) {
       setCustomerName(lead.customer_name || '');
       setCompanyName(lead.company_name || '');

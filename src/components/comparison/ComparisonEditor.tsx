@@ -270,12 +270,17 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
     }
   }, [documentToEdit, activeProfile, documentType]);
 
-  // Flush any pending draft write immediately when the editor unmounts.
+  // Flush any pending draft write immediately when the editor unmounts,
+  // when navigating away, or when switching windows/tabs (blur, visibilitychange).
   useEffect(() => {
     const flushDraft = () => draftSaver.flush();
     window.addEventListener('pagehide', flushDraft);
+    window.addEventListener('blur', flushDraft);
+    document.addEventListener('visibilitychange', flushDraft);
     return () => {
       window.removeEventListener('pagehide', flushDraft);
+      window.removeEventListener('blur', flushDraft);
+      document.removeEventListener('visibilitychange', flushDraft);
       draftSaver.flush();
       draftSaver.cancel();
     };
