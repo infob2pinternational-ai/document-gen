@@ -617,7 +617,7 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
       };
 
       // Save using base database service
-      await dbService.saveDocument(documentPayload, []);
+
 
       // 2. Save dynamic comparison options data
       const comparisonConfig: ComparisonConfig = {
@@ -628,7 +628,7 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
         notes,
         terms
       };
-      await ComparisonService.saveComparisonData(documentPayload.id, comparisonConfig);
+      await dbService.saveDocument(documentPayload, [], comparisonConfig);
 
       // 3. Dispatch FCM Push Notification asynchronously (fire-and-forget)
       const userStr = localStorage.getItem('supabase_user');

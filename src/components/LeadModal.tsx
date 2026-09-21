@@ -33,15 +33,7 @@ export const SERVICE_SUB_DIVISIONS: Record<string, string[]> = {
     '3 Side LED Van',
     '2 Side LED Van',
     'Single Side LED Van',
-    '3 Side LED Truck',
-    '2 Side LED Truck',
-    'Single Side LED Truck',
-    '3 Side Van',
-    '2 Side Van',
-    'Single Side Van',
-    '3 Side Truck',
-    '2 Side Truck',
-    'Single Side Truck'
+    '3 Side LED Truck'
   ]
 };
 
@@ -244,7 +236,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
         phone: phone.trim(),
         whatsapp_number: whatsappNumber.trim() || phone.trim(),
         location: location.trim(),
-        sub_district: subDistrict.trim() || undefined,
+        sub_district: subDistrict.trim(),
         address: address.trim() || undefined,
         business_type: businessType.trim() || undefined,
         lead_source: leadSource,
@@ -537,10 +529,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   onChange={(e) => {
                     const nextSrv = e.target.value;
                     setServiceRequired(nextSrv);
-                    if (!lead) {
-                      setVehicleServiceType('');
-                      setIsCustomVehicleSpec(false);
-                    }
+                    setVehicleServiceType('');
+                    setIsCustomVehicleSpec(false);
                   }}
                   style={{ fontSize: '0.8125rem' }}
                 >
@@ -558,7 +548,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   {SERVICE_SUB_DIVISIONS[serviceRequired] && (
                     <button
                       type="button"
-                      onClick={() => setIsCustomVehicleSpec(!isCustomVehicleSpec)}
+                      onClick={() => {
+                        if (isCustomVehicleSpec && !SERVICE_SUB_DIVISIONS[serviceRequired]?.includes(vehicleServiceType)) setVehicleServiceType('');
+                        setIsCustomVehicleSpec(!isCustomVehicleSpec);
+                      }}
                       style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.6875rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
                     >
                       {isCustomVehicleSpec ? 'Select list' : 'Type custom'}

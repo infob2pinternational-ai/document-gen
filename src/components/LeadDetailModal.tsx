@@ -72,7 +72,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const freshLead = (incomingLead.id ? leadService.getLeadById(incomingLead.id) : null) || incomingLead;
   const lead: Lead = {
     ...freshLead,
-    sub_district: freshLead.sub_district || (freshLead.id ? leadService.getSubDistrict?.(freshLead.id) : undefined)
+    sub_district: freshLead.sub_district !== undefined ? freshLead.sub_district : (freshLead.id ? leadService.getSubDistrict?.(freshLead.id) : undefined)
   };
 
   const activities: LeadActivity[] = leadService.getLeadActivities(lead.id);

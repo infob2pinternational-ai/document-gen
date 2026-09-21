@@ -1,3 +1,4 @@
+import { useAppRole } from './hooks/useAppRole';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useCrmRefresh } from './hooks/useCrmRefresh';
 import type { CompanyProfile, Document, Customer, Service, AppTheme } from './types';
@@ -131,45 +132,17 @@ function App() {
   const [publicViewDoc, setPublicViewDoc] = useState<Document | null>(null);
   const [publicViewData, setPublicViewData] = useState<Awaited<ReturnType<typeof dbService.getPublicDocument>>>(null);
   const [publicViewLoading, setPublicViewLoading] = useState(false);
+  const [publicViewError, setPublicViewError] = useState('');
 
-  // REMEDIATION (2026-08-24, P0.3 - audit finding "Role Simulation
-  // Switcher / client-side role security problem"): this used to be the
-  // ONLY role concept anywhere in the desktop app - simulatedRole was a
-  // plain useState any user could flip from the UI (below), and every
-  // finance/admin component trusted it directly as real authorization.
-  // Production authorization now comes from the authenticated user's
-  // real role (the same `user.user_metadata.role` field
-  // src/mobile/roles.ts already reads from the Supabase session, set via
-  // Supabase Admin/dashboard - not self-service, not client-editable).
-  // The switcher below is kept ONLY for local development/testing
-  // (`import.meta.env.DEV`, stripped from production builds) and can no
-  // longer influence what a production build actually authorizes -
-  // `simulatedRole` (used everywhere else in this file, unchanged)
-  // now resolves to devSimulatedRole in dev and to the real authRole in
-  // every production build, with zero changes needed at any of its ~50
-  // existing call sites below.
-  const isItAdmin = (user?.email || '').toLowerCase().trim() === 'fransonputhukkara@gmail.com';
-  const isOwner = (user?.email || '').toLowerCase().trim() === 'sarathjohnpanengadan@gmail.com' || (user?.email || '').toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' || (user?.email || '').toLowerCase().trim() === 'owner@b2p.com';
-  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('owner');
-  const normalizeAppRole = (raw: string | null | undefined, email?: string | null): UserRole => {
-    const userEmail = (email || '').toLowerCase().trim();
-    if (userEmail === 'sarathjohnpanengadan@gmail.com' || userEmail === 'sarathjohnpanegdan@gmail.com' || userEmail === 'owner@b2p.com') {
-      return 'owner';
-    }
-    if (userEmail === 'fransonputhukkara@gmail.com') {
-      return 'admin';
-    }
-    const r = (raw || '').toLowerCase().trim();
-    if (r === 'owner' || r === 'admin' || r === 'manager' || r === 'telecaller' || r === 'accounts') return r as UserRole;
-    // Unset/unrecognized roles default to the MOST restrictive tier,
-    // not 'owner' - the opposite of a silent full-access fallback.
-    return 'telecaller';
-  };
-  const authRole: UserRole = normalizeAppRole(user?.user_metadata?.role, user?.email);
-  const simulatedRole: UserRole = import.meta.env.DEV ? (isOwner ? 'owner' : isItAdmin ? 'admin' : devSimulatedRole) : authRole;
+  const verifiedAccess = useAppRole(user?.id);
+  const isOwner = verifiedAccess.role === 'owner';
+  const isItAdmin = verifiedAccess.role === 'admin';
+  const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('telecaller');
+  const authRole: UserRole = isOwner ? 'owner' : isItAdmin ? 'admin' : 'telecaller';
+  const simulatedRole: UserRole = import.meta.env.DEV && !isSupabaseConfigured() ? devSimulatedRole : authRole;
   const currentUserEmail = user?.email || `${simulatedRole}@b2p.com`;
   const hasFinanceAccess = simulatedRole === 'owner' || simulatedRole === 'admin' || simulatedRole === 'accounts' || isItAdmin || isOwner;
-  useCrmRefresh(user?.id, activeProfile?.id,
+  const crmRefreshError = useCrmRefresh(user?.id, activeProfile?.id,
     isSupabaseConfigured() && !publicViewDocId);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalLeadDetailId, setGlobalLeadDetailId] = useState<string | null>(null);
@@ -304,10 +277,12 @@ function App() {
         setPublicViewLoading(false);
       }).catch((err) => {
         console.error('App: Error loading public view document by ID:', err);
+        setPublicViewError('Could not load the document. Check your connection and retry.');
         setPublicViewLoading(false);
       });
     } else if (docNumber) {
       if (import.meta.env.DEV) console.log('App: Public view detected for Document Number:', docNumber);
+      setPublicViewDocId('number-link');
       setPublicViewLoading(true);
       // Uses the get_public_document RPC, same as the ID-based lookup
       // above - closes the last remaining anonymous full-table read
@@ -325,6 +300,7 @@ function App() {
         setPublicViewLoading(false);
       }).catch((err) => {
         console.error('App: Error loading public view document by number:', err);
+        setPublicViewError('Could not load the document. Check your connection and retry.');
         setPublicViewLoading(false);
       });
     }
@@ -499,11 +475,8 @@ function App() {
                                    prevStatus !== 'pending_approval';
                                    
           if (isNewPending || isUpdatedPending) {
-            const currentEmail = (user.email || '').toLowerCase();
-            const allowedToApprove = 
-              !activeProfile.approver_email || 
-              currentEmail === activeProfile.approver_email.toLowerCase();
-              
+            const allowedToApprove = isOwner;
+
             if (allowedToApprove) {
               console.log('[Realtime] Notification triggered');
               playNotificationSound();
@@ -574,7 +547,7 @@ function App() {
       supabase?.removeChannel(channel);
       console.log('[Realtime] Subscription disconnected');
     };
-  }, [supabase, activeProfile?.id, user?.id, activeProfile?.approver_email]);
+  }, [supabase, activeProfile?.id, user?.id, isOwner]);
 
   // Realtime sync for google_sync_queue and google_sync_log (Phase B4) -
   // same merge-not-refetch pattern as the documents subscription above:
@@ -804,6 +777,7 @@ function App() {
       }
     } catch (err) {
       console.error('Error loading application data:', err);
+      alert('Could not refresh all office data. Displayed records may be out of date. Check your connection and refresh.');
     } finally {
       hasLoadedInitialProfilesRef.current = true;
       setProfilesLoading(false);
@@ -1057,8 +1031,9 @@ function App() {
           padding: '2rem',
           textAlign: 'center'
         }}>
-          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: 'var(--accent-danger)' }}>Document Not Found</h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>The requested document does not exist or has been deleted.</p>
+          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: 'var(--accent-danger)' }}>{publicViewError ? 'Unable to load document' : 'Document unavailable'}</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{publicViewError || 'This link is unavailable or awaiting owner approval. Please ask the sender for the approved document link.'}</p>
+          <button onClick={() => window.location.reload()}>Retry</button>
         </div>
       );
     }
@@ -1247,8 +1222,17 @@ function App() {
     );
   }
 
+  if (isSupabaseConfigured() && user && !verifiedAccess.verified) {
+    return <div role="alert" style={{ padding: '2rem' }}>
+      <p>{verifiedAccess.error || 'Checking office access…'}</p>
+      <button onClick={() => window.location.reload()}>Retry</button>
+      <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
+    </div>;
+  }
+
   return (
     <div className="app-container">
+      {(verifiedAccess.error || crmRefreshError) && <div role="alert" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, padding: '12px', background: '#fff3cd', color: '#664d03' }}>{verifiedAccess.error || crmRefreshError}</div>}
       <style>{`
         @keyframes slideIn {
           from { transform: translateY(100px); opacity: 0; }
@@ -1485,8 +1469,8 @@ function App() {
           financeService.setActiveCompany(prof.id);
           financeService.hydrateFromCloud(prof.id);
           leadService.setActiveCompany(prof.id);
-          hydrateCrmFromCloud(prof.id);
-          refreshCompanyData(prof.id);
+          hydrateCrmFromCloud(prof.id).catch(() => alert('CRM refresh failed. Displayed records may be out of date.'));
+          refreshCompanyData(prof.id).catch(() => alert('Could not refresh this company. Please retry.'));
         }}
         onAddProfileClick={() => setShowAddProfileModal(true)}
         theme={theme}
@@ -1692,7 +1676,7 @@ function App() {
                     {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
                   </span>
                   <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                    {isOwner ? 'Owner' : isItAdmin ? 'IT Admin' : simulatedRole === 'admin' ? 'IT Admin' : (user?.user_metadata?.role || simulatedRole)}
+                    {isOwner ? 'Owner' : isItAdmin ? 'IT Admin' : simulatedRole === 'admin' ? 'IT Admin' : simulatedRole}
                   </span>
                 </div>
               </div>

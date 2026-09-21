@@ -23,6 +23,7 @@ export const ComparisonService = {
    * Fetches the options data for a specific comparison quotation document.
    */
   async getComparisonData(documentId: string): Promise<ComparisonConfig | null> {
+    if (supabase && !isCloudEnabled()) throw new Error('Please sign in again to load comparison details.');
     if (isCloudEnabled() && supabase) {
       const { data, error } = await supabase
         .from('comparison_document_data')
@@ -38,7 +39,7 @@ export const ComparisonService = {
         setLocal(`comparison_doc_${documentId}`, data.options_data);
         return data.options_data as ComparisonConfig;
       }
-      return getLocal<ComparisonConfig | null>(`comparison_doc_${documentId}`, null);
+      return null;
     } else {
       return getLocal<ComparisonConfig | null>(`comparison_doc_${documentId}`, null);
     }
@@ -47,62 +48,6 @@ export const ComparisonService = {
   /**
    * Saves or updates the options data for a comparison quotation document.
    */
-  async saveComparisonData(documentId: string, optionsData: ComparisonConfig): Promise<void> {
-    // Always mirror to local storage as automatic local system backup
-    setLocal(`comparison_doc_${documentId}`, optionsData);
-
-    if (isCloudEnabled() && supabase) {
-      // Check if data already exists for this document_id
-      const { data: existing, error: checkError } = await supabase
-        .from('comparison_document_data')
-        .select('id')
-        .eq('document_id', documentId)
-        .maybeSingle();
-
-      if (checkError) {
-        console.error('Error checking comparison data existence:', checkError);
-        throw checkError;
-      }
-
-      if (existing) {
-        const { error } = await supabase
-          .from('comparison_document_data')
-          .update({ options_data: optionsData })
-          .eq('document_id', documentId);
-        
-        if (error) {
-          console.error('Error updating comparison data:', error);
-          throw error;
-        }
-      } else {
-        const { error } = await supabase
-          .from('comparison_document_data')
-          .insert([{ document_id: documentId, options_data: optionsData }]);
-        
-        if (error) {
-          console.error('Error inserting comparison data:', error);
-          throw error;
-        }
-      }
-    }
-  },
-
-  /**
-   * Deletes comparison quotation options data when the document is deleted.
-   */
-  async deleteComparisonData(documentId: string): Promise<void> {
-    if (isCloudEnabled() && supabase) {
-      const { error } = await supabase
-        .from('comparison_document_data')
-        .delete()
-        .eq('document_id', documentId);
-      
-      if (error) console.error('Error deleting comparison data:', error);
-    } else {
-      localStorage.removeItem(`docgen_comparison_doc_${documentId}`);
-    }
-  },
-
   /**
    * Fetches all comparison templates for a given company profile.
    */

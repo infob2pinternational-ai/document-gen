@@ -1,3 +1,4 @@
+import { useAppRole } from '../hooks/useAppRole';
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Document, Customer, Service } from '../types';
 import { dbService, supabase, isSupabaseConfigured } from '../services/db';
@@ -32,9 +33,7 @@ const MODULE_TO_TAB: Record<string, OwnerTab> = {
  *
  * One app for every employee (Phase 8, section 3): which tabs/actions
  * are visible is driven entirely by roles.ts's role -> module mapping,
- * read from the same user.user_metadata.role field the desktop app
- * already uses for its own (simpler) admin/non-admin gating - not a
- * separate permission system, not a separate app per role.
+ * read from the protected current_app_role() RPC shared with the desktop app.
  */
 export const OwnerApp: React.FC = () => {
   const [user, setUser] = useState<any>(null);
@@ -50,24 +49,8 @@ export const OwnerApp: React.FC = () => {
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [editingDoc, setEditingDoc] = useState<Document | null>(null);
 
-  // Same approver gating rule as the desktop app's Documents.tsx: if the
-  // company profile has a designated approver_email, only that email can
-  // approve/reject - anyone else viewing the document (e.g. office staff
-  // who also have login access) sees it read-only. No approver_email
-  // configured means any authenticated user can approve, same as desktop.
-  // Layered on top of the role check - a role must have the
-  // pending_approval module AND (if set) be the designated approver.
-  // Defined once here (not inline at each call site - the push-setup
-  // effect below needs the same value, and hooks must run before this
-  // component's early returns, so it can't wait until after them).
-  const isDesignatedApprover = (profile: CompanyProfile | null, currentUser: any): boolean => {
-    const email = (currentUser?.email || '').toLowerCase().trim();
-    if (email === 'sarathjohnpanengadan@gmail.com' || email === 'sarathjohnpanegdan@gmail.com' || email === 'fransonputhukkara@gmail.com' || email === 'owner@b2p.com') return true;
-    return canAccessModule(currentUser?.user_metadata?.role, 'pending_approval', currentUser?.email) && (
-      !profile?.approver_email ||
-      email === profile.approver_email.toLowerCase()
-    );
-  };
+  const verifiedAccess = useAppRole(user?.id);
+  const isDesignatedApprover = (_profile: CompanyProfile | null, _currentUser: any): boolean => verifiedAccess.role === 'owner';
 
   // Auth session (reuses the same Supabase auth as the web app - same
   // account, same session mechanism, no separate login system).
@@ -148,6 +131,8 @@ export const OwnerApp: React.FC = () => {
       const profile = rawProfiles.find(p => p.id === savedId) || rawProfiles[0];
       setActiveProfile(profile);
       await refreshCompanyData(profile.id);
+    } catch {
+      alert('Could not refresh office data. Displayed records may be out of date. Check your connection and retry.');
     } finally {
       setDataLoading(false);
     }
@@ -161,7 +146,7 @@ export const OwnerApp: React.FC = () => {
   const handleSwitchProfile = (profile: CompanyProfile) => {
     setActiveProfile(profile);
     localStorage.setItem('docgen_active_profile_id', profile.id);
-    refreshCompanyData(profile.id);
+    refreshCompanyData(profile.id).catch(() => alert('Could not refresh this company. Please retry.'));
   };
 
   useEffect(() => {
@@ -189,7 +174,7 @@ export const OwnerApp: React.FC = () => {
         })
         .catch(err => console.error('[Mobile Push] Failed to open deep-linked document:', err));
     });
-  }, [activeProfile, user]);
+  }, [activeProfile, user, verifiedAccess.role]);
 
   // Realtime - same merge pattern as the web app, scoped to the active
   // company, so approvals/edits made from the web app (or another
@@ -237,10 +222,9 @@ export const OwnerApp: React.FC = () => {
     setViewingDoc(doc);
   };
 
-  // roles.ts's module map, keyed off the same user_metadata.role field
-  // the desktop app already reads - see roles.ts for the full rationale.
-  const role = normalizeRole(user?.user_metadata?.role, user?.email);
-  const allowedModules = getRoleModules(role, user?.email);
+  // UI visibility follows the server-verified role.
+  const role = normalizeRole(verifiedAccess.role);
+  const allowedModules = getRoleModules(role);
   const allowedTabs = allowedModules
     .map(m => MODULE_TO_TAB[m])
     .filter((t): t is OwnerTab => Boolean(t));
@@ -328,12 +312,21 @@ export const OwnerApp: React.FC = () => {
     );
   }
 
+  if (isSupabaseConfigured() && user && !verifiedAccess.verified) {
+    return <div role="alert" style={{ padding: '2rem' }}>
+      <p>{verifiedAccess.error || 'Checking office access…'}</p>
+      <button onClick={() => window.location.reload()}>Retry</button>
+      <button onClick={handleLogout}>Sign out</button>
+    </div>;
+  }
+
   return (
     <div className="owner-shell">
       <div style={{ padding: '0.6rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} onSwitch={handleSwitchProfile} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{roleLabel(role)}</span>
+          {verifiedAccess.error && <p role="alert">{verifiedAccess.error}</p>}
           <button
             onClick={handleLogout}
             className="btn-secondary"

@@ -555,7 +555,7 @@ export const dbService = {
         data.forEach(d => {
           const docProf = prof || profiles.find(p => p.id === d.company_id);
           if (normalizeDocTypeForCompany(d, docProf)) {
-            supabase?.from('documents').update({ document_type: d.document_type }).eq('id', d.id).then(() => {});
+            // Display normalization only; changes require a new approval.
           }
         });
       }
@@ -595,27 +595,13 @@ export const dbService = {
   async getDocumentById(id: string): Promise<{ document: Document; items: DocumentItem[] } | null> {
     if (import.meta.env.DEV) console.log('dbService: getDocumentById called with ID:', id);
     if (supabase) {
-      try {
-        const { data: document, error: docError } = await supabase.from('documents').select('*').eq('id', id).single();
-        if (!docError && document) {
-          const profiles = getLocal<CompanyProfile[]>('profiles', []);
-          const docProf = profiles.find(p => p.id === document.company_id);
-          if (normalizeDocTypeForCompany(document, docProf)) {
-            supabase?.from('documents').update({ document_type: document.document_type }).eq('id', document.id).then(() => {});
-          }
-          const { data: items, error: itemsError } = await supabase
-            .from('document_items')
-            .select('*')
-            .eq('document_id', id)
-            .order('sort_order', { ascending: true });
-          if (!itemsError) {
-            if (import.meta.env.DEV) console.log('dbService: Supabase returned document and items successfully');
-            return { document, items: items || [] };
-          }
-        }
-      } catch (err) {
-        if (import.meta.env.DEV) console.log('dbService: Supabase fetch failed in getDocumentById, falling back to local:', err);
-      }
+      if (!isCloudActive()) throw new Error('Please sign in again to load this document.');
+      const { data: document, error } = await supabase.from('documents').select('*').eq('id', id).maybeSingle();
+      if (error) throw new Error(`Could not load document: ${error.message}`);
+      if (!document) return null;
+      const { data: items, error: itemError } = await supabase.from('document_items').select('*').eq('document_id', id).order('sort_order');
+      if (itemError) throw new Error(`Could not load document items: ${itemError.message}`);
+      return { document, items: items || [] };
     }
     const docs = getLocal<Document[]>('documents', []);
     const doc = docs.find(d => d.id === id);
@@ -654,12 +640,10 @@ export const dbService = {
         p_id: params.id ?? null,
         p_document_number: params.documentNumber ?? null
       });
-      if (error || !data) {
-        if (import.meta.env.DEV) console.log('dbService: getPublicDocument returned nothing:', error);
-        return null;
-      }
-      let comparison: ComparisonConfig | null = null;
-      if (data.document.document_type === 'comparison_quotation' || data.document.document_type === 'comparison_invoice') {
+      if (error) throw new Error('Could not load the shared document. Check your connection and try again.');
+      if (!data) return null;
+      let comparison: ComparisonConfig | null = data.comparison ?? null;
+      if (!Object.hasOwn(data, 'comparison') && (data.document.document_type === 'comparison_quotation' || data.document.document_type === 'comparison_invoice')) {
         const result = await supabase.rpc('get_public_comparison_data', { p_document_id: data.document.id });
         if (result.error) {
           console.error('Unable to load shared comparison:', result.error);
@@ -681,159 +665,88 @@ export const dbService = {
         profile: (data.profile || {}) as Partial<CompanyProfile>
       };
     } catch (err) {
-      if (import.meta.env.DEV) console.log('dbService: getPublicDocument error:', err);
-      return null;
+      throw err;
     }
   },
 
-  async saveDocument(doc: Document, items: DocumentItem[]): Promise<Document> {
-    // Normalize type based on company profile
+  async saveDocument(doc: Document, items: DocumentItem[], comparison?: ComparisonConfig): Promise<Document> {
     const profiles = getLocal<CompanyProfile[]>('profiles', []);
-    const docProf = profiles.find(p => p.id === doc.company_id);
-    normalizeDocTypeForCompany(doc, docProf);
-    if (doc.document_type === 'non_tax_invoice') {
-      items.forEach(it => { it.gst_percentage = 0; });
+    const payload = { ...doc };
+    normalizeDocTypeForCompany(payload, profiles.find(p => p.id === doc.company_id));
+    const savedItems = items.map(it => ({ ...it, document_id: doc.id,
+      gst_percentage: payload.document_type === 'non_tax_invoice' ? 0 : it.gst_percentage }));
+    let saved: Document = { ...payload, status: 'pending_approval', approved_at: undefined, approved_by_email: undefined };
+    if (supabase) {
+      if (!isCloudActive()) throw new Error('Please sign in again. The document was not saved.');
+      const { data, error } = await supabase.rpc('save_document_bundle', {
+        p_document: payload, p_items: savedItems, p_comparison: comparison ?? null
+      });
+      if (error) throw new Error(`Document was not saved: ${error.message}`);
+      if (data?.id !== doc.id) throw new Error('The server did not confirm the document save.');
+      saved = data as Document;
     }
-
-    // Always mirror to LocalStorage as automatic local system backup
-    const docs = getLocal<Document[]>('documents', []);
-    const docIdx = docs.findIndex(d => d.id === doc.id);
-    if (docIdx >= 0) {
-      docs[docIdx] = doc;
-    } else {
-      docs.push(doc);
+    // Update callers and browser backup only after the whole transaction succeeds.
+    Object.assign(doc, saved);
+    try {
+      const docs = getLocal<Document[]>('documents', []).filter(d => d.id !== doc.id);
+      setLocal('documents', [...docs, saved]);
+      const others = getLocal<DocumentItem[]>('document_items', []).filter(it => it.document_id !== doc.id);
+      setLocal('document_items', [...others, ...savedItems]);
+      if (comparison) localStorage.setItem(`docgen_comparison_doc_${doc.id}`, JSON.stringify(comparison));
+    } catch (error) {
+      if (!supabase) throw error;
+      window.alert('Saved to the server, but the browser backup could not be updated. Refresh before editing again.');
     }
-    setLocal('documents', docs);
-
-    const localItems = getLocal<DocumentItem[]>('document_items', []);
-    const itemsWithoutThisDoc = localItems.filter(it => it.document_id !== doc.id);
-    setLocal('document_items', [...itemsWithoutThisDoc, ...items]);
-
-    if (isCloudActive() && supabase) {
-      const userStr = localStorage.getItem('supabase_user');
-      const user = userStr ? JSON.parse(userStr) : null;
-      const userId = user ? user.id : null;
-      const userEmail = user ? user.email : null;
-      
-      const docPayload = { 
-        ...doc, 
-        user_id: userId,
-        created_by_email: doc.created_by_email || userEmail || null,
-        status: doc.status || 'pending_approval'
-      };
-      
-      // Save doc
-      const { data: existingDoc } = await supabase.from('documents').select('id').eq('id', doc.id).maybeSingle();
-      if (existingDoc) {
-        const { error } = await supabase.from('documents').update(docPayload).eq('id', doc.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('documents').insert([docPayload]);
-        if (error) throw error;
-      }
-      
-      // Delete old line items
-      const { error: deleteError } = await supabase.from('document_items').delete().eq('document_id', doc.id);
-      if (deleteError) throw deleteError;
-      
-      // Insert new line items
-      if (items.length > 0) {
-        const itemsPayload = items.map(it => ({
-          id: it.id,
-          document_id: it.document_id,
-          service_id: it.service_id || null,
-          description: it.description,
-          quantity: it.quantity,
-          days: it.days || 1,
-          rate: it.rate,
-          unit: it.unit,
-          hsn_sac: it.hsn_sac || null,
-          gst_percentage: it.gst_percentage,
-          amount: it.amount,
-          sort_order: it.sort_order
-        }));
-        const { error: insertError } = await supabase.from('document_items').insert(itemsPayload);
-        if (insertError) throw insertError;
-      }
-      
-      return doc;
-    } else {
-      return doc;
-    }
+    return saved;
   },
 
   async deleteDocument(id: string): Promise<void> {
-    // Always mirror deletion to local storage
-    const docs = getLocal<Document[]>('documents', []);
-    setLocal('documents', docs.filter(d => d.id !== id));
-    
-    const items = getLocal<DocumentItem[]>('document_items', []);
-    setLocal('document_items', items.filter(it => it.document_id !== id));
-    
-    localStorage.removeItem(`docgen_comparison_doc_${id}`);
-
-    if (isCloudActive() && supabase) {
-      const { error } = await supabase.from('documents').delete().eq('id', id);
-      if (error) throw error;
+    if (supabase) {
+      if (!isCloudActive()) throw new Error('Please sign in again. Nothing was deleted.');
+      const { data, error } = await supabase.rpc('delete_document_bundle', { p_id: id });
+      if (error) throw new Error(error.message);
+      if (data !== id) throw new Error('The server did not confirm deletion.');
     }
+    setLocal('documents', getLocal<Document[]>('documents', []).filter(d => d.id !== id));
+    setLocal('document_items', getLocal<DocumentItem[]>('document_items', []).filter(it => it.document_id !== id));
+    localStorage.removeItem(`docgen_comparison_doc_${id}`);
   },
 
   async logWhatsAppSend(docId: string, email: string): Promise<void> {
-    if (isCloudActive() && supabase) {
-      const { error } = await supabase.from('documents').update({
-        whatsapp_sent_by_email: email,
-        whatsapp_sent_at: new Date().toISOString()
-      }).eq('id', docId);
-      if (error) throw error;
-    } else {
-      const docs = getLocal<Document[]>('documents', []);
-      const idx = docs.findIndex(d => d.id === docId);
-      if (idx >= 0) {
-        docs[idx].whatsapp_sent_by_email = email;
-        docs[idx].whatsapp_sent_at = new Date().toISOString();
-        setLocal('documents', docs);
-      }
+    if (supabase) {
+      if (!isCloudActive()) throw new Error('Please sign in again to record this send.');
+      const { error } = await supabase.rpc('log_document_send', { p_id: docId });
+      if (error) throw new Error(error.message);
+      return;
+    }
+    const docs = getLocal<Document[]>('documents', []);
+    const doc = docs.find(d => d.id === docId);
+    if (doc) { doc.whatsapp_sent_by_email = email; doc.whatsapp_sent_at = new Date().toISOString(); setLocal('documents', docs); }
+  },
+
+  async reviewDocument(docId: string, approve: boolean, email: string): Promise<void> {
+    let saved: Document | undefined;
+    if (supabase) {
+      if (!isCloudActive()) throw new Error('Please sign in again to review documents.');
+      const { data, error } = await supabase.rpc('review_document', { p_id: docId, p_approve: approve });
+      if (error) throw new Error(error.message);
+      if (data?.id !== docId) throw new Error('The server did not confirm this review.');
+      saved = data;
+    }
+    const docs = getLocal<Document[]>('documents', []);
+    const index = docs.findIndex(d => d.id === docId);
+    if (index >= 0) {
+      docs[index] = saved || { ...docs[index], status: approve ? 'approved' : 'rejected', approved_by_email: email, approved_at: new Date().toISOString() };
+      setLocal('documents', docs);
     }
   },
 
   async approveDocument(docId: string, email: string): Promise<void> {
-    if (isCloudActive() && supabase) {
-      const { error } = await supabase.from('documents').update({
-        status: 'approved',
-        approved_by_email: email,
-        approved_at: new Date().toISOString()
-      }).eq('id', docId);
-      if (error) throw error;
-    } else {
-      const docs = getLocal<Document[]>('documents', []);
-      const idx = docs.findIndex(d => d.id === docId);
-      if (idx >= 0) {
-        docs[idx].status = 'approved';
-        docs[idx].approved_by_email = email;
-        docs[idx].approved_at = new Date().toISOString();
-        setLocal('documents', docs);
-      }
-    }
+    await this.reviewDocument(docId, true, email);
   },
 
   async rejectDocument(docId: string, email: string): Promise<void> {
-    if (isCloudActive() && supabase) {
-      const { error } = await supabase.from('documents').update({
-        status: 'rejected',
-        approved_by_email: email,
-        approved_at: new Date().toISOString()
-      }).eq('id', docId);
-      if (error) throw error;
-    } else {
-      const docs = getLocal<Document[]>('documents', []);
-      const idx = docs.findIndex(d => d.id === docId);
-      if (idx >= 0) {
-        docs[idx].status = 'rejected';
-        docs[idx].approved_by_email = email;
-        docs[idx].approved_at = new Date().toISOString();
-        setLocal('documents', docs);
-      }
-    }
+    await this.reviewDocument(docId, false, email);
   },
 
   async getApproverDevice(companyId: string): Promise<any | null> {
@@ -1107,31 +1020,32 @@ Go to Settings > Local Backup & Data Recovery in your portal and select this .zi
       const profs: CompanyProfile[] = backupData.profiles || [];
       const compData: Record<string, any> = backupData.comparison_data || {};
 
-      // Restore to LocalStorage
-      setLocal('documents', docs);
-      setLocal('document_items', items);
-      setLocal('customers', custs);
-      setLocal('services', servs);
-      setLocal('profiles', profs);
-
-      for (const [docId, cData] of Object.entries(compData)) {
-        setLocal(`comparison_doc_${docId}`, cData);
-      }
-
-      // If Cloud is active, restore to Supabase too
-      if (isCloudActive() && supabase) {
-        if (profs.length > 0) await supabase.from('profiles').upsert(profs);
-        if (custs.length > 0) await supabase.from('customers').upsert(custs);
-        if (servs.length > 0) await supabase.from('services').upsert(servs);
-        if (docs.length > 0) await supabase.from('documents').upsert(docs);
-        if (items.length > 0) await supabase.from('document_items').upsert(items);
-
-        for (const [docId, cData] of Object.entries(compData)) {
-          await supabase.from('comparison_document_data').upsert({
-            document_id: docId,
-            options_data: cData
-          });
+      if (supabase) {
+        if (!isCloudActive()) throw new Error('Please sign in again. The backup was not restored.');
+        const access = await supabase.rpc('current_app_role');
+        if (access.error || access.data !== 'owner') throw new Error('Only the owner can restore backups.');
+        for (const [table, rows] of [['profiles', profs], ['customers', custs], ['services', servs]] as const) {
+          if (rows.length) {
+            const { error } = await supabase.from(table).upsert(rows as any[]);
+            if (error) throw new Error(`Restore stopped at ${table}: ${error.message}. Some earlier records may already be restored.`);
+          }
         }
+        let restored = 0;
+        for (const doc of docs) {
+          try {
+            await this.saveDocument(doc, items.filter(it => it.document_id === doc.id), compData[doc.id]);
+            restored++;
+          } catch (error: any) {
+            return { success: false, count: restored, error: `Restored ${restored} documents; stopped at ${doc.document_number}: ${error.message}. Restored documents require owner approval.` };
+          }
+        }
+      } else {
+        setLocal('documents', docs);
+        setLocal('document_items', items);
+        setLocal('customers', custs);
+        setLocal('services', servs);
+        setLocal('profiles', profs);
+        for (const [docId, cData] of Object.entries(compData)) setLocal(`comparison_doc_${docId}`, cData);
       }
 
       return { success: true, count: docs.length };

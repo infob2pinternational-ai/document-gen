@@ -457,12 +457,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 </svg>
                               </button>
                             )}
-                            {doc.status !== 'approved' && doc.status !== 'rejected' && (() => {
-                              const userStr = localStorage.getItem('supabase_user');
-                              const user = userStr ? JSON.parse(userStr) : null;
-                              const userEmail = (user ? user.email : '').toLowerCase();
-                              return !activeProfile?.approver_email || userEmail === activeProfile.approver_email.toLowerCase();
-                            })() && (
+                            {doc.status !== 'approved' && doc.status !== 'rejected' && role === 'owner' && (
                               <>
                                 <button
                                   onClick={async () => {

@@ -5,6 +5,42 @@ import ts from 'typescript';
 
 const asModule = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 
+test('cleared sub-district remains cleared after hydration and missing schema is never silently dropped', async () => {
+  const store=new Map();
+  globalThis.localStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v))};
+  const dbUrl=asModule(`
+    export const isCloudActive=()=>true; export let row; export let writes=0; let fail=false;
+    export function setMissingColumn(value){fail=value;}
+    export const supabase={from(table){return {
+      select(){return Promise.resolve({data:table==='leads' && row?[row]:[],error:null});},
+      upsert(payload){if(table!=='leads')return Promise.resolve({error:null});
+        writes++;return {select(){return {async single(){
+          if(fail && Object.hasOwn(payload,'sub_district'))return {error:{code:'PGRST204',message:'Missing sub_district column'}};
+          row={...payload,lead_number:'B2P-LD-1042'};return {data:{id:row.id,lead_number:row.lead_number},error:null};
+        }}}};}
+    }}};
+  `);
+  const staff=await load('../src/utils/staffUtils.ts');
+  const {leadService,hydrateLeadsFromCloud}=await load('../src/services/leadService.ts',{
+    './metricsService':asModule('export const metricsService={notifyChange(){}};'),
+    './db':dbUrl,'../utils/uuid':asModule('export const generateUUID=()=>"clear-sub-test";'),
+    '../utils/staffUtils':asModule(`export const normalizeStaffEmail=${staff.normalizeStaffEmail.toString()};`)
+  });
+  const db=await import(dbUrl);
+  const saved=await leadService.saveLead({customer_name:'Test',phone:'123',sub_district:'Chalakudy'});
+  assert.equal(saved.lead_number,'B2P-LD-1042');
+  await leadService.saveLead({...saved,sub_district:''});
+  assert.equal(db.row.sub_district,null);
+  await hydrateLeadsFromCloud();
+  assert.equal(leadService.getLeadById(saved.id).sub_district,null);
+  assert.equal(leadService.getSubDistrict(saved.id),undefined);
+  db.setMissingColumn(true);
+  const writes=db.writes;
+  await assert.rejects(leadService.saveLead({...saved,sub_district:'Thrissur'}),/sub_district/);
+  assert.equal(db.writes,writes+1);
+  assert.equal(leadService.getLeadById(saved.id).sub_district,null);
+});
+
 async function load(path, replacements = {}) {
   let { outputText } = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
     fileName: path,
@@ -114,7 +150,7 @@ test('cloud hydration preserves sub_district when cloud table lacks column', asy
         }),
         upsert: () => ({
           select: () => ({
-            single: () => Promise.resolve({ data: { id: 'lead-test-456' }, error: null })
+            single: () => Promise.resolve({ data: { id: 'lead-test-456', lead_number: 'B2P-LD-1001' }, error: null })
           })
         })
       })
@@ -236,103 +272,25 @@ test('out-of-Kerala location and sub-district/state can be saved and retrieved c
   assert.equal(leadService.getSubDistrict(saved.id), 'Indiranagar, Karnataka');
 });
 
-test('reconcileLeadNumbers heals duplicate numbers (1015, 1016) and fills missing gaps (1017, 1018)', async () => {
-  const store = new Map();
-  globalThis.localStorage = {
-    getItem(key) { return store.get(key) ?? null; },
-    setItem(key, value) { store.set(key, String(value)); }
-  };
-
-  const dbUrl = asModule(`
-    export const isCloudActive = () => false;
-    export const supabase = null;
-  `);
-
-  const staff = await load('../src/utils/staffUtils.ts');
-
-  const { leadService, reconcileLeadNumbers } = await load('../src/services/leadService.ts', {
-    './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
-    './db': dbUrl,
-    '../utils/uuid': asModule('export const generateUUID = () => "rand-" + Math.random();'),
-    '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
-  });
-
-  // Construct 20 leads with the exact bug described:
-  // 1015 appears twice, 1016 appears twice, 1017 and 1018 are missing, then 1019, 1020
-  const buggedLeads = [];
-  const buggedNumbers = [
-    'B2P-LD-1001', 'B2P-LD-1002', 'B2P-LD-1003', 'B2P-LD-1004', 'B2P-LD-1005',
-    'B2P-LD-1006', 'B2P-LD-1007', 'B2P-LD-1008', 'B2P-LD-1009', 'B2P-LD-1010',
-    'B2P-LD-1011', 'B2P-LD-1012', 'B2P-LD-1013', 'B2P-LD-1014',
-    'B2P-LD-1015',
-    'B2P-LD-1015', // duplicate!
-    'B2P-LD-1016',
-    'B2P-LD-1016', // duplicate!
-    'B2P-LD-1019', // 1017 & 1018 missing!
-    'B2P-LD-1020'
+test('reading leads preserves established numbers and never resequences neighbouring records', async () => {
+  const records = [
+    {id:'a',company_id:'company',lead_number:'B2P-LD-1015'},
+    {id:'b',company_id:'company',lead_number:'B2P-LD-1015'},
+    {id:'c',company_id:'company',lead_number:'B2P-LD-1020'},
+    {id:'d',company_id:'company'}
   ];
-
-  for (let i = 0; i < buggedNumbers.length; i++) {
-    const d = new Date(2026, 8, 1, 10, i); // sequential created_at timestamps
-    buggedLeads.push({
-      id: `lead-id-${i + 1}`,
-      lead_number: buggedNumbers[i],
-      customer_name: `Customer ${i + 1}`,
-      phone: `98470000${String(i).padStart(2, '0')}`,
-      created_at: d.toISOString()
-    });
-  }
-
-  // Verify the input has duplicates and missing numbers
-  const inputSet = new Set(buggedLeads.map(l => l.lead_number));
-  assert.equal(inputSet.size, 18); // 18 unique out of 20 -> duplicates exist!
-  assert.equal(inputSet.has('B2P-LD-1017'), false); // missing 1017!
-  assert.equal(inputSet.has('B2P-LD-1018'), false); // missing 1018!
-
-  // Reconcile
-  const { leads: healed, changed } = reconcileLeadNumbers(buggedLeads);
-  assert.equal(changed, true);
-  assert.equal(healed.length, 20);
-
-  // Verify healed leads are 1001 through 1020 without duplicates and without missing numbers
-  for (let i = 0; i < 20; i++) {
-    const expected = `B2P-LD-${1001 + i}`;
-    assert.equal(healed[i].lead_number, expected, `Lead at index ${i} should be ${expected}`);
-  }
-
-  // Verify 1017 and 1018 are now present!
-  const healedSet = new Set(healed.map(l => l.lead_number));
-  assert.equal(healedSet.size, 20);
-  assert.equal(healedSet.has('B2P-LD-1017'), true);
-  assert.equal(healedSet.has('B2P-LD-1018'), true);
-
-  // Now seed localStorage with the bugged leads and test getStoredLeads auto-healing
-  globalThis.localStorage.setItem('docgen_leads', JSON.stringify(buggedLeads));
-  const retrievedLeads = leadService.getLeads();
-  assert.equal(retrievedLeads.length, 20);
-  assert.equal(retrievedLeads[14].lead_number, 'B2P-LD-1015');
-  assert.equal(retrievedLeads[15].lead_number, 'B2P-LD-1016');
-  assert.equal(retrievedLeads[16].lead_number, 'B2P-LD-1017');
-  assert.equal(retrievedLeads[17].lead_number, 'B2P-LD-1018');
-  assert.equal(retrievedLeads[18].lead_number, 'B2P-LD-1019');
-  assert.equal(retrievedLeads[19].lead_number, 'B2P-LD-1020');
-
-  // Test editing an existing lead preserves its lead number
-  const leadToEdit = retrievedLeads[16]; // B2P-LD-1017
-  const updated = await leadService.saveLead({
-    id: leadToEdit.id,
-    customer_name: 'Customer 17 Edited',
-    phone: leadToEdit.phone,
-    notes: 'Updated contact notes'
+  const store = new Map([['docgen_leads',JSON.stringify(records)]]);
+  globalThis.localStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v))};
+  const staff=await load('../src/utils/staffUtils.ts');
+  const {leadService}=await load('../src/services/leadService.ts',{
+    './metricsService':asModule('export const metricsService={notifyChange(){}};'),
+    './db':asModule('export const supabase=null; export const isCloudActive=()=>false;'),
+    '../utils/uuid':asModule('export const generateUUID=()=>"read-only-test";'),
+    '../utils/staffUtils':asModule(`export const normalizeStaffEmail=${staff.normalizeStaffEmail.toString()};`)
   });
-  assert.equal(updated.lead_number, 'B2P-LD-1017');
-
-  // Test creating a new lead gets next sequential number B2P-LD-1021
-  const brandNewLead = await leadService.saveLead({
-    customer_name: 'New Client 21',
-    phone: '9847111222'
-  });
-  assert.equal(brandNewLead.lead_number, 'B2P-LD-1021');
+  assert.equal(leadService.getLeadById('c').lead_number,'B2P-LD-1020');
+  leadService.getLeads();
+  assert.deepEqual(JSON.parse(store.get('docgen_leads')),records);
 });
 
 test('LED Van Advertising subdivisions (3 Side, 2 Side, Single Side Van/Truck) are saved and retained', async () => {
@@ -379,6 +337,5 @@ test('LED Van Advertising subdivisions (3 Side, 2 Side, Single Side Van/Truck) a
     assert.equal(retrieved.vehicle_service_type, spec);
   }
 });
-
 
 

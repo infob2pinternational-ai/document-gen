@@ -243,46 +243,18 @@ export default async function handler(req, res) {
 
   if (supabaseUrl && apiKey && id && UUID_RE.test(String(id))) {
     try {
-      // Fetch document to get company_id
-      const docRes = await fetch(`${supabaseUrl}/rest/v1/documents?id=eq.${encodeURIComponent(id)}&select=company_id,document_number,document_type,customer_name`, {
-        headers: {
-          "apikey": apiKey,
-          "Authorization": `Bearer ${apiKey}`
-        }
+      const response = await fetch(`${supabaseUrl}/rest/v1/rpc/get_public_document`, {
+        method: 'POST',
+        headers: { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_id: String(id), p_document_number: null })
       });
-
-      if (docRes.ok) {
-        const docs = await docRes.json();
-        if (docs && docs.length > 0) {
-          const doc = docs[0];
-          const companyId = doc.company_id;
-
-          // Fetch company profile to get logo
-          const profileRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(companyId)}&select=name`, {
-            headers: {
-              "apikey": apiKey,
-              "Authorization": `Bearer ${apiKey}`
-            }
-          });
-
-          if (profileRes.ok) {
-            const profiles = await profileRes.json();
-            if (profiles && profiles.length > 0) {
-              const profile = profiles[0];
-              const isIntermedia = profile.name.toLowerCase().includes('inter') || profile.name.toLowerCase().includes('media');
-
-              title = isIntermedia
-                ? "B2P Inter-Media Solutions - Document Portal"
-                : "B2P International - Document Portal";
-
-              description = `View and download document #${doc.document_number} for ${doc.customer_name}.`;
-
-              logoUrl = isIntermedia
-                ? "https://b2pinternational.com/billing/logo_b2p_intermedia.png?v=5"
-                : "https://b2pinternational.com/billing/logo_b2p_international.png?v=5";
-            }
-          }
-        }
+      const bundle = response.ok ? await response.json() : null;
+      if (bundle?.document && bundle?.profile) {
+        const name = (bundle.profile.name || '').toLowerCase();
+        const isIntermedia = name.includes('inter media') || name.includes('inter-media');
+        title = isIntermedia ? 'B2P Inter-Media Solutions - Document Portal' : title;
+        description = `View and download document #${bundle.document.document_number}.`;
+        logoUrl = isIntermedia ? 'https://b2pinternational.com/billing/logo_b2p_intermedia.png?v=5' : logoUrl;
       }
     } catch (err) {
       console.error("Error fetching OG meta:", err);

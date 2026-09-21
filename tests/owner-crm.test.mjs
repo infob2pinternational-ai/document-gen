@@ -32,8 +32,9 @@ test('shared lead save requires cloud confirmation and is visible from a fresh b
         return { select() { return { async single() {
           if (failure) return { error: { message: failure } };
           if (!['hot', 'warm', 'cold'].includes(row.priority)) return { error: { message: 'leads_priority_check' } };
+          row.lead_number = leads.get(row.id)?.lead_number || 'B2P-LD-' + (1001 + leads.size);
           leads.set(row.id, row);
-          return { data: { id: row.id }, error: null };
+          return { data: { id: row.id, lead_number: row.lead_number }, error: null };
         } }; } };
       },
       select() { return { async eq(column, value) {
@@ -278,7 +279,7 @@ test('office hydration replaces stale active-company dashboard cache with real c
 });
 
 test('owner refresh is scoped, avoids overlapping reads and stops after cleanup', async () => {
-  const reactUrl = asModule('export let effect; export function useEffect(fn) { effect = fn; }');
+  const reactUrl = asModule('export let effect; export let state; export function useEffect(fn) { effect = fn; } export function useState(value) { return [value, v => { state = v; }]; }');
   const officeUrl = asModule('export let handler; export function setHandler(fn) { handler = fn; } export function hydrateCrmFromCloud(...args) { return handler(...args); }');
   const react = await import(reactUrl);
   const office = await import(officeUrl);
@@ -337,6 +338,14 @@ test('owner refresh is scoped, avoids overlapping reads and stops after cleanup'
     await next;
     await tick();
     assert.equal(calls.length, 2);
+    office.setHandler(async () => { throw new Error('Network unavailable'); });
+    useCrmRefresh('owner', 'company-A', true);
+    cleanup = react.effect();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(react.state, /out of date/);
+    office.setHandler(async () => {});
+    await tick();
+    assert.equal(react.state, '');
   } finally {
     cleanup?.();
     if (originalWindow === undefined) delete globalThis.window;

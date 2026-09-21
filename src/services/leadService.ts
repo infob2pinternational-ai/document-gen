@@ -77,66 +77,6 @@ function setLeadNumberInMap(leadId: string, leadNumber?: string): void {
   } catch {}
 }
 
-export function reconcileLeadNumbers(leads: Lead[]): { leads: Lead[]; changed: boolean } {
-  if (!leads || leads.length === 0) return { leads: [], changed: false };
-
-  // Group leads by company to maintain company isolation
-  const byCompany = new Map<string, Lead[]>();
-  for (const lead of leads) {
-    const compKey = lead.company_id || 'default';
-    if (!byCompany.has(compKey)) byCompany.set(compKey, []);
-    byCompany.get(compKey)!.push(lead);
-  }
-
-  let totalChanged = false;
-  const result: Lead[] = [];
-
-  for (const [, compLeads] of byCompany.entries()) {
-    // Sort deterministically by created_at ascending, tiebreaker by id
-    const sorted = [...compLeads].sort((a, b) => {
-      const timeA = Date.parse(a.created_at || '') || 0;
-      const timeB = Date.parse(b.created_at || '') || 0;
-      if (timeA !== timeB) return timeA - timeB;
-      return (a.id || '').localeCompare(b.id || '');
-    });
-
-    const seenNumbers = new Set<string>();
-    let hasDuplicates = false;
-    let hasMissing = false;
-
-    for (const l of sorted) {
-      if (!l.lead_number || !l.lead_number.startsWith('B2P-LD-')) {
-        hasMissing = true;
-        break;
-      }
-      if (seenNumbers.has(l.lead_number)) {
-        hasDuplicates = true;
-        break;
-      }
-      seenNumbers.add(l.lead_number);
-    }
-
-    // If duplicate lead numbers exist or numbers are missing, resequence consecutively
-    if (hasDuplicates || hasMissing) {
-      sorted.forEach((lead, idx) => {
-        const canonical = `B2P-LD-${1001 + idx}`;
-        if (lead.lead_number !== canonical) {
-          totalChanged = true;
-          lead.lead_number = canonical;
-          setLeadNumberInMap(lead.id, canonical);
-        }
-        result.push(lead);
-      });
-    } else {
-      for (const lead of sorted) {
-        result.push(lead);
-      }
-    }
-  }
-
-  return { leads: result, changed: totalChanged };
-}
-
 function getSubDistrictMap(): Record<string, string> {
   try {
     const raw = localStorage.getItem(SUB_DISTRICTS_MAP_KEY);
@@ -176,27 +116,14 @@ function sanitizeLeadForSupabase(row: any) {
   if (row.customer_id && UUID_REGEX.test(row.customer_id)) {
     payload.customer_id = row.customer_id;
   }
-  if (row.company_name) payload.company_name = row.company_name;
-  if (row.whatsapp_number) payload.whatsapp_number = row.whatsapp_number;
-  if (row.address) payload.address = row.address;
-  if (row.location) payload.location = row.location;
-  if (row.sub_district) payload.sub_district = row.sub_district;
-  if (row.business_type) payload.business_type = row.business_type;
+  for (const key of ['company_name','whatsapp_number','address','location','sub_district','business_type',
+    'source_details','service_required','vehicle_service_type','campaign_location','assigned_telecaller_email',
+    'notes','remarks','next_follow_up_at']) {
+    if (Object.hasOwn(row, key)) payload[key] = row[key] || null;
+  }
   if (row.lead_source) payload.lead_source = row.lead_source;
-  if (row.source_details) payload.source_details = row.source_details;
-  if (row.service_required) payload.service_required = row.service_required;
-  if (row.vehicle_service_type) payload.vehicle_service_type = row.vehicle_service_type;
-  if (row.campaign_location) payload.campaign_location = row.campaign_location;
-  if (row.assigned_telecaller_email) payload.assigned_telecaller_email = row.assigned_telecaller_email;
-  if (row.notes) payload.notes = row.notes;
-  if (row.remarks) payload.remarks = row.remarks;
+  if (Object.hasOwn(row, 'required_date')) payload.required_date = row.required_date || null;
 
-  if (row.required_date && typeof row.required_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.required_date)) {
-    payload.required_date = row.required_date;
-  }
-  if (row.next_follow_up_at) {
-    payload.next_follow_up_at = row.next_follow_up_at;
-  }
   if (row.number_of_days !== '' && row.number_of_days !== undefined && !isNaN(Number(row.number_of_days))) {
     payload.number_of_days = Number(row.number_of_days);
   }
@@ -241,7 +168,7 @@ async function queryCrmTableFromCloud<T>(table: CrmLeadsTable, companyId?: strin
   } catch (err) {
     console.warn(`[leadService] Error querying ${table} from Supabase:`, err);
   }
-  return null;
+  throw new Error('Unable to refresh ' + table);
 }
 
 function belongsToDifferentExplicitCompany(row: { company_id?: string | null }, companyId?: string | null): boolean {
@@ -274,52 +201,14 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
     }
     try {
       const upsertPayload = sanitizeLeadForSupabase(changedRow);
-      let { data, error } = await supabase.from(table)
-        .upsert(upsertPayload)
-        .select('id')
-        .single();
-      if (error && (error.message?.includes('sub_district') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
-        console.warn('[leadService] sub_district column missing on Supabase leads table. Retrying cloud save without it. Please run the database migration.');
-        delete upsertPayload.sub_district;
-        const retryResult = await supabase.from(table)
-          .upsert(upsertPayload)
-          .select('id')
-          .single();
-        data = retryResult.data;
-        error = retryResult.error;
-      }
-      if (error && (error.message?.includes('lead_number') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
-        console.warn('[leadService] lead_number column missing on Supabase leads table. Retrying cloud save without it. Please run the database migration.');
-        delete upsertPayload.lead_number;
-        const retryResult = await supabase.from(table)
-          .upsert(upsertPayload)
-          .select('id')
-          .single();
-        data = retryResult.data;
-        error = retryResult.error;
-      }
-      if (error && ((error as any).code === '23505' || error.message?.includes('unique_lead_number_per_company') || error.message?.includes('duplicate key'))) {
-        const companyLeads = getStoredLeads().filter(l => !l.company_id || l.company_id === 'default' || l.company_id === (changedRow as any).company_id);
-        const maxSeq = companyLeads.reduce((max, l) => {
-          if (l.lead_number && l.lead_number.startsWith('B2P-LD-')) {
-            const num = parseInt(l.lead_number.replace('B2P-LD-', ''), 10);
-            if (!isNaN(num) && num > max) return num;
-          }
-          return max;
-        }, 1000);
-        const newSeq = `B2P-LD-${maxSeq + 1}`;
-        upsertPayload.lead_number = newSeq;
-        (changedRow as any).lead_number = newSeq;
-        setLeadNumberInMap((changedRow as any).id, newSeq);
-        const retryResult = await supabase.from(table)
-          .upsert(upsertPayload)
-          .select('id')
-          .single();
-        data = retryResult.data;
-        error = retryResult.error;
-      }
+      // The database assigns an immutable, company-scoped lead number.
+      delete upsertPayload.lead_number;
+      const { data, error } = await supabase.from(table)
+        .upsert(upsertPayload).select('id, lead_number').single();
       if (error) throw error;
       if (data?.id !== changedRow.id) throw new Error('The server did not confirm the saved lead.');
+      if (!data.lead_number) throw new Error('Lead numbering is not configured. Apply the latest CRM database migration.');
+      (changedRow as unknown as Lead).lead_number = data.lead_number;
     } catch (err: any) {
       throw new Error(`Lead could not be saved to the shared CRM: ${err?.message || 'Connection failed'}. Keep this form open and retry.`);
     }
@@ -354,48 +243,27 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
         : sanitizeActivityForSupabase(changedRow);
       const { error } = await supabase.from(table).upsert(sanitized as any);
       if (error) {
-        console.warn(`[leadService] Supabase upsert failed for ${table} (saved in local cache):`, error.message || error);
+        console.warn(`[leadService] Supabase upsert failed for ${table}:`, error.message || error);
+        if (typeof window !== 'undefined') window.alert('The activity log was not saved to the shared CRM. The lead itself may already be saved. Please refresh and check before retrying.');
       }
     } catch (err) {
-      console.warn(`[leadService] Could not reach Supabase for ${table} (saved in local cache):`, err);
+      console.warn(`[leadService] Could not reach Supabase for ${table}:`, err);
+      if (typeof window !== 'undefined') window.alert('The activity log could not reach the shared CRM. Please check your connection.');
     }
   }
 }
 
 async function persistCrmRowDeleted(storageKey: string, table: CrmLeadsTable, fullLocalArray: any[], deletedId: string): Promise<void> {
-  // 1. ALWAYS persist deletion to local cache first
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
-  } catch (storageErr) {
-    console.error(`[leadService] Failed to delete from localStorage for ${storageKey}:`, storageErr);
+  if (supabase) {
+    if (!isCloudActive()) throw new Error('Please sign in again. Nothing was deleted.');
+    const { data, error } = await supabase.from(table).delete().eq('id', deletedId).select('id');
+    if (error) throw new Error(`Deletion failed: ${error.message}`);
+    if (!data?.some(row => row.id === deletedId)) throw new Error('Deletion was not confirmed. Refresh and check your access.');
+    const current = table === 'leads' ? getStoredLeads() : getStoredActivities();
+    fullLocalArray = current.filter(row => row.id !== deletedId);
   }
+  localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
   metricsService.notifyChange();
-
-  // 2. If cloud is active, try to delete from Supabase
-  if (isCloudActive() && supabase) {
-    try {
-      const { error } = await supabase.from(table).delete().eq('id', deletedId);
-      if (error) {
-        console.warn(`[leadService] Supabase delete failed for ${table}:`, error.message || error);
-      }
-    } catch (err) {
-      console.warn(`[leadService] Could not reach Supabase for ${table} delete:`, err);
-    }
-  }
-}
-
-async function syncHealedLeadNumbersToCloud(reconciled: Lead[], cloudLeads: Lead[]): Promise<void> {
-  if (!isCloudActive() || !supabase) return;
-  const cloudMap = new Map(cloudLeads.map(cl => [cl.id, cl.lead_number]));
-  for (const lead of reconciled) {
-    if (lead.id && lead.lead_number && cloudMap.get(lead.id) !== lead.lead_number) {
-      try {
-        await supabase.from('leads').update({ lead_number: lead.lead_number }).eq('id', lead.id);
-      } catch (err) {
-        console.warn(`[leadService] Could not sync healed lead_number for ${lead.id}:`, err);
-      }
-    }
-  }
 }
 
 /** Replaces the active company's cache with the shared Supabase records. */
@@ -425,10 +293,8 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
 
       const merged: Lead[] = sortedCloud.map((cl: any) => {
         const existing = localMap.get(cl.id);
-        const resolvedSubDistrict = cl.sub_district || existing?.sub_district || subDistrictMap[cl.id];
-        if (resolvedSubDistrict) {
-          setSubDistrictInMap(cl.id, resolvedSubDistrict);
-        }
+        const resolvedSubDistrict = cl.sub_district !== undefined ? cl.sub_district : (existing?.sub_district ?? subDistrictMap[cl.id]);
+        setSubDistrictInMap(cl.id, resolvedSubDistrict);
         const resolvedLeadNumber = cl.lead_number || existing?.lead_number || leadNumberMap[cl.id];
 
         // Preserve a newer local edit while an older cloud read is in flight.
@@ -436,7 +302,7 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
           return {
             ...existing,
             lead_number: resolvedLeadNumber || existing.lead_number,
-            sub_district: resolvedSubDistrict || existing.sub_district
+            sub_district: existing.sub_district
           };
         }
         return {
@@ -447,15 +313,8 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
         };
       });
 
-      // Run reconciliation to heal any duplicates or missing numbers
-      const { leads: reconciled, changed } = reconcileLeadNumbers(merged);
-      reconciled.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
-      replaceCompanyScopedCache(LEADS_KEY, localLeads, reconciled, companyId);
-
-      // In background, persist any healed or previously missing numbers back to cloud
-      if (changed || cloudLeads.some(cl => !cl.lead_number)) {
-        syncHealedLeadNumbersToCloud(reconciled, cloudLeads);
-      }
+      merged.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
+      replaceCompanyScopedCache(LEADS_KEY, localLeads, merged, companyId);
     }
 
     if (cloudActivities) {
@@ -474,7 +333,8 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
 
     metricsService.notifyChange();
   } catch (e) {
-    console.error('[leadService] hydrateLeadsFromCloud failed - continuing with existing local cache:', e);
+    console.error('[leadService] hydrateLeadsFromCloud failed:', e);
+    throw e;
   }
 }
 
@@ -504,20 +364,14 @@ function getStoredLeads(): Lead[] {
     const hydrated = parsed.map(lead => ({
       ...lead,
       lead_number: lead.lead_number || leadNumberMap[lead.id],
-      sub_district: lead.sub_district || subDistrictMap[lead.id],
+      sub_district: lead.sub_district !== undefined ? lead.sub_district : subDistrictMap[lead.id],
       priority: String(lead.priority || 'warm').toUpperCase() as Lead['priority'],
       assigned_telecaller_email: lead.assigned_telecaller_email
         ? normalizeStaffEmail(lead.assigned_telecaller_email)
         : lead.assigned_telecaller_email
     }));
 
-    const { leads: reconciled, changed } = reconcileLeadNumbers(hydrated);
-    if (changed) {
-      try {
-        localStorage.setItem(LEADS_KEY, JSON.stringify(reconciled));
-      } catch {}
-    }
-    return reconciled;
+    return hydrated;
   } catch (e) {
     return JSON.parse(JSON.stringify(SEED_LEADS));
   }
@@ -584,6 +438,7 @@ export const leadService = {
     const existing = lead.id ? leads.find(l => l.id === lead.id) : undefined;
     const isNew = !existing;
     const now = new Date().toISOString();
+    lead = { ...existing, ...lead };
 
     const companyId = lead.company_id || activeCompanyId || 'default';
     const leadNumberMap = getLeadNumberMap();
@@ -683,11 +538,11 @@ export const leadService = {
   },
 
   async deleteLead(id: string): Promise<void> {
-    setSubDistrictInMap(id, undefined);
-    setLeadNumberInMap(id, undefined);
     const leads = getStoredLeads();
     const updated = leads.filter(l => l.id !== id);
     await persistCrmRowDeleted(LEADS_KEY, 'leads', updated, id);
+    setSubDistrictInMap(id, undefined);
+    setLeadNumberInMap(id, undefined);
 
     // Clean up local activities cache for this lead
     const activities = getStoredActivities();

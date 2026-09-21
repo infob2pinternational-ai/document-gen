@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { hydrateCrmFromCloud } from '../services/officeService';
 
-export function useCrmRefresh(userId?: string, companyId?: string, enabled = false): void {
+export function useCrmRefresh(userId?: string, companyId?: string, enabled = false): string {
+  const [error, setError] = useState('');
   useEffect(() => {
     if (!enabled || !userId || !companyId) return;
+    setError('');
     let disposed = false;
     let refreshing = false;
     const refresh = async () => {
@@ -11,13 +13,15 @@ export function useCrmRefresh(userId?: string, companyId?: string, enabled = fal
       refreshing = true;
       try {
         await hydrateCrmFromCloud(companyId, () => !disposed);
+        if (!disposed) setError('');
       } catch (error) {
         console.error('CRM refresh failed:', error);
+        if (!disposed) setError('CRM refresh failed. Displayed records may be out of date. Retrying automatically; check your connection.');
       } finally {
         refreshing = false;
       }
     };
-    // Initial hydration is already performed at login/company selection.
+    void refresh();
     const interval = window.setInterval(refresh, 30000);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
@@ -28,4 +32,5 @@ export function useCrmRefresh(userId?: string, companyId?: string, enabled = fal
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [userId, companyId, enabled]);
+  return error;
 }

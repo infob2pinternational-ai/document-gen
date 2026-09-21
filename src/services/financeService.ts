@@ -3078,8 +3078,7 @@ class FinanceService {
       await this.createReversingJournalEntry(jv.id, `Sales invoice reversal: ${reason}`, userEmail);
     }
 
-    doc.status = 'rejected';
-    await dbService.saveDocument(doc, docData.items || []);
+    await dbService.rejectDocument(docId, userEmail);
 
     this.logFinancialAudit('INVOICE_REVERSED', 'sales_invoice', docId, `Reversed sales invoice #${doc.document_number}: ${reason}`, userEmail, 'owner');
     this.notify();

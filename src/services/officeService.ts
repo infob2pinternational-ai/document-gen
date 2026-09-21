@@ -280,7 +280,7 @@ async function queryOfficeTableFromCloud<T>(table: CrmOfficeTable, companyId?: s
   } catch (err) {
     console.warn(`[officeService] Error querying ${table} from Supabase:`, err);
   }
-  return null;
+  throw new Error('Unable to refresh ' + table);
 }
 
 function belongsToDifferentExplicitCompany(row: { company_id?: string | null }, companyId?: string | null): boolean {
@@ -309,9 +309,15 @@ async function persistOfficeRow<T extends { id: string }>(storageKey: string, ta
   if (supabase) {
     if (!isCloudActive()) throw new Error('Please sign in again to save to the shared CRM.');
     const { data, error } = await supabase.from(table)
-      .upsert(sanitizeOfficeRowForSupabase(table, changedRow)).select('id').single();
+      .upsert(sanitizeOfficeRowForSupabase(table, changedRow)).select('*').single();
     if (error) throw new Error(`Unable to save ${table}: ${error.message}`);
     if (data?.id !== changedRow.id) throw new Error('The server did not confirm this save.');
+    if (table === 'crm_quotations') {
+      const server = data as any;
+      Object.assign(changedRow, server,
+        server.approver_name !== undefined ? { approved_by_email: server.approver_name } : {},
+        server.approver_notes !== undefined ? { owner_remarks: server.approver_notes } : {});
+    }
     const current = getLocal<T[]>(storageKey, []);
     const index = current.findIndex(row => row.id === changedRow.id);
     if (index < 0) current.unshift(changedRow);
@@ -393,7 +399,8 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
     }
     metricsService.notifyChange();
   } catch (e) {
-    console.error('[officeService] hydrateCrmFromCloud failed - continuing with existing local cache:', e);
+    console.error('[officeService] hydrateCrmFromCloud failed:', e);
+    throw e;
   }
 }
 
@@ -653,6 +660,10 @@ export const officeService = {
     q.updated_at = new Date().toISOString();
     list[idx] = q;
     await persistOfficeRow(QUOTATIONS_KEY, 'crm_quotations', list, q);
+
+    if (q.approval_status !== 'APPROVED') {
+      throw new Error('The quotation changed and requires review again. Refresh before approving.');
+    }
 
     if (q.lead_id) {
       await leadService.addLeadActivity({

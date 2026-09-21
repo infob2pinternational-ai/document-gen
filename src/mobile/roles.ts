@@ -1,29 +1,5 @@
-/**
- * Role-based module access for B2P ONE (Phase 8, section 3/11).
- *
- * This is new - the desktop app only ever distinguished `role === 'admin'`
- * (full access) from everyone else (Customers.tsx, Services.tsx,
- * Documents.tsx, Dashboard.tsx, Settings.tsx, GoogleSyncDashboard.tsx all
- * gate a handful of admin-only actions this same way). There is no
- * existing multi-role permission matrix anywhere in this codebase to
- * reuse, so this file is a genuinely new, single, centralized mapping -
- * not a duplicate of anything - built specifically so future roles or
- * future modules (CRM, Inventory, etc. - section 11) can be added here
- * without touching any screen's code.
- *
- * Role source: the exact same `user.user_metadata.role` field the
- * desktop app already reads (App.tsx) - no new Supabase schema, no new
- * table, fully compatible with the existing backend and however roles
- * are already being assigned to users today. 'admin' (the desktop's
- * existing full-access role name) and 'owner' are treated as the same
- * tier, so nothing changes for any user who already has role: 'admin'
- * set today.
- *
- * DEFAULT MATRIX BELOW IS A PROPOSED STARTING POINT, not a business
- * decision I'm positioned to make - adjust ROLE_MODULES to match your
- * actual org's permissions. Everything else in the app reads from this
- * one map, so changes here are the only change needed.
- */
+/** UI module visibility uses the role returned by current_app_role().
+ * Supabase enforces permissions independently. Only owners approve documents. */
 
 export type EmployeeRole =
   | 'owner' | 'admin'
@@ -44,8 +20,8 @@ export type ModuleKey =
 
 const ROLE_MODULES: Record<EmployeeRole, ModuleKey[]> = {
   owner: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services'],
-  admin: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services'],
-  manager: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services'],
+  admin: ['dashboard', 'documents', 'edit_documents', 'customers', 'services'],
+  manager: ['dashboard', 'documents', 'edit_documents', 'customers', 'services'],
   accounts: ['dashboard', 'documents', 'customers'],
   sales: ['documents', 'edit_documents', 'customers', 'services'],
   designer: ['documents'],
@@ -64,14 +40,7 @@ const ROLE_MODULES: Record<EmployeeRole, ModuleKey[]> = {
  */
 const FALLBACK_ROLE: EmployeeRole = 'staff';
 
-export function normalizeRole(rawRole: string | undefined | null, email?: string | null): EmployeeRole {
-  const userEmail = (email || '').toLowerCase().trim();
-  if (userEmail === 'sarathjohnpanengadan@gmail.com' || userEmail === 'sarathjohnpanegdan@gmail.com' || userEmail === 'owner@b2p.com') {
-    return 'owner';
-  }
-  if (userEmail === 'fransonputhukkara@gmail.com') {
-    return 'admin';
-  }
+export function normalizeRole(rawRole: string | undefined | null, _email?: string | null): EmployeeRole {
   const r = (rawRole || '').toLowerCase().trim();
   if (r in ROLE_MODULES) return r as EmployeeRole;
   return FALLBACK_ROLE;
@@ -87,9 +56,6 @@ export function canAccessModule(rawRole: string | undefined | null, module: Modu
 
 /** Human-readable label for the role badge shown in the app (e.g. Settings/profile area). */
 export function roleLabel(rawRole: string | undefined | null, email?: string | null): string {
-  const userEmail = (email || '').toLowerCase().trim();
-  if (userEmail === 'sarathjohnpanengadan@gmail.com' || userEmail === 'sarathjohnpanegdan@gmail.com' || userEmail === 'owner@b2p.com') return 'Owner';
-  if (userEmail === 'fransonputhukkara@gmail.com') return 'IT Admin';
   const role = normalizeRole(rawRole, email);
   if (role === 'admin') return 'IT Admin';
   if (role === 'owner') return 'Owner';

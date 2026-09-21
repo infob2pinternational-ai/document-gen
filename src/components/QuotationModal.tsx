@@ -273,7 +273,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
     }
   };
 
-  const isOwner = userRole === 'owner' || userRole === 'admin' || userRole === 'manager';
+  const isOwner = userRole === 'owner';
   const isApproved = approvalStatus === 'APPROVED' || approvalStatus === 'SENT';
 
   const modalElement = (
