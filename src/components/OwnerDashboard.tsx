@@ -27,7 +27,8 @@ import {
   ChevronRight, 
   Activity, 
   Layers,
-  UserCheck
+  UserCheck,
+  Megaphone
 } from 'lucide-react';
 
 interface OwnerDashboardProps {
@@ -227,13 +228,18 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
   // Category Fleet Breakdown
   const fleetCategories = useMemo(() => {
     const cats: { name: string; icon: any; total: number; booked: number; available: number }[] = [
-      { name: 'LED Van', icon: Truck, total: 0, booked: 0, available: 0 },
+      { name: 'LED Van Advertising', icon: Truck, total: 0, booked: 0, available: 0 },
       { name: 'LED Wall', icon: Layers, total: 0, booked: 0, available: 0 },
-      { name: 'Lookwalker', icon: UserCheck, total: 0, booked: 0, available: 0 }
+      { name: 'Lookwalker', icon: UserCheck, total: 0, booked: 0, available: 0 },
+      { name: 'Marketing', icon: Megaphone, total: 0, booked: 0, available: 0 }
     ];
 
     cats.forEach(cat => {
-      const catRes = resources.filter(r => r.category === cat.name && r.is_active !== false);
+      const catRes = resources.filter(r => 
+        (r.category === cat.name || 
+         (cat.name === 'LED Van Advertising' && (r.category === 'LED Van' || r.category === 'LED Van Advertising'))) && 
+        r.is_active !== false
+      );
       const total = catRes.length;
       const booked = catRes.filter(r => activeBookedResourceIds.has(r.id)).length;
       cat.total = total;

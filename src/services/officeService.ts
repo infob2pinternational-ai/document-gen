@@ -23,63 +23,103 @@ const MESSAGES_KEY = 'docgen_whatsapp_messages';
 const NOTIFICATIONS_KEY = 'docgen_notifications';
 
 // =====================================================================
-// SEED RESOURCES (Configurable B2P Inventory)
+// SEED RESOURCES (Configurable B2P Inventory matching CRM Lead Services)
 // =====================================================================
-const SEED_RESOURCES: Resource[] = [
+export const SEED_RESOURCES: Resource[] = [
   {
-    id: 'res-van-1',
-    name: 'LED Van 01 (14ft Thrissur)',
-    category: 'LED Van',
-    description: '14ft High-Brightness Screen, Hydraulic Lift, Generator & Audio System',
-    location: 'Thrissur Hub',
+    id: 'res-van-3side',
+    name: '3 Side LED Van',
+    category: 'LED Van Advertising',
+    description: '3-sided LED screen advertising van with generator & onboard sound',
+    location: 'Kerala Fleet',
     is_active: true
   },
   {
-    id: 'res-van-2',
-    name: 'LED Van 02 (16ft Kochi)',
-    category: 'LED Van',
-    description: '16ft Dual-Side Screen, High-Resolution P3 Display with Onboard Sound',
-    location: 'Kochi Hub',
+    id: 'res-van-2side',
+    name: '2 Side LED Van',
+    category: 'LED Van Advertising',
+    description: '2-sided high-brightness LED screen van with sound system',
+    location: 'Kerala Fleet',
     is_active: true
   },
   {
-    id: 'res-van-3',
-    name: 'LED Van 03 (14ft Kozhikode)',
-    category: 'LED Van',
-    description: '14ft HD Display Van for Malabar region campaigns',
-    location: 'Kozhikode Hub',
+    id: 'res-van-1side',
+    name: 'Single Side LED Van',
+    category: 'LED Van Advertising',
+    description: 'Single-sided mobile LED display van for targeted promotions',
+    location: 'Kerala Fleet',
+    is_active: true
+  },
+  {
+    id: 'res-truck-3side',
+    name: '3 Side LED Truck',
+    category: 'LED Van Advertising',
+    description: 'Heavy commercial 3-sided LED display truck with hydraulic stage',
+    location: 'Kerala Fleet',
     is_active: true
   },
   {
     id: 'res-wall-1',
-    name: 'LED Wall P3 Outdoor (20x10 ft)',
+    name: 'LED Wall',
     category: 'LED Wall',
-    description: 'High-definition outdoor waterproof stage screen with truss rigging',
-    location: 'Central Warehouse (Thrissur)',
-    is_active: true
-  },
-  {
-    id: 'res-wall-2',
-    name: 'LED Wall P2.5 Indoor (15x8 ft)',
-    category: 'LED Wall',
-    description: 'Ultra-clear indoor LED screen for corporate events & conferences',
+    description: 'Modular high-definition indoor & outdoor LED video wall with truss rigging',
     location: 'Central Warehouse (Thrissur)',
     is_active: true
   },
   {
     id: 'res-look-1',
-    name: 'Lookwalker Fleet A (4 Units)',
+    name: 'Lookwalker',
     category: 'Lookwalker',
-    description: '4x Backlit mobile walking billboards with promoter uniform kits',
-    location: 'Kochi & Thrissur',
+    description: 'Illuminated mobile walking billboards with dedicated brand promoter crew',
+    location: 'Kerala Fleet',
     is_active: true
   },
   {
-    id: 'res-look-2',
-    name: 'Lookwalker Fleet B (6 Units)',
-    category: 'Lookwalker',
-    description: '6x LED Illuminated walking displays for high-footfall mall campaigns',
-    location: 'Kozhikode & Malappuram',
+    id: 'res-marketing-1',
+    name: 'Marketing',
+    category: 'Marketing',
+    description: 'Digital marketing, social media promotions, offline brand activation & marketing strategy',
+    location: 'Head Office',
+    is_active: true
+  },
+  {
+    id: 'res-roadshow-1',
+    name: 'Mobile Roadshow Campaigns',
+    category: 'Mobile Roadshow Campaigns',
+    description: 'Turnkey mobile roadshow campaigns across Kerala districts with crew and logistics',
+    location: 'Kerala Hub',
+    is_active: true
+  },
+  {
+    id: 'res-events-1',
+    name: 'Events & Staging',
+    category: 'Events & Staging',
+    description: 'Complete corporate & public event setup, staging, sound and lighting systems',
+    location: 'Central Warehouse',
+    is_active: true
+  },
+  {
+    id: 'res-signage-1',
+    name: 'Signage & Printing',
+    category: 'Signage & Printing',
+    description: 'Large-format hoardings, flex, vinyl printing, glow signs, and branding fabrication',
+    location: 'Print Production Facility',
+    is_active: true
+  },
+  {
+    id: 'res-billboard-1',
+    name: 'Digital Outdoor Billboard',
+    category: 'Digital Outdoor Billboard',
+    description: 'Prime outdoor digital billboard screens across key transit junctions in Kerala',
+    location: 'Prime Transit Spots',
+    is_active: true
+  },
+  {
+    id: 'res-other-1',
+    name: 'Other Advertising',
+    category: 'Other Advertising',
+    description: 'Custom experiential marketing and specialized promotional advertising campaigns',
+    location: 'Kerala Hub',
     is_active: true
   }
 ];
@@ -358,7 +398,11 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
     ]);
     if (!shouldApply()) return;
     if (resources && resources.length > 0) {
-      localStorage.setItem(RESOURCES_KEY, JSON.stringify(resources));
+      const legacySeedIds = new Set(['res-van-1', 'res-van-2', 'res-van-3']);
+      const validCloudResources = resources.filter(r => !legacySeedIds.has(r.id) && !r.name?.includes('LED Van 0'));
+      const seedMap = new Map(SEED_RESOURCES.map(r => [r.id, r]));
+      validCloudResources.forEach(r => seedMap.set(r.id, r));
+      localStorage.setItem(RESOURCES_KEY, JSON.stringify(Array.from(seedMap.values())));
     }
     if (bookings) {
       const localBookings = getLocal<Booking[]>(BOOKINGS_KEY, SEED_BOOKINGS);
@@ -420,7 +464,73 @@ export const officeService = {
 
   // ─── Resources ─────────────────────────────────────────────────────
   getResources(): Resource[] {
-    return getLocal<Resource[]>(RESOURCES_KEY, SEED_RESOURCES);
+    const list = getLocal<Resource[]>(RESOURCES_KEY, SEED_RESOURCES);
+    // Auto-reconcile / upgrade legacy mock seed resources to official B2P fleet & Lead services
+    const hasLegacyPlaceholder = list.some(r =>
+      r.id === 'res-van-1' ||
+      r.id === 'res-van-2' ||
+      r.id === 'res-van-3' ||
+      Boolean(r.name && (r.name.includes('LED Van 01') || r.name.includes('14ft Thrissur') || r.name.includes('16ft Kochi')))
+    );
+    const hasMarketing = list.some(r => r.name === 'Marketing' || r.id === 'res-marketing-1');
+    const has3SideVan = list.some(r => r.name === '3 Side LED Van' || r.id === 'res-van-3side');
+
+    if (hasLegacyPlaceholder || !hasMarketing || !has3SideVan) {
+      const legacySeedIds = new Set(['res-van-1', 'res-van-2', 'res-van-3', 'res-wall-1', 'res-wall-2', 'res-look-1', 'res-look-2']);
+      // Keep any user-created custom resources
+      const customResources = list.filter(r => !legacySeedIds.has(r.id) && !r.name?.startsWith('LED Van 0'));
+      const upgraded = [...SEED_RESOURCES, ...customResources];
+      setLocal(RESOURCES_KEY, upgraded);
+
+      // Remap any legacy bookings in localStorage referencing old seed IDs
+      try {
+        const bookingsRaw = localStorage.getItem(BOOKINGS_KEY);
+        if (bookingsRaw) {
+          const bookings = JSON.parse(bookingsRaw) as Booking[];
+          let changed = false;
+          bookings.forEach(b => {
+            if (b.resource_id === 'res-van-1') {
+              b.resource_id = 'res-van-3side';
+              b.resource_name = '3 Side LED Van';
+              b.service_required = b.service_required || 'LED Van Advertising';
+              b.vehicle_service_type = '3 Side LED Van';
+              changed = true;
+            } else if (b.resource_id === 'res-van-2') {
+              b.resource_id = 'res-van-2side';
+              b.resource_name = '2 Side LED Van';
+              b.service_required = b.service_required || 'LED Van Advertising';
+              b.vehicle_service_type = '2 Side LED Van';
+              changed = true;
+            } else if (b.resource_id === 'res-van-3') {
+              b.resource_id = 'res-van-1side';
+              b.resource_name = 'Single Side LED Van';
+              b.service_required = b.service_required || 'LED Van Advertising';
+              b.vehicle_service_type = 'Single Side LED Van';
+              changed = true;
+            } else if (b.resource_id === 'res-wall-2') {
+              b.resource_id = 'res-wall-1';
+              b.resource_name = 'LED Wall';
+              b.service_required = b.service_required || 'LED Wall';
+              changed = true;
+            } else if (b.resource_id === 'res-look-2') {
+              b.resource_id = 'res-look-1';
+              b.resource_name = 'Lookwalker';
+              b.service_required = b.service_required || 'Lookwalker';
+              changed = true;
+            }
+          });
+          if (changed) {
+            localStorage.setItem(BOOKINGS_KEY, JSON.stringify(bookings));
+          }
+        }
+      } catch (e) {
+        console.warn('[officeService] Error remapping legacy bookings:', e);
+      }
+
+      return upgraded;
+    }
+
+    return list;
   },
 
   async saveResource(resource: Resource): Promise<Resource> {
@@ -810,6 +920,8 @@ export const officeService = {
       lead_number: booking.lead_number,
       quotation_id: booking.quotation_id,
       quotation_number: booking.quotation_number,
+      service_required: booking.service_required || res?.category || '',
+      vehicle_service_type: booking.vehicle_service_type || res?.name || '',
       resource_id: booking.resource_id,
       resource_name: res?.name || booking.resource_name || 'Resource',
       start_date: booking.start_date,

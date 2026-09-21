@@ -382,10 +382,19 @@ export const metricsService = {
       }
     }
 
-    // Category resource breakdown (LED Van, LED Wall, Lookwalker)
-    const categories = ['LED Van', 'LED Wall', 'Lookwalker'];
-    const resourceAvailability: ResourceCategoryAvailability[] = categories.map(cat => {
-      const catResources = resources.filter(r => r.category === cat && r.is_active !== false);
+    // Category resource breakdown (LED Van Advertising, LED Wall, Lookwalker, Marketing, etc.)
+    const primaryCategories = ['LED Van Advertising', 'LED Wall', 'Lookwalker', 'Marketing'];
+    const allResourceCats = Array.from(new Set(resources.map(r => r.category))).filter(Boolean);
+    const categoryOrder = [
+      ...primaryCategories.filter(c => allResourceCats.some(rc => rc === c || (c === 'LED Van Advertising' && rc === 'LED Van'))),
+      ...allResourceCats.filter(c => !primaryCategories.includes(c) && c !== 'LED Van')
+    ];
+
+    const resourceAvailability: ResourceCategoryAvailability[] = categoryOrder.map(cat => {
+      const catResources = resources.filter(r => 
+        (r.category === cat || (cat === 'LED Van Advertising' && r.category === 'LED Van') || (cat === 'LED Van' && r.category === 'LED Van Advertising')) &&
+        r.is_active !== false
+      );
       const totalUnits = catResources.length;
       const bookedResourceIds = new Set(
         activeBookings
@@ -394,7 +403,7 @@ export const metricsService = {
       );
       const activeCount = bookedResourceIds.size;
       return {
-        category: cat,
+        category: cat === 'LED Van' ? 'LED Van Advertising' : cat,
         totalUnits,
         activeBookings: activeCount,
         availableUnits: Math.max(0, totalUnits - activeCount)

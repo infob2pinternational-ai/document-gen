@@ -16,26 +16,8 @@ interface LeadModalProps {
   companyId?: string;
 }
 
-const SERVICE_OPTIONS = [
-  'LED Van Advertising',
-  'LED Wall',
-  'Lookwalker',
-  'Marketing',
-  'Mobile Roadshow Campaigns',
-  'Events & Staging',
-  'Signage & Printing',
-  'Digital Outdoor Billboard',
-  'Other Advertising'
-];
-
-export const SERVICE_SUB_DIVISIONS: Record<string, string[]> = {
-  'LED Van Advertising': [
-    '3 Side LED Van',
-    '2 Side LED Van',
-    'Single Side LED Van',
-    '3 Side LED Truck'
-  ]
-};
+import { SERVICE_OPTIONS, SERVICE_SUB_DIVISIONS } from '../types';
+export { SERVICE_OPTIONS, SERVICE_SUB_DIVISIONS };
 
 const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'instagram', label: 'Instagram' },
@@ -72,7 +54,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [leadSource, setLeadSource] = useState<LeadSource>('phone');
   const [sourceDetails, setSourceDetails] = useState('');
   
-  const [serviceRequired, setServiceRequired] = useState(SERVICE_OPTIONS[0]);
+  const [serviceRequired, setServiceRequired] = useState<string>(SERVICE_OPTIONS[0]);
   const [vehicleServiceType, setVehicleServiceType] = useState('');
   const [isCustomVehicleSpec, setIsCustomVehicleSpec] = useState(false);
   const [requiredDate, setRequiredDate] = useState('');

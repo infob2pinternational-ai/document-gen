@@ -13,7 +13,9 @@ import {
   AlertTriangle,
   Truck,
   Layers,
-  Users
+  Users,
+  Calendar,
+  Megaphone
 } from 'lucide-react';
 
 interface BookingCalendarProps {
@@ -158,9 +160,15 @@ export const BookingCalendar: React.FC<BookingCalendarProps> = ({
         gap: '0.75rem'
       }}>
         {counts.resourceAvailability.map(resCat => {
-          const icon = resCat.category === 'LED Van' ? <Truck size={16} color="var(--brand-blue)" /> :
-                       resCat.category === 'LED Wall' ? <Layers size={16} color="#0284c7" /> :
-                       <Users size={16} color="#7c3aed" />;
+          const isVan = resCat.category.includes('Van') || resCat.category.includes('Truck');
+          const isWall = resCat.category.includes('Wall');
+          const isLookwalker = resCat.category.includes('Lookwalker');
+          const isMarketing = resCat.category.includes('Marketing');
+          const icon = isVan ? <Truck size={16} color="var(--brand-blue)" /> :
+                       isWall ? <Layers size={16} color="#0284c7" /> :
+                       isLookwalker ? <Users size={16} color="#7c3aed" /> :
+                       isMarketing ? <Megaphone size={16} color="#e11d48" /> :
+                       <Calendar size={16} color="#64748b" />;
           return (
             <div
               key={resCat.category}
@@ -221,7 +229,7 @@ export const BookingCalendar: React.FC<BookingCalendarProps> = ({
           className={`btn-secondary ${selectedResource === 'all' ? 'active' : ''}`}
           style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }}
         >
-          All Fleet Units ({resources.length})
+          All Fleet & Services ({resources.length})
         </button>
         {resources.map(res => (
           <button
@@ -231,9 +239,10 @@ export const BookingCalendar: React.FC<BookingCalendarProps> = ({
             className={`btn-secondary ${selectedResource === res.id ? 'active' : ''}`}
             style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
           >
-            {res.category === 'LED Van' && <Truck size={12} />}
-            {res.category === 'LED Wall' && <Layers size={12} />}
-            {res.category === 'Lookwalker' && <Users size={12} />}
+            {(res.category.includes('Van') || res.category.includes('Truck')) && <Truck size={12} />}
+            {res.category.includes('Wall') && <Layers size={12} />}
+            {res.category.includes('Lookwalker') && <Users size={12} />}
+            {res.category.includes('Marketing') && <Megaphone size={12} />}
             <span>{res.name}</span>
           </button>
         ))}
@@ -429,7 +438,10 @@ export const BookingCalendar: React.FC<BookingCalendarProps> = ({
                       {b.company_name && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{b.company_name}</div>}
                     </td>
                     <td style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-                      {b.resource_name}
+                      <div>{b.resource_name}</div>
+                      {b.service_required && b.service_required !== b.resource_name && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{b.service_required}</div>
+                      )}
                     </td>
                     <td className="mono" style={{ fontSize: '0.8125rem' }}>{b.start_date.split('-').reverse().join('/')}</td>
                     <td className="mono" style={{ fontSize: '0.8125rem' }}>{b.end_date.split('-').reverse().join('/')}</td>

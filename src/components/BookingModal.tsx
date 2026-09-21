@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import type { Booking, BookingStatus, Lead } from '../types';
+import type { Booking, BookingStatus, Lead, Resource } from '../types';
+import { SERVICE_OPTIONS, SERVICE_SUB_DIVISIONS } from '../types';
 import { officeService } from '../services/officeService';
 import { X, Calendar, AlertTriangle } from 'lucide-react';
 
@@ -24,6 +25,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
+  const [serviceRequired, setServiceRequired] = useState<string>(SERVICE_OPTIONS[0]);
+  const [vehicleServiceType, setVehicleServiceType] = useState<string>('3 Side LED Van');
+  const [isCustomVehicleSpec, setIsCustomVehicleSpec] = useState(false);
   const [resourceId, setResourceId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -35,6 +39,29 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const resources = officeService.getResources();
 
+  const groupedResources = useMemo(() => {
+    const map = new Map<string, Resource[]>();
+    resources.forEach(r => {
+      const cat = r.category || 'Other Advertising';
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(r);
+    });
+    return Array.from(map.entries()).map(([category, items]) => ({ category, items }));
+  }, [resources]);
+
+  const resolveResource = (srv: string, spec?: string): Resource | undefined => {
+    if (srv === 'LED Van Advertising') {
+      if (spec) {
+        const found = resources.find(r => r.name.toLowerCase() === spec.toLowerCase());
+        if (found) return found;
+      }
+      return resources.find(r => r.name === '3 Side LED Van') || resources.find(r => r.category.includes('Van'));
+    }
+    return resources.find(r => r.name.toLowerCase() === srv.toLowerCase() || r.category.toLowerCase() === srv.toLowerCase())
+      || resources.find(r => r.name.toLowerCase().includes(srv.toLowerCase()))
+      || resources[0];
+  };
+
   useEffect(() => {
     setConflictError(null);
     if (booking) {
@@ -42,6 +69,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setCompanyName(booking.company_name || '');
       setPhone(booking.customer_phone || '');
       setResourceId(booking.resource_id);
+
+      const currentRes = resources.find(r => r.id === booking.resource_id);
+      const srv = booking.service_required || currentRes?.category || 'LED Van Advertising';
+      setServiceRequired(srv);
+
+      const spec = booking.vehicle_service_type || currentRes?.name || (srv === 'LED Van Advertising' ? '3 Side LED Van' : srv);
+      setVehicleServiceType(spec);
+      const knownSpecs = SERVICE_SUB_DIVISIONS[srv] || [];
+      setIsCustomVehicleSpec(Boolean(spec && knownSpecs.length > 0 && !knownSpecs.includes(spec)));
+
       setStartDate(booking.start_date);
       setEndDate(booking.end_date);
       setLocation(booking.location);
@@ -52,22 +89,26 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setCustomerName(prefilledLead.customer_name);
       setCompanyName(prefilledLead.company_name || '');
       setPhone(prefilledLead.phone || '');
-      // Auto-match resource category
-      const matchedRes = resources.find(r => 
-        prefilledLead.service_required?.toLowerCase().includes(r.category.toLowerCase()) ||
-        r.name.toLowerCase().includes(prefilledLead.service_required?.toLowerCase() || '')
-      ) || resources[0];
+
+      const srv = prefilledLead.service_required || 'LED Van Advertising';
+      setServiceRequired(srv);
+      const spec = prefilledLead.vehicle_service_type || (srv === 'LED Van Advertising' ? '3 Side LED Van' : srv);
+      setVehicleServiceType(spec);
+
+      const knownSpecs = SERVICE_SUB_DIVISIONS[srv] || [];
+      setIsCustomVehicleSpec(Boolean(spec && knownSpecs.length > 0 && !knownSpecs.includes(spec)));
+
+      const matchedRes = resolveResource(srv, spec) || resources[0];
       setResourceId(matchedRes?.id || '');
-      
+
       const reqDate = prefilledLead.required_date || new Date().toISOString().split('T')[0];
       setStartDate(reqDate);
-      
-      // Calculate end date based on duration
+
       const days = prefilledLead.number_of_days || 1;
       const d = new Date(reqDate);
       d.setDate(d.getDate() + days - 1);
       setEndDate(d.toISOString().split('T')[0]);
-      
+
       setLocation(prefilledLead.campaign_location || prefilledLead.location || 'Kerala');
       setDriverOperator('');
       setStatus('CONFIRMED');
@@ -76,16 +117,65 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setCustomerName('');
       setCompanyName('');
       setPhone('');
-      setResourceId(resources[0]?.id || '');
+      const defaultSrv = 'LED Van Advertising';
+      setServiceRequired(defaultSrv);
+      setVehicleServiceType('3 Side LED Van');
+      setIsCustomVehicleSpec(false);
+      const defaultRes = resolveResource(defaultSrv, '3 Side LED Van') || resources[0];
+      setResourceId(defaultRes?.id || '');
+
       const today = new Date().toISOString().split('T')[0];
       setStartDate(today);
       setEndDate(today);
-      setLocation('Thrissur');
+      setLocation('Kerala');
       setDriverOperator('');
       setStatus('CONFIRMED');
       setNotes('');
     }
   }, [booking, prefilledLead, isOpen]);
+
+  const handleServiceChange = (newSrv: string) => {
+    setServiceRequired(newSrv);
+    let nextSpec = '';
+    if (newSrv === 'LED Van Advertising') {
+      nextSpec = '3 Side LED Van';
+    } else {
+      nextSpec = newSrv;
+    }
+    setVehicleServiceType(nextSpec);
+    setIsCustomVehicleSpec(false);
+    const matched = resolveResource(newSrv, nextSpec);
+    if (matched) {
+      setResourceId(matched.id);
+    }
+  };
+
+  const handleSubDivisionChange = (newSpec: string) => {
+    if (newSpec === '__OTHER__') {
+      setIsCustomVehicleSpec(true);
+      setVehicleServiceType('');
+      return;
+    }
+    setVehicleServiceType(newSpec);
+    const matched = resolveResource(serviceRequired, newSpec);
+    if (matched) {
+      setResourceId(matched.id);
+    }
+  };
+
+  const handleResourceSelect = (newResId: string) => {
+    setResourceId(newResId);
+    const selected = resources.find(r => r.id === newResId);
+    if (selected) {
+      const matchedSrv = SERVICE_OPTIONS.find(s =>
+        s.toLowerCase() === selected.category.toLowerCase() ||
+        (selected.category.includes('Van') && s === 'LED Van Advertising')
+      ) || selected.category;
+      setServiceRequired(matchedSrv);
+      setVehicleServiceType(selected.name);
+      setIsCustomVehicleSpec(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -118,6 +208,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       customer_phone: phone.trim() || undefined,
       lead_id: booking?.lead_id || prefilledLead?.id,
       lead_number: booking?.lead_number || prefilledLead?.lead_number,
+      service_required: serviceRequired,
+      vehicle_service_type: vehicleServiceType.trim() || undefined,
       resource_id: resourceId,
       start_date: startDate,
       end_date: endDate,
@@ -178,23 +270,106 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           
-          {/* Resource Selector */}
-          <div className="form-group">
-            <label className="form-label" htmlFor="bk-res">Select Fleet / Equipment Resource *</label>
-            <select
-              id="bk-res"
-              value={resourceId}
-              onChange={(e) => setResourceId(e.target.value)}
-              className="filter-select"
-              style={{ width: '100%', fontSize: '0.9rem', padding: '0.5rem' }}
-              required
-            >
-              {resources.map(r => (
-                <option key={r.id} value={r.id}>
-                  [{r.category}] {r.name} · ({r.location})
-                </option>
-              ))}
-            </select>
+          {/* Service & Equipment Selection (matching CRM Lead Services) */}
+          <div style={{
+            background: 'var(--bg-card, #f8fafc)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 'var(--radius-sm, 6px)',
+            padding: '0.85rem 1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem'
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" htmlFor="bk-service" style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                  Service Required *
+                </label>
+                <select
+                  id="bk-service"
+                  value={serviceRequired}
+                  onChange={(e) => handleServiceChange(e.target.value)}
+                  style={{ width: '100%', fontSize: '0.85rem' }}
+                  required
+                >
+                  {SERVICE_OPTIONS.map(srv => (
+                    <option key={srv} value={srv}>{srv}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.8125rem', margin: 0 }}>
+                    {serviceRequired === 'LED Van Advertising' ? 'Van / Truck Sub-Division' : 'Vehicle / Equipment Spec'}
+                  </label>
+                  {SERVICE_SUB_DIVISIONS[serviceRequired] && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomVehicleSpec(!isCustomVehicleSpec)}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.6875rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                    >
+                      {isCustomVehicleSpec ? 'Select list' : 'Type custom'}
+                    </button>
+                  )}
+                </div>
+
+                {(!isCustomVehicleSpec && SERVICE_SUB_DIVISIONS[serviceRequired]) ? (
+                  <select
+                    value={vehicleServiceType}
+                    onChange={(e) => handleSubDivisionChange(e.target.value)}
+                    style={{ width: '100%', fontSize: '0.85rem' }}
+                  >
+                    <option value="">-- Select Sub-Division / Unit --</option>
+                    {SERVICE_SUB_DIVISIONS[serviceRequired].map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                    <option value="__OTHER__">+ Type Custom Spec / Size...</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder={
+                      serviceRequired === 'LED Van Advertising'
+                        ? "e.g. 3 Side LED Van / Heavy Stage Truck"
+                        : serviceRequired === 'Marketing'
+                        ? "e.g. Digital Marketing / Social Media / Branding Strategy"
+                        : serviceRequired === 'LED Wall'
+                        ? "e.g. Screen size / Outdoor Pitch P3 / Setup details"
+                        : "e.g. Service specifications / setup details"
+                    }
+                    value={vehicleServiceType}
+                    onChange={(e) => setVehicleServiceType(e.target.value)}
+                    style={{ width: '100%', fontSize: '0.85rem' }}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Fleet / Resource Allocation Slot */}
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" htmlFor="bk-res" style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                Select Fleet / Equipment Resource *
+              </label>
+              <select
+                id="bk-res"
+                value={resourceId}
+                onChange={(e) => handleResourceSelect(e.target.value)}
+                className="filter-select"
+                style={{ width: '100%', fontSize: '0.875rem', padding: '0.45rem' }}
+                required
+              >
+                {groupedResources.map(group => (
+                  <optgroup key={group.category} label={group.category}>
+                    {group.items.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} · ({r.location || 'Kerala Fleet'})
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Dates */}

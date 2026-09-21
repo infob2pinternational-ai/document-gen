@@ -297,12 +297,33 @@ export interface CrmQuotation {
 // Booking Calendar & Resources (Phase 4)
 // =====================================================================
 
+export const SERVICE_OPTIONS: string[] = [
+  'LED Van Advertising',
+  'LED Wall',
+  'Lookwalker',
+  'Marketing',
+  'Mobile Roadshow Campaigns',
+  'Events & Staging',
+  'Signage & Printing',
+  'Digital Outdoor Billboard',
+  'Other Advertising'
+];
+
+export const SERVICE_SUB_DIVISIONS: Record<string, string[]> = {
+  'LED Van Advertising': [
+    '3 Side LED Van',
+    '2 Side LED Van',
+    'Single Side LED Van',
+    '3 Side LED Truck'
+  ]
+};
+
 export type BookingStatus = 'TENTATIVE' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 
 export interface Resource {
   id: string;
   name: string;
-  category: 'LED Van' | 'LED Wall' | 'Lookwalker' | 'Roadshow' | 'Other';
+  category: 'LED Van Advertising' | 'LED Van' | 'LED Wall' | 'Lookwalker' | 'Marketing' | 'Mobile Roadshow Campaigns' | 'Events & Staging' | 'Signage & Printing' | 'Digital Outdoor Billboard' | 'Other Advertising' | 'Roadshow' | 'Other' | string;
   description?: string;
   location?: string;
   is_active: boolean;
@@ -320,6 +341,8 @@ export interface Booking {
   lead_number?: string;
   quotation_id?: string;
   quotation_number?: string;
+  service_required?: string;
+  vehicle_service_type?: string;
   resource_id: string;
   resource_name: string;
   start_date: string; // YYYY-MM-DD
