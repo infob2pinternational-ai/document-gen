@@ -138,7 +138,11 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setSourceDetails(lead.source_details || '');
       const srv = lead.service_required || SERVICE_OPTIONS[0];
       setServiceRequired(srv);
-      const vSpec = lead.vehicle_service_type || '';
+      let vSpec = lead.vehicle_service_type || '';
+      if (vSpec === '3 Side Van') vSpec = '3 Side LED Van';
+      else if (vSpec === '2 Side Van') vSpec = '2 Side LED Van';
+      else if (vSpec === 'Single Side Van' || vSpec === '1 Side Van') vSpec = 'Single Side LED Van';
+      else if (vSpec === '3 Side Truck') vSpec = '3 Side LED Truck';
       setVehicleServiceType(vSpec);
       const knownSpecs = SERVICE_SUB_DIVISIONS[srv] || [];
       setIsCustomVehicleSpec(Boolean(vSpec && !knownSpecs.includes(vSpec)));
@@ -577,16 +581,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     <option value="">-- Select Sub-Division / Type --</option>
                     {serviceRequired === 'LED Van Advertising' ? (
                       <>
-                        <optgroup label="LED Vans">
-                          <option value="3 Side LED Van">3 Side LED Van</option>
-                          <option value="2 Side LED Van">2 Side LED Van</option>
-                          <option value="Single Side LED Van">Single Side LED Van</option>
-                        </optgroup>
-                        <optgroup label="LED Trucks">
-                          <option value="3 Side LED Truck">3 Side LED Truck</option>
-                          <option value="2 Side LED Truck">2 Side LED Truck</option>
-                          <option value="Single Side LED Truck">Single Side LED Truck</option>
-                        </optgroup>
+                        <option value="3 Side LED Van">3 Side LED Van</option>
+                        <option value="2 Side LED Van">2 Side LED Van</option>
+                        <option value="Single Side LED Van">Single Side LED Van</option>
+                        <option value="3 Side LED Truck">3 Side LED Truck</option>
                       </>
                     ) : (
                       (SERVICE_SUB_DIVISIONS[serviceRequired] || []).map(sub => (

@@ -360,9 +360,7 @@ test('LED Van Advertising subdivisions (3 Side, 2 Side, Single Side Van/Truck) a
     '3 Side LED Van',
     '2 Side LED Van',
     'Single Side LED Van',
-    '3 Side LED Truck',
-    '2 Side LED Truck',
-    'Single Side LED Truck'
+    '3 Side LED Truck'
   ];
 
   for (const spec of vanSpecs) {
