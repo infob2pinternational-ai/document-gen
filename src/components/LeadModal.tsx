@@ -53,6 +53,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [phone, setPhone] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [location, setLocation] = useState('Thrissur');
+  const [isCustomLocation, setIsCustomLocation] = useState(false);
   const [subDistrict, setSubDistrict] = useState('');
   const [isCustomSubDistrict, setIsCustomSubDistrict] = useState(false);
   const [address, setAddress] = useState('');
@@ -106,10 +107,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setWhatsappNumber(lead.whatsapp_number || lead.phone || '');
       const loc = lead.location || 'Thrissur';
       setLocation(loc);
+      const isKnownKerala = KERALA_DISTRICTS.includes(loc);
+      setIsCustomLocation(!isKnownKerala);
       const sub = lead.sub_district || '';
       setSubDistrict(sub);
       const availableSubs = KERALA_SUB_DISTRICTS[loc] || [];
-      setIsCustomSubDistrict(Boolean(sub && !availableSubs.includes(sub)));
+      setIsCustomSubDistrict(!isKnownKerala || Boolean(sub && !availableSubs.includes(sub)));
       setAddress(lead.address || '');
       setBusinessType(lead.business_type || '');
       setLeadSource(lead.lead_source || 'phone');
@@ -129,6 +132,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setPhone('');
       setWhatsappNumber('');
       setLocation('Thrissur');
+      setIsCustomLocation(false);
       setSubDistrict('');
       setIsCustomSubDistrict(false);
       setAddress('');
@@ -149,9 +153,17 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   }, [lead, isOpen, userEmail]);
 
   const handleDistrictChange = (newDistrict: string) => {
-    setLocation(newDistrict);
-    setSubDistrict('');
-    setIsCustomSubDistrict(false);
+    if (newDistrict === '__OTHER__') {
+      setIsCustomLocation(true);
+      setLocation('');
+      setIsCustomSubDistrict(true);
+      setSubDistrict('');
+    } else {
+      setIsCustomLocation(false);
+      setLocation(newDistrict);
+      setSubDistrict('');
+      setIsCustomSubDistrict(false);
+    }
   };
 
   useEffect(() => {
@@ -186,6 +198,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     }
     if (!phone.trim()) {
       alert('Please enter a contact phone number.');
+      return;
+    }
+    if (!location.trim()) {
+      alert('Please select or enter a district or city.');
       return;
     }
 
@@ -355,33 +371,76 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>District / City</label>
-                  <select
-                    value={location}
-                    onChange={(e) => handleDistrictChange(e.target.value)}
-                    style={{ fontSize: '0.8125rem' }}
-                  >
-                    {KERALA_DISTRICTS.map(dist => (
-                      <option key={dist} value={dist}>{dist}</option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600, margin: 0 }}>
+                      District / City *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isCustomLocation) {
+                          setIsCustomLocation(false);
+                          setLocation('Thrissur');
+                          setIsCustomSubDistrict(false);
+                          setSubDistrict('');
+                        } else {
+                          setIsCustomLocation(true);
+                          setLocation('');
+                          setIsCustomSubDistrict(true);
+                          setSubDistrict('');
+                        }
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.6875rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                    >
+                      {isCustomLocation ? 'Select Kerala list' : 'Out of Kerala / Other'}
+                    </button>
+                  </div>
+                  {isCustomLocation ? (
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Coimbatore / Bangalore / Mumbai"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      style={{ fontSize: '0.8125rem' }}
+                    />
+                  ) : (
+                    <select
+                      value={location}
+                      onChange={(e) => handleDistrictChange(e.target.value)}
+                      style={{ fontSize: '0.8125rem' }}
+                    >
+                      <optgroup label="Kerala Districts (14)">
+                        {KERALA_DISTRICTS.map(dist => (
+                          <option key={dist} value={dist}>{dist}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Outside Kerala">
+                        <option value="__OTHER__">+ Enter Out of Kerala City...</option>
+                      </optgroup>
+                    </select>
+                  )}
                 </div>
 
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600, margin: 0 }}>Sub District</label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomSubDistrict(!isCustomSubDistrict)}
-                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.6875rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-                    >
-                      {isCustomSubDistrict ? 'Select list' : 'Type custom'}
-                    </button>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600, margin: 0 }}>
+                      {isCustomLocation ? 'Sub District / Area / State' : 'Sub District'}
+                    </label>
+                    {!isCustomLocation && (
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomSubDistrict(!isCustomSubDistrict)}
+                        style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.6875rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                      >
+                        {isCustomSubDistrict ? 'Select list' : 'Type custom'}
+                      </button>
+                    )}
                   </div>
-                  {isCustomSubDistrict ? (
+                  {isCustomLocation || isCustomSubDistrict ? (
                     <input
                       type="text"
-                      placeholder="e.g. Chalakudy / Kunnamkulam"
+                      placeholder={isCustomLocation ? "e.g. Area / State (e.g. Tamil Nadu, Gandhipuram)" : "e.g. Chalakudy / Kunnamkulam"}
                       value={subDistrict}
                       onChange={(e) => setSubDistrict(e.target.value)}
                       style={{ fontSize: '0.8125rem' }}

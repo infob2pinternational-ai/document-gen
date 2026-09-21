@@ -194,3 +194,45 @@ test('lead numbers are sorted in strictly ascending numerical order without shuf
   assert.equal(leads[2].lead_number, 'B2P-LD-1005');
   assert.equal(leads[3].lead_number, 'B2P-LD-1012');
 });
+
+test('out-of-Kerala location and sub-district/state can be saved and retrieved cleanly', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem(key) { return store.get(key) ?? null; },
+    setItem(key, value) { store.set(key, String(value)); }
+  };
+
+  const dbUrl = asModule(`
+    export const isCloudActive = () => false;
+    export const supabase = null;
+  `);
+
+  const staff = await load('../src/utils/staffUtils.ts');
+
+  const { leadService } = await load('../src/services/leadService.ts', {
+    './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+    './db': dbUrl,
+    '../utils/uuid': asModule('export const generateUUID = () => "lead-out-state-1";'),
+    '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+  });
+
+  const outOfStateLead = {
+    customer_name: 'Rajesh Sharma',
+    company_name: 'Bangalore Tech Park',
+    phone: '9845012345',
+    location: 'Bangalore',
+    sub_district: 'Indiranagar, Karnataka',
+    service_required: 'Hoarding Advertising'
+  };
+
+  const saved = await leadService.saveLead(outOfStateLead, 'admin@b2p.com');
+  assert.equal(saved.location, 'Bangalore');
+  assert.equal(saved.sub_district, 'Indiranagar, Karnataka');
+
+  const retrieved = leadService.getLeadById(saved.id);
+  assert.ok(retrieved);
+  assert.equal(retrieved.location, 'Bangalore');
+  assert.equal(retrieved.sub_district, 'Indiranagar, Karnataka');
+  assert.equal(leadService.getSubDistrict(saved.id), 'Indiranagar, Karnataka');
+});
+
