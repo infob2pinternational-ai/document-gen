@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { CrmQuotation, Lead, QuotationLineItem, QuotationApprovalStatus } from '../types';
 import { officeService } from '../services/officeService';
@@ -56,7 +56,25 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
   const [approvalStatus, setApprovalStatus] = useState<QuotationApprovalStatus>('DRAFT');
   const [ownerRemarks, setOwnerRemarks] = useState('');
 
+  const prevOpenRef = useRef(false);
+  const prevTargetRef = useRef<string | null>(null);
+
   useEffect(() => {
+    if (!isOpen) {
+      prevOpenRef.current = false;
+      return;
+    }
+
+    const currentTargetId = quotation?.id || linkedLead?.id || 'new';
+    const justOpened = !prevOpenRef.current && isOpen;
+    const targetChanged = prevTargetRef.current !== currentTargetId;
+    prevOpenRef.current = isOpen;
+    prevTargetRef.current = currentTargetId;
+
+    if (!justOpened && !targetChanged) {
+      return;
+    }
+
     if (quotation) {
       setQuotationNumber(quotation.quotation_number);
       setCustomerName(quotation.customer_name);

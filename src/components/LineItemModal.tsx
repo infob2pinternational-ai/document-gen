@@ -52,10 +52,25 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
   // Refs
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const prevOpenRef = useRef(false);
+  const prevItemToEditRef = useRef<any>(undefined);
 
   // Populate data on open or edit
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      prevOpenRef.current = false;
+      return;
+    }
+
+    const justOpened = !prevOpenRef.current && isOpen;
+    const itemChanged = prevItemToEditRef.current !== itemToEdit;
+    prevOpenRef.current = isOpen;
+    prevItemToEditRef.current = itemToEdit;
+
+    // If modal is already open and the edited item hasn't changed, do not reset fields!
+    if (!justOpened && !itemChanged) {
+      return;
+    }
 
     if (itemToEdit) {
       setSelectedServiceId(itemToEdit.service_id || '');
@@ -93,7 +108,7 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
-  }, [isOpen, itemToEdit, services]);
+  }, [isOpen, itemToEdit]);
 
   // Click outside listener for command palette dropdown
   useEffect(() => {
