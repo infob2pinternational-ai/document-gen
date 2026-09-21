@@ -50,7 +50,7 @@ const PIPELINE_STAGES: { key: LeadStatus; label: string; stepNumber: number }[] 
 ];
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
-  lead,
+  lead: incomingLead,
   isOpen,
   onClose,
   onEdit,
@@ -67,7 +67,13 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [quotationModalOpen, setQuotationModalOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
 
-  if (!isOpen || !lead) return null;
+  if (!isOpen || !incomingLead) return null;
+
+  const freshLead = (incomingLead.id ? leadService.getLeadById(incomingLead.id) : null) || incomingLead;
+  const lead: Lead = {
+    ...freshLead,
+    sub_district: freshLead.sub_district || (freshLead.id ? leadService.getSubDistrict?.(freshLead.id) : undefined)
+  };
 
   const activities: LeadActivity[] = leadService.getLeadActivities(lead.id);
   const pendingFollowUps = officeService.getFollowUps('all').filter(f => f.lead_id === lead.id && f.status === 'PENDING');
@@ -148,6 +154,12 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 <span className="status-dot status-dot-info" style={{ width: '6px', height: '6px' }} />
                 <span>{lead.status.replace(/_/g, ' ')}</span>
               </span>
+
+              {(lead.location || lead.sub_district) && (
+                <span className="badge badge-neutral" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                  📍 {lead.sub_district ? `${lead.sub_district}, ${lead.location}` : lead.location}
+                </span>
+              )}
             </div>
 
             <h2 style={{ 
@@ -159,12 +171,12 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               lineHeight: 1.25,
               wordBreak: 'break-word'
             }}>
-              {lead.customer_name}
+              {lead.company_name || lead.customer_name}
             </h2>
 
             {lead.company_name && (
-              <div style={{ fontSize: '0.8125rem', color: '#64748b', fontWeight: 500, marginTop: '0.15rem' }}>
-                {lead.company_name}
+              <div style={{ fontSize: '0.875rem', color: '#475569', fontWeight: 600, marginTop: '0.2rem' }}>
+                Contact: {lead.customer_name}
               </div>
             )}
           </div>
@@ -374,19 +386,19 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem 1rem' }}>
               <div>
                 <span style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.15rem' }}>
-                  Contact Name
+                  Company / Entity
                 </span>
-                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0f172a' }}>
-                  {lead.customer_name}
+                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: lead.company_name ? '#0f172a' : '#94a3b8' }}>
+                  {lead.company_name || '—'}
                 </div>
               </div>
 
               <div>
                 <span style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.15rem' }}>
-                  Company / Entity
+                  Contact Name
                 </span>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: lead.company_name ? '#0f172a' : '#94a3b8' }}>
-                  {lead.company_name || '—'}
+                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0f172a' }}>
+                  {lead.customer_name}
                 </div>
               </div>
 
@@ -421,7 +433,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 <span style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.15rem' }}>
                   Sub District
                 </span>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: lead.sub_district ? '#0f172a' : '#94a3b8' }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: lead.sub_district ? 'var(--brand-blue)' : '#94a3b8' }}>
                   {lead.sub_district || '—'}
                 </div>
               </div>
@@ -493,7 +505,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   Campaign Location
                 </span>
                 <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>
-                  {lead.campaign_location || lead.location || '—'}
+                  {lead.campaign_location || (lead.sub_district ? `${lead.sub_district}, ${lead.location}` : lead.location) || '—'}
                 </div>
               </div>
 

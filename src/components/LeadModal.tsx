@@ -293,19 +293,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--brand-navy)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.35rem' }}>
-                1. Customer & Contact
-              </div>
-
-              <div>
-                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Customer Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Anand Menon"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  style={{ fontSize: '0.8125rem' }}
-                />
+                1. Company & Contact Details
               </div>
 
               <div>
@@ -315,6 +303,18 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   placeholder="e.g. Kalyan Silks"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
+                  style={{ fontSize: '0.8125rem' }}
+                />
+              </div>
+
+              <div>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Customer / Contact Person Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Anand Menon"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
                   style={{ fontSize: '0.8125rem' }}
                 />
               </div>

@@ -38,6 +38,29 @@ const SEED_ACTIVITIES: LeadActivity[] = [];
 type CrmLeadsTable = 'leads' | 'lead_activities';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SUB_DISTRICTS_MAP_KEY = 'docgen_lead_subdistricts_v1';
+
+function getSubDistrictMap(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(SUB_DISTRICTS_MAP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setSubDistrictInMap(leadId: string, subDistrict?: string): void {
+  if (!leadId) return;
+  try {
+    const map = getSubDistrictMap();
+    if (subDistrict && subDistrict.trim()) {
+      map[leadId] = subDistrict.trim();
+    } else {
+      delete map[leadId];
+    }
+    localStorage.setItem(SUB_DISTRICTS_MAP_KEY, JSON.stringify(map));
+  } catch {}
+}
 
 function sanitizeLeadForSupabase(row: any) {
   const payload: any = {
@@ -174,6 +197,9 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
     if (index < 0) current.unshift(changedRow as unknown as Lead);
     else current[index] = changedRow as unknown as Lead;
     localStorage.setItem(storageKey, JSON.stringify(current));
+    if ((changedRow as any).id) {
+      setSubDistrictInMap((changedRow as any).id, (changedRow as any).sub_district);
+    }
     metricsService.notifyChange();
     return;
   }
@@ -237,15 +263,25 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
     if (cloudLeads) {
       const localLeads = getStoredLeads();
       const localMap = new Map(localLeads.map(l => [l.id, l]));
+      const subDistrictMap = getSubDistrictMap();
       const merged: Lead[] = cloudLeads.map((cl: any, idx: number) => {
         const existing = localMap.get(cl.id);
+        const resolvedSubDistrict = cl.sub_district || existing?.sub_district || subDistrictMap[cl.id];
+        if (resolvedSubDistrict) {
+          setSubDistrictInMap(cl.id, resolvedSubDistrict);
+        }
         // Preserve a newer local edit while an older cloud read is in flight.
         if (existing && Date.parse(existing.updated_at || '') > Date.parse(cl.updated_at || '')) {
-          return existing;
+          return {
+            ...existing,
+            sub_district: resolvedSubDistrict || existing.sub_district
+          };
         }
         const seq = 1001 + idx;
         return {
+          ...existing,
           ...cl,
+          sub_district: resolvedSubDistrict,
           lead_number: cl.lead_number || existing?.lead_number || `B2P-LD-${seq}`
         };
       });
@@ -292,8 +328,10 @@ function getStoredLeads(): Lead[] {
     return JSON.parse(JSON.stringify(SEED_LEADS));
   }
   try {
+    const subDistrictMap = getSubDistrictMap();
     return (JSON.parse(raw) as Lead[]).map(lead => ({
       ...lead,
+      sub_district: lead.sub_district || subDistrictMap[lead.id],
       priority: String(lead.priority || 'warm').toUpperCase() as Lead['priority'],
       assigned_telecaller_email: lead.assigned_telecaller_email
         ? normalizeStaffEmail(lead.assigned_telecaller_email)
@@ -354,6 +392,10 @@ export const leadService = {
   getLeadById(id: string): Lead | null {
     const leads = getStoredLeads();
     return leads.find(l => l.id === id) || null;
+  },
+
+  getSubDistrict(id: string): string | undefined {
+    return getSubDistrictMap()[id];
   },
 
   async saveLead(lead: Partial<Lead> & { customer_name: string; phone: string }, userEmail: string = 'Staff'): Promise<Lead> {
@@ -436,10 +478,15 @@ export const leadService = {
       }
     }
 
+    if (leadRecord.id) {
+      setSubDistrictInMap(leadRecord.id, leadRecord.sub_district);
+    }
+
     return leadRecord;
   },
 
   async deleteLead(id: string): Promise<void> {
+    setSubDistrictInMap(id, undefined);
     const leads = getStoredLeads();
     const updated = leads.filter(l => l.id !== id);
     await persistCrmRowDeleted(LEADS_KEY, 'leads', updated, id);

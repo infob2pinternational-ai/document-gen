@@ -80,4 +80,74 @@ test('lead with sub_district is saved and retrieved in local cache and sanitized
   assert.ok(retrieved);
   assert.equal(retrieved.location, 'Thrissur');
   assert.equal(retrieved.sub_district, 'Chalakudy');
+  assert.equal(leadService.getSubDistrict(saved.id), 'Chalakudy');
+});
+
+test('cloud hydration preserves sub_district when cloud table lacks column', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem(key) { return store.get(key) ?? null; },
+    setItem(key, value) { store.set(key, String(value)); }
+  };
+
+  const cloudLeadsSimulated = [
+    {
+      id: 'lead-test-456',
+      customer_name: 'Shibu DM',
+      company_name: 'Aakash Institute',
+      phone: '7356601284',
+      location: 'Thrissur',
+      // Note: sub_district is intentionally missing from cloud response
+      service_required: 'Other Advertising',
+      status: 'new',
+      updated_at: new Date().toISOString()
+    }
+  ];
+
+  const dbUrl = asModule(`
+    export const isCloudActive = () => true;
+    export const supabase = {
+      from: (table) => ({
+        select: () => Promise.resolve({
+          data: table === 'leads' ? ${JSON.stringify(cloudLeadsSimulated)} : [],
+          error: null
+        }),
+        upsert: () => ({
+          select: () => ({
+            single: () => Promise.resolve({ data: { id: 'lead-test-456' }, error: null })
+          })
+        })
+      })
+    };
+  `);
+
+  const staff = await load('../src/utils/staffUtils.ts');
+
+  const { leadService, hydrateLeadsFromCloud } = await load('../src/services/leadService.ts', {
+    './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+    './db': dbUrl,
+    '../utils/uuid': asModule('export const generateUUID = () => "lead-test-456";'),
+    '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+  });
+
+  // Step 1: User saves lead locally with sub_district
+  const saved = await leadService.saveLead({
+    id: 'lead-test-456',
+    customer_name: 'Shibu DM',
+    company_name: 'Aakash Institute',
+    phone: '7356601284',
+    location: 'Thrissur',
+    sub_district: 'Chalakudy'
+  });
+  assert.equal(saved.sub_district, 'Chalakudy');
+
+  // Step 2: Cloud sync runs (fetching cloudLeads that have no sub_district)
+  await hydrateLeadsFromCloud('default');
+
+  // Step 3: Verify sub_district is preserved and not wiped out
+  const afterCloudSync = leadService.getLeadById('lead-test-456');
+  assert.ok(afterCloudSync);
+  assert.equal(afterCloudSync.company_name, 'Aakash Institute');
+  assert.equal(afterCloudSync.sub_district, 'Chalakudy');
+  assert.equal(leadService.getSubDistrict('lead-test-456'), 'Chalakudy');
 });

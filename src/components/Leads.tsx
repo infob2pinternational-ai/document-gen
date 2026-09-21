@@ -88,7 +88,8 @@ export const Leads: React.FC<LeadsProps> = ({
   };
 
   const handleOpenDetailModal = (lead: Lead) => {
-    setViewingLead(lead);
+    const fresh = (lead?.id ? leadService.getLeadById(lead.id) : null) || lead;
+    setViewingLead(fresh);
     setDetailModalOpen(true);
   };
 
@@ -211,9 +212,9 @@ export const Leads: React.FC<LeadsProps> = ({
                 }}
               >
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{item.customer_name}</strong>
-                    {item.company_name && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({item.company_name})</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{item.company_name || item.customer_name}</strong>
+                    {item.company_name && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({item.customer_name})</span>}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
                     <strong>{item.service_required}</strong> · {item.campaign_location || (item.sub_district ? `${item.sub_district}, ${item.location}` : item.location)} · {item.number_of_days || 1}d
@@ -364,8 +365,8 @@ export const Leads: React.FC<LeadsProps> = ({
             <thead>
               <tr>
                 <th style={{ minWidth: '105px' }}>Lead ID</th>
+                <th style={{ minWidth: '160px' }}>Company</th>
                 <th style={{ minWidth: '160px' }}>Customer Name</th>
-                <th style={{ minWidth: '130px' }}>Company</th>
                 <th style={{ minWidth: '160px' }}>Service Required</th>
                 <th style={{ minWidth: '130px' }}>Campaign Location</th>
                 <th style={{ minWidth: '100px' }}>Target Date</th>
@@ -390,12 +391,12 @@ export const Leads: React.FC<LeadsProps> = ({
                     </td>
 
                     <td>
-                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.875rem' }}>{lead.customer_name}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.1rem' }}>{lead.phone}</div>
+                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.875rem' }}>{lead.company_name || '—'}</div>
                     </td>
 
-                    <td style={{ color: '#334155', fontSize: '0.8125rem', fontWeight: 500 }}>
-                      {lead.company_name || '—'}
+                    <td>
+                      <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.84rem' }}>{lead.customer_name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.1rem' }}>{lead.phone}</div>
                     </td>
 
                     <td>
@@ -486,7 +487,12 @@ export const Leads: React.FC<LeadsProps> = ({
           lead={editingLead}
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
-          onSaved={() => refreshLeads()}
+          onSaved={(savedLead) => {
+            refreshLeads();
+            if (savedLead && viewingLead && viewingLead.id === savedLead.id) {
+              setViewingLead(savedLead);
+            }
+          }}
           customers={customers}
           userEmail={userEmail}
           companyId={companyId}
