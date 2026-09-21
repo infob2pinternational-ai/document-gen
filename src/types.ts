@@ -173,6 +173,7 @@ export interface Lead {
   whatsapp_number?: string;
   address?: string;
   location?: string;
+  sub_district?: string;
   business_type?: string;
   lead_source: LeadSource;
   source_details?: string;

@@ -4,6 +4,7 @@ import type { Customer, Lead, LeadPriority, LeadSource } from '../types';
 import { X, UserCheck } from 'lucide-react';
 import { leadService } from '../services/leadService';
 import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
+import { KERALA_DISTRICTS, KERALA_SUB_DISTRICTS } from '../utils/districts';
 
 interface LeadModalProps {
   lead: Lead | null;
@@ -38,23 +39,6 @@ const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'other', label: 'Other' }
 ];
 
-const KERALA_DISTRICTS = [
-  'Thiruvananthapuram',
-  'Kollam',
-  'Pathanamthitta',
-  'Alappuzha',
-  'Kottayam',
-  'Idukki',
-  'Ernakulam',
-  'Thrissur',
-  'Palakkad',
-  'Malappuram',
-  'Kozhikode',
-  'Wayanad',
-  'Kannur',
-  'Kasaragod'
-];
-
 export const LeadModal: React.FC<LeadModalProps> = ({
   lead,
   isOpen,
@@ -69,6 +53,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [phone, setPhone] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [location, setLocation] = useState('Thrissur');
+  const [subDistrict, setSubDistrict] = useState('');
+  const [isCustomSubDistrict, setIsCustomSubDistrict] = useState(false);
   const [address, setAddress] = useState('');
   const [businessType, setBusinessType] = useState('');
   
@@ -118,7 +104,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setCompanyName(lead.company_name || '');
       setPhone(lead.phone || '');
       setWhatsappNumber(lead.whatsapp_number || lead.phone || '');
-      setLocation(lead.location || 'Thrissur');
+      const loc = lead.location || 'Thrissur';
+      setLocation(loc);
+      const sub = lead.sub_district || '';
+      setSubDistrict(sub);
+      const availableSubs = KERALA_SUB_DISTRICTS[loc] || [];
+      setIsCustomSubDistrict(Boolean(sub && !availableSubs.includes(sub)));
       setAddress(lead.address || '');
       setBusinessType(lead.business_type || '');
       setLeadSource(lead.lead_source || 'phone');
@@ -138,6 +129,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setPhone('');
       setWhatsappNumber('');
       setLocation('Thrissur');
+      setSubDistrict('');
+      setIsCustomSubDistrict(false);
       setAddress('');
       setBusinessType('');
       setLeadSource('phone');
@@ -154,6 +147,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setMatchedCustomer(null);
     }
   }, [lead, isOpen, userEmail]);
+
+  const handleDistrictChange = (newDistrict: string) => {
+    setLocation(newDistrict);
+    setSubDistrict('');
+    setIsCustomSubDistrict(false);
+  };
 
   useEffect(() => {
     if (!lead && phone && phone.length >= 7) {
@@ -200,6 +199,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
         phone: phone.trim(),
         whatsapp_number: whatsappNumber.trim() || phone.trim(),
         location: location.trim(),
+        sub_district: subDistrict.trim() || undefined,
         address: address.trim() || undefined,
         business_type: businessType.trim() || undefined,
         lead_source: leadSource,
@@ -358,7 +358,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>District / City</label>
                   <select
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onChange={(e) => handleDistrictChange(e.target.value)}
                     style={{ fontSize: '0.8125rem' }}
                   >
                     {KERALA_DISTRICTS.map(dist => (
@@ -367,6 +367,49 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   </select>
                 </div>
 
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600, margin: 0 }}>Sub District</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomSubDistrict(!isCustomSubDistrict)}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.6875rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                    >
+                      {isCustomSubDistrict ? 'Select list' : 'Type custom'}
+                    </button>
+                  </div>
+                  {isCustomSubDistrict ? (
+                    <input
+                      type="text"
+                      placeholder="e.g. Chalakudy / Kunnamkulam"
+                      value={subDistrict}
+                      onChange={(e) => setSubDistrict(e.target.value)}
+                      style={{ fontSize: '0.8125rem' }}
+                    />
+                  ) : (
+                    <select
+                      value={subDistrict}
+                      onChange={(e) => {
+                        if (e.target.value === '__OTHER__') {
+                          setIsCustomSubDistrict(true);
+                          setSubDistrict('');
+                        } else {
+                          setSubDistrict(e.target.value);
+                        }
+                      }}
+                      style={{ fontSize: '0.8125rem' }}
+                    >
+                      <option value="">-- Select Sub District --</option>
+                      {(KERALA_SUB_DISTRICTS[location] || []).map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                      <option value="__OTHER__">+ Type Other / Custom...</option>
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Lead Source *</label>
                   <select
@@ -379,17 +422,17 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Source Campaign Reference</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Onam Promo Reel / Google Search"
-                  value={sourceDetails}
-                  onChange={(e) => setSourceDetails(e.target.value)}
-                  style={{ fontSize: '0.8125rem' }}
-                />
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Source Campaign Reference</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Onam Promo Reel / Google Search"
+                    value={sourceDetails}
+                    onChange={(e) => setSourceDetails(e.target.value)}
+                    style={{ fontSize: '0.8125rem' }}
+                  />
+                </div>
               </div>
 
             </div>

@@ -60,6 +60,7 @@ function sanitizeLeadForSupabase(row: any) {
   if (row.whatsapp_number) payload.whatsapp_number = row.whatsapp_number;
   if (row.address) payload.address = row.address;
   if (row.location) payload.location = row.location;
+  if (row.sub_district) payload.sub_district = row.sub_district;
   if (row.business_type) payload.business_type = row.business_type;
   if (row.lead_source) payload.lead_source = row.lead_source;
   if (row.source_details) payload.source_details = row.source_details;
@@ -147,10 +148,21 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
       throw new Error('Lead was not saved. Please sign in again to save it to the shared CRM.');
     }
     try {
-      const { data, error } = await supabase.from(table)
-        .upsert(sanitizeLeadForSupabase(changedRow))
+      const upsertPayload = sanitizeLeadForSupabase(changedRow);
+      let { data, error } = await supabase.from(table)
+        .upsert(upsertPayload)
         .select('id')
         .single();
+      if (error && (error.message?.includes('sub_district') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
+        console.warn('[leadService] sub_district column missing on Supabase leads table. Retrying cloud save without it. Please run the database migration.');
+        delete upsertPayload.sub_district;
+        const retryResult = await supabase.from(table)
+          .upsert(upsertPayload)
+          .select('id')
+          .single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
       if (error) throw error;
       if (data?.id !== changedRow.id) throw new Error('The server did not confirm the saved lead.');
     } catch (err: any) {
@@ -372,6 +384,7 @@ export const leadService = {
       whatsapp_number: lead.whatsapp_number || lead.phone,
       address: lead.address,
       location: lead.location,
+      sub_district: lead.sub_district,
       business_type: lead.business_type,
       lead_source: lead.lead_source || 'phone',
       source_details: lead.source_details,

@@ -419,6 +419,15 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
               <div>
                 <span style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.15rem' }}>
+                  Sub District
+                </span>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: lead.sub_district ? '#0f172a' : '#94a3b8' }}>
+                  {lead.sub_district || '—'}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.15rem' }}>
                   Business Type
                 </span>
                 <div style={{ fontSize: '0.875rem', fontWeight: 600, color: lead.business_type ? '#0f172a' : '#94a3b8' }}>

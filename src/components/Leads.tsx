@@ -122,6 +122,7 @@ export const Leads: React.FC<LeadsProps> = ({
       (l.lead_number && l.lead_number.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (l.phone && l.phone.includes(searchTerm)) ||
       (l.location && l.location.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (l.sub_district && l.sub_district.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (l.service_required && l.service_required.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchStatus = statusFilter === 'all' || l.status === statusFilter;
@@ -215,7 +216,7 @@ export const Leads: React.FC<LeadsProps> = ({
                     {item.company_name && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({item.company_name})</span>}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-                    <strong>{item.service_required}</strong> · {item.campaign_location || item.location} · {item.number_of_days || 1}d
+                    <strong>{item.service_required}</strong> · {item.campaign_location || (item.sub_district ? `${item.sub_district}, ${item.location}` : item.location)} · {item.number_of_days || 1}d
                   </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                       Staff: {formatStaffDisplayName(item.assigned_telecaller_email)}
@@ -405,7 +406,7 @@ export const Leads: React.FC<LeadsProps> = ({
                     </td>
 
                     <td style={{ color: '#334155', fontSize: '0.8125rem' }}>
-                      {lead.campaign_location || lead.location || '—'}
+                      {lead.campaign_location || (lead.sub_district ? `${lead.sub_district}, ${lead.location}` : lead.location) || '—'}
                     </td>
 
                     <td className="mono" style={{ fontSize: '0.8125rem', color: '#334155' }}>
