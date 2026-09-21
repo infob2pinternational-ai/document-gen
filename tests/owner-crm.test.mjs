@@ -31,6 +31,7 @@ test('shared lead save requires cloud confirmation and is visible from a fresh b
         if (table !== 'leads') return Promise.resolve({ error: null });
         return { select() { return { async single() {
           if (failure) return { error: { message: failure } };
+          if (!['hot', 'warm', 'cold'].includes(row.priority)) return { error: { message: 'leads_priority_check' } };
           leads.set(row.id, row);
           return { data: { id: row.id }, error: null };
         } }; } };
@@ -60,6 +61,7 @@ test('shared lead save requires cloud confirmation and is visible from a fresh b
     rows.clear();
     await hydrateLeadsFromCloud(company);
     assert.equal(leadService.getLeads(company)[0].id, saved.id);
+    assert.equal(leadService.getLeads(company)[0].priority, 'WARM');
     assert.equal(leadService.getLeads('22222222-2222-4222-8222-222222222222').length, 0);
     db.setFailure('Network unavailable');
     await assert.rejects(leadService.saveLead({ ...saved, customer_name: 'Unsaved edit' }), /Network unavailable/);
@@ -73,6 +75,71 @@ test('shared lead save requires cloud confirmation and is visible from a fresh b
 test('automatic CRM refresh is enabled for staff as well as owners', () => {
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /useCrmRefresh\(user\?\.id, activeProfile\?\.id,\s*isSupabaseConfigured\(\) && !publicViewDocId\)/);
+});
+
+test('live CRM follow-ups and quotation approvals survive loading on another device', async () => {
+  const original = globalThis.localStorage;
+  const rows = new Map();
+  globalThis.localStorage = { getItem: key => rows.get(key) ?? null, setItem: (key, value) => rows.set(key, value) };
+  const dbUrl = asModule(`
+    export const saved = {};
+    export let failure = false;
+    export function setFailure(value) { failure = value; }
+    export const isCloudActive = () => true;
+    export const supabase = { from(table) { return {
+      upsert(row) { return { select() { return { async single() {
+        if (failure) return { error: { message: 'permission denied' } };
+        if (table === 'follow_ups' && !['pending','completed','cancelled','snoozed','overdue'].includes(row.status))
+          return { error: { message: 'follow_ups_status_check' } };
+        if (table === 'crm_quotations' && (!row.date || !row.service_summary || !row.phone))
+          return { error: { message: 'required quotation field missing' } };
+        saved[table] = structuredClone(row);
+        return { data: { id: row.id } };
+      } }; } }; },
+      select() { const result = { data: saved[table] ? [saved[table]] : [] };
+        return { eq() { return Promise.resolve(result); }, then(resolve) { return Promise.resolve(result).then(resolve); } };
+      }
+    }; } };
+  `);
+  try {
+    const db = await import(dbUrl);
+    const { officeService, hydrateCrmFromCloud } = await load('../src/services/officeService.ts', {
+      './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
+      './leadService': asModule('export const leadService = { getActiveCompany() { return null; }, async addLeadActivity() {}, async updateLeadStatus() {} }; export async function hydrateLeadsFromCloud() {}'),
+      './db': dbUrl,
+      '../utils/uuid': asModule('export const generateUUID = () => "33333333-3333-4333-8333-333333333333";'),
+      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+    });
+    const company = '11111111-1111-4111-8111-111111111111';
+    const lead = '22222222-2222-4222-8222-222222222222';
+    const follow = await officeService.saveFollowUp({ company_id: company, lead_id: lead, customer_name: 'Enquiry', due_date: '2026-09-21', due_time: '15:45', reason: 'Call customer' }, 'staff@example.com');
+    assert.equal(db.saved.follow_ups.follow_up_time, '15:45');
+    assert.equal(db.saved.follow_ups.lead_id, lead);
+    assert.equal(db.saved.follow_ups.status, 'pending');
+    assert.equal(db.saved.follow_ups.customer_id, undefined);
+    rows.clear();
+    await hydrateCrmFromCloud(company);
+    assert.equal(officeService.getFollowUps('all', company)[0].due_time, '15:45');
+    await officeService.completeFollowUp(follow.id, 'Done', 'staff@example.com');
+    rows.clear();
+    await hydrateCrmFromCloud(company);
+    assert.equal(officeService.getFollowUps('completed', company)[0].status, 'COMPLETED');
+    const q = { id: '44444444-4444-4444-8444-444444444444', company_id: company, quotation_number: 'Q1', customer_name: 'Enquiry', customer_phone: '1234567890', service_required: 'LED Van', total: 80000, approval_status: 'WAITING_APPROVAL', created_by_email: 'staff@example.com' };
+    await officeService.saveQuotation(q, 'staff@example.com');
+    await officeService.ownerApproveQuotation(q.id, 'owner@example.com', 'Approved');
+    assert.equal(db.saved.crm_quotations.total, 80000);
+    assert.equal(db.saved.crm_quotations.approval_status, 'APPROVED');
+    rows.clear();
+    await hydrateCrmFromCloud(company);
+    assert.equal(officeService.getQuotations(company)[0].approved_by_email, 'owner@example.com');
+    assert.equal(officeService.getQuotations(company)[0].customer_phone, '1234567890');
+    db.setFailure(true);
+    await assert.rejects(officeService.ownerRejectQuotation(q.id, 'owner@example.com', 'Rejected'), /permission denied/);
+    assert.equal(officeService.getQuotations(company)[0].approval_status, 'APPROVED');
+  } finally {
+    if (original === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = original;
+  }
 });
 
 test('owner is listed once even when old assignments use the misspelled address', () => {

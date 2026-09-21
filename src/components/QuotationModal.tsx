@@ -36,6 +36,9 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
   userEmail,
   companyName = 'B2P International'
 }) => {
+  const showSaveError = (error: unknown) => {
+    alert(error instanceof Error ? error.message : 'The shared CRM could not save this change. Please retry.');
+  };
   const [quotationNumber, setQuotationNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [company, setCompany] = useState('');
@@ -343,7 +346,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
               <>
                 <button
                   type="button"
-                  onClick={handleOwnerReject}
+                  onClick={() => { void handleOwnerReject().catch(showSaveError); }}
                   className="btn-secondary"
                   style={{ color: 'var(--accent-danger)', padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}
                 >
@@ -352,7 +355,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={handleOwnerApprove}
+                  onClick={() => { void handleOwnerApprove().catch(showSaveError); }}
                   className="btn-primary"
                   style={{ background: 'var(--accent-success)', border: 'none', padding: '0.4rem 0.85rem', fontSize: '0.75rem' }}
                 >
@@ -366,7 +369,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
             {!isOwner && approvalStatus === 'DRAFT' && quotation && (
               <button
                 type="button"
-                onClick={handleSubmitForApproval}
+                onClick={() => { void handleSubmitForApproval().catch(showSaveError); }}
                 className="btn-primary"
                 style={{ background: '#ea580c', border: 'none', padding: '0.4rem 0.85rem', fontSize: '0.75rem' }}
               >
@@ -379,7 +382,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
             {isApproved && (
               <button
                 type="button"
-                onClick={handleSendToClient}
+                onClick={() => { void handleSendToClient().catch(showSaveError); }}
                 className="btn-primary"
                 style={{ background: '#25D366', border: 'none', padding: '0.4rem 0.85rem', fontSize: '0.75rem' }}
               >
@@ -391,7 +394,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
         </div>
 
         {/* Quotation Specification Form */}
-        <form onSubmit={handleSaveDraft} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={event => { void handleSaveDraft(event).catch(showSaveError); }} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
           {/* Customer & Campaign Context */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'var(--bg-card)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>

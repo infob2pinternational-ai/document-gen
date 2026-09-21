@@ -169,8 +169,18 @@ function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
       id: row.id,
       assigned_staff_email: row.assigned_staff_email || 'staff@b2p.com',
       follow_up_date: row.due_date || row.follow_up_date || new Date().toISOString().split('T')[0],
-      notes: [row.reason, row.notes].filter(Boolean).join(' — ') || '',
-      status: row.status || 'PENDING',
+      follow_up_time: row.due_time || row.follow_up_time || '10:00',
+      customer_name: row.customer_name,
+      company_name: row.company_name ?? null,
+      phone: row.phone ?? null,
+      lead_id: row.lead_id || null,
+      lead_number: row.lead_number ?? null,
+      reason: row.reason,
+      notes: row.notes ?? null,
+      created_by_email: row.created_by_email,
+      completed_at: row.completed_at ?? null,
+      completion_note: row.completion_note ?? null,
+      status: String(row.status || 'PENDING').toLowerCase(),
       created_at: row.created_at || new Date().toISOString(),
       updated_at: row.updated_at || new Date().toISOString()
     };
@@ -210,10 +220,30 @@ function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
       quotation_number: row.quotation_number,
       customer_name: row.customer_name,
       company_name: row.company_name,
-      phone: row.phone,
+      phone: row.customer_phone ?? row.phone ?? '',
+      date: (row.created_at || new Date().toISOString()).slice(0, 10),
+      service_summary: row.service_required || '',
       items: row.items || [],
       subtotal: row.subtotal || 0,
-      status: row.status || 'DRAFT',
+      total: row.total || 0,
+      tax_total: row.tax_total || 0,
+      discount_total: row.discount_total || 0,
+      customer_address: row.customer_address ?? null,
+      lead_number: row.lead_number ?? null,
+      service_required: row.service_required,
+      vehicle_service_type: row.vehicle_service_type ?? null,
+      campaign_location: row.campaign_location,
+      required_date: row.required_date || null,
+      number_of_days: row.number_of_days || 1,
+      notes: row.notes ?? null,
+      terms: row.terms ?? null,
+      status: row.approval_status || 'DRAFT',
+      approval_status: row.approval_status || 'DRAFT',
+      created_by: row.created_by_email,
+      approver_name: row.approved_by_email ?? null,
+      approver_notes: row.owner_remarks ?? null,
+      sent_to_customer_at: row.sent_at ?? null,
+      sent_by_email: row.sent_by_email ?? null,
       created_at: row.created_at || new Date().toISOString(),
       updated_at: row.updated_at || new Date().toISOString()
     };
@@ -276,48 +306,33 @@ function replaceCompanyScopedCache<T extends { id: string; company_id?: string |
 }
 
 async function persistOfficeRow<T extends { id: string }>(storageKey: string, table: CrmOfficeTable, fullLocalArray: T[], changedRow: T): Promise<void> {
-  // 1. ALWAYS persist to local cache first so it is synchronous, reliable and instant
-  try {
+  if (supabase) {
+    if (!isCloudActive()) throw new Error('Please sign in again to save to the shared CRM.');
+    const { data, error } = await supabase.from(table)
+      .upsert(sanitizeOfficeRowForSupabase(table, changedRow)).select('id').single();
+    if (error) throw new Error(`Unable to save ${table}: ${error.message}`);
+    if (data?.id !== changedRow.id) throw new Error('The server did not confirm this save.');
+    const current = getLocal<T[]>(storageKey, []);
+    const index = current.findIndex(row => row.id === changedRow.id);
+    if (index < 0) current.unshift(changedRow);
+    else current[index] = changedRow;
+    localStorage.setItem(storageKey, JSON.stringify(current));
+  } else {
     localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
-  } catch (storageErr) {
-    console.error(`[officeService] Failed to write to localStorage for ${storageKey}:`, storageErr);
   }
   metricsService.notifyChange();
-
-  // 2. If cloud is active, try to sync to Supabase (best-effort write-through)
-  if (isCloudActive() && supabase) {
-    try {
-      const sanitized = sanitizeOfficeRowForSupabase(table, changedRow);
-      const { error } = await supabase.from(table).upsert(sanitized as any);
-      if (error) {
-        console.warn(`[officeService] Supabase upsert failed for ${table} (saved in local cache):`, error.message || error);
-      }
-    } catch (err) {
-      console.warn(`[officeService] Could not reach Supabase for ${table} (saved in local cache):`, err);
-    }
-  }
 }
 
 async function persistOfficeRowDeleted(storageKey: string, table: CrmOfficeTable, fullLocalArray: any[], deletedId: string): Promise<void> {
-  // 1. ALWAYS persist deletion to local cache first
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
-  } catch (storageErr) {
-    console.error(`[officeService] Failed to delete from localStorage for ${storageKey}:`, storageErr);
+  if (supabase) {
+    if (!isCloudActive()) throw new Error('Please sign in again to delete from the shared CRM.');
+    const { data, error } = await supabase.from(table).delete().eq('id', deletedId).select('id');
+    if (error) throw new Error(`Unable to delete ${table}: ${error.message}`);
+    if (!data?.some(row => row.id === deletedId)) throw new Error('Deletion was not confirmed. Refresh and check your access.');
+    fullLocalArray = getLocal<any[]>(storageKey, []).filter(row => row.id !== deletedId);
   }
+  localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
   metricsService.notifyChange();
-
-  // 2. If cloud is active, try to delete from Supabase
-  if (isCloudActive() && supabase) {
-    try {
-      const { error } = await supabase.from(table).delete().eq('id', deletedId);
-      if (error) {
-        console.warn(`[officeService] Supabase delete failed for ${table}:`, error.message || error);
-      }
-    } catch (err) {
-      console.warn(`[officeService] Could not reach Supabase for ${table} delete:`, err);
-    }
-  }
 }
 
 /** Pulls this company's resources/bookings/follow-ups/CRM quotations
@@ -350,8 +365,9 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
         const existing = localMap.get(fu.id);
         return {
           ...fu,
+          status: String(fu.status || 'pending').toUpperCase(),
           due_date: fu.follow_up_date || fu.due_date || existing?.due_date || new Date().toISOString().split('T')[0],
-          due_time: fu.due_time ?? existing?.due_time ?? '10:00',
+          due_time: fu.follow_up_time ?? fu.due_time ?? existing?.due_time ?? '10:00',
           reason: fu.reason ?? fu.notes ?? existing?.reason ?? 'Follow-up',
           customer_name: fu.customer_name ?? existing?.customer_name ?? 'Customer',
           phone: fu.phone ?? existing?.phone ?? '',
@@ -364,7 +380,16 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
     }
     if (quotations) {
       const localQuotations = getLocal<CrmQuotation[]>(QUOTATIONS_KEY, SEED_QUOTATIONS);
-      replaceCompanyScopedCache(QUOTATIONS_KEY, localQuotations, quotations, companyId);
+      const mappedQuotes = quotations.map((q: any) => ({
+        ...q,
+        customer_phone: q.phone ?? q.customer_phone,
+        service_required: q.service_required ?? q.service_summary,
+        created_by_email: q.created_by ?? q.created_by_email,
+        approved_by_email: q.approver_name ?? q.approved_by_email,
+        owner_remarks: q.approver_notes ?? q.owner_remarks,
+        sent_at: q.sent_to_customer_at ?? q.sent_at
+      }));
+      replaceCompanyScopedCache(QUOTATIONS_KEY, localQuotations, mappedQuotes, companyId);
     }
     metricsService.notifyChange();
   } catch (e) {
