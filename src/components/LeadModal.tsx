@@ -20,6 +20,7 @@ const SERVICE_OPTIONS = [
   'LED Van Advertising',
   'LED Wall',
   'Lookwalker',
+  'Marketing',
   'Mobile Roadshow Campaigns',
   'Events & Staging',
   'Signage & Printing',
@@ -41,18 +42,6 @@ export const SERVICE_SUB_DIVISIONS: Record<string, string[]> = {
     '3 Side Truck',
     '2 Side Truck',
     'Single Side Truck'
-  ],
-  'LED Wall': [
-    'P3.9 Outdoor Waterproof LED Screen',
-    'P3 Indoor High-Definition LED Screen',
-    'P2.5 Ultra HD Curved LED Wall',
-    'Stage Backdrop LED Wall'
-  ],
-  'Lookwalker': [
-    'Single Sided Lookwalker Promoter',
-    'Double Sided Backlit Lookwalker',
-    'Dual Lookwalker Promoter Crew',
-    'Multi-Promoter Lookwalker Squad'
   ]
 };
 
@@ -612,7 +601,11 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     placeholder={
                       serviceRequired === 'LED Van Advertising'
                         ? "e.g. 3 Side LED Van / 14ft Hydraulic Truck"
-                        : "e.g. 14ft High-Brightness LED Screen Van"
+                        : serviceRequired === 'Marketing'
+                        ? "e.g. Digital Marketing / Social Media / Branding Strategy"
+                        : serviceRequired === 'LED Wall'
+                        ? "e.g. Screen size / Pitch (P3, P4) / Setup details"
+                        : "e.g. Service specifications / setup details"
                     }
                     value={vehicleServiceType}
                     onChange={(e) => setVehicleServiceType(e.target.value)}
