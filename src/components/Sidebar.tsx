@@ -31,7 +31,9 @@ import {
   Moon,
   Zap,
   Coffee,
-  Sparkles
+  Sparkles,
+  PhoneCall,
+  CalendarCheck
 } from 'lucide-react';
 import type { CompanyProfile, AppTheme } from '../types';
 import { metricsService } from '../services/metricsService';
@@ -156,6 +158,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: 'COMMUNICATION',
       items: [
         { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, badge: whatsAppUnreadCount > 0 ? whatsAppUnreadCount : undefined }
+      ]
+    },
+    {
+      title: 'TELECALLING OPERATIONS',
+      items: [
+        { id: 'telecalling-entry', label: 'Daily Entry', icon: PhoneCall },
+        { id: 'telecalling-daily-report', label: 'Daily Report', icon: CalendarCheck },
+        { id: 'telecalling-weekly-report', label: 'Weekly Report', icon: TrendingUp }
       ]
     }
   ];

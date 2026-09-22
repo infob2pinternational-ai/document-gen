@@ -37,6 +37,9 @@ import { GSTComplianceCenter } from './components/finance/GSTComplianceCenter';
 import { ProfitAndLoss } from './components/finance/ProfitAndLoss';
 import { FinancialReports } from './components/finance/FinancialReports';
 import { AccessRestricted } from './components/finance/AccessRestricted';
+import { TelecallingDailyEntry } from './components/telecalling/TelecallingDailyEntry';
+import { TelecallingDailyReport } from './components/telecalling/TelecallingDailyReport';
+import { TelecallingWeeklyReport } from './components/telecalling/TelecallingWeeklyReport';
 import type { UserRole } from './types';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { financeService } from './services/financeService';
@@ -2029,6 +2032,33 @@ function App() {
               <Reports 
                 userRole={simulatedRole}
                 userEmail={currentUserEmail}
+              />
+            )}
+
+            {currentTab === 'telecalling-entry' && (
+              <TelecallingDailyEntry
+                activeProfile={activeProfile}
+                user={user}
+                userRole={simulatedRole}
+                onNavigateToDailyReport={() => setCurrentTab('telecalling-daily-report')}
+              />
+            )}
+
+            {currentTab === 'telecalling-daily-report' && (
+              <TelecallingDailyReport
+                activeProfile={activeProfile}
+                user={user}
+                userRole={simulatedRole}
+                onNavigateToEntry={() => setCurrentTab('telecalling-entry')}
+              />
+            )}
+
+            {currentTab === 'telecalling-weekly-report' && (
+              <TelecallingWeeklyReport
+                activeProfile={activeProfile}
+                user={user}
+                userRole={simulatedRole}
+                onNavigateToDailyReport={() => setCurrentTab('telecalling-daily-report')}
               />
             )}
 

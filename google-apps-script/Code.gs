@@ -14,11 +14,10 @@
 const CONFIG = {
   SPREADSHEET_ID: 'PASTE_YOUR_SPREADSHEET_ID_HERE',
   DATA_SHEET_NAME: 'Documents',       // the sheet/tab holding one row per document
+  TELECALLING_SHEET_NAME: 'Data',     // the dedicated sheet/tab for telecalling entries
   LOG_SHEET_NAME: 'Sync Log',         // auto-created if missing
-  // Column order in DATA_SHEET_NAME. document_id MUST be present and
+  // Column order in DATA_SHEET_NAME (Documents). document_id MUST be present and
   // should be column A (index 0) for the lookup index to be efficient.
-  // Add/reorder columns here to match your real sheet - nothing else
-  // in this script needs to change if you do.
   COLUMNS: [
     'document_id',        // A - permanent unique key, never shown to users
     'document_number',    // B
@@ -49,6 +48,22 @@ const CONFIG = {
     // Appending at the end is the only positionally-safe way to add a
     // column here without a one-time manual re-layout of the sheet.
     'advance'                // R
+  ],
+  // Column order in TELECALLING_SHEET_NAME (Data). entry_id MUST be column A (index 0)
+  TELECALLING_COLUMNS: [
+    'entry_id',       // A - permanent unique key
+    'date',           // B
+    'company_name',   // C
+    'contact_person', // D
+    'phone',          // E
+    'other_phone',    // F
+    'location',       // G
+    'email',          // H
+    'call_status',    // I
+    'feedback',       // J
+    'created_by',     // K
+    'created_at',     // L
+    'updated_at'      // M
   ]
 };
 
@@ -127,10 +142,26 @@ function doPost(e) {
       return respondAndLog(true, action, null, 'Full backup saved to Drive', startedAt);
     }
 
+    // Telecalling operations: separate dedicated Data sheet
+    if (action === 'save_telecalling_entry') {
+      const entryId = data.entry_id;
+      if (!entryId) {
+        return respondAndLog(false, action, null, 'Missing entry_id for save_telecalling_entry', startedAt);
+      }
+      const row = upsertTelecallingRow(data);
+      return respondAndLog(true, action, entryId, `Saved telecalling entry to row ${row}`, startedAt, row);
+    }
+
+    if (action === 'sync_telecalling_batch') {
+      const items = data.items || [];
+      const count = upsertTelecallingBatch(items);
+      return respondAndLog(true, action, null, `Batch synced ${count} telecalling entries`, startedAt);
+    }
+
     documentId = data.document_id;
 
     if (!action || (action !== 'save_document' && action !== 'delete_document')) {
-      return respondAndLog(false, action, documentId, 'Invalid or missing action (expected save_document, delete_document, or full_backup)', startedAt);
+      return respondAndLog(false, action, documentId, 'Invalid or missing action (expected save_document, delete_document, save_telecalling_entry, sync_telecalling_batch, or full_backup)', startedAt);
     }
     if (!documentId) {
       return respondAndLog(false, action, documentId, 'Missing document_id', startedAt);
@@ -414,4 +445,96 @@ function deleteBackupFile(documentNumber) {
   while (files.hasNext()) {
     files.next().setTrashed(true);
   }
+}
+
+/**
+ * ─── Telecalling Operations Sync (Tab: Data) ──────────────────────────
+ */
+function getOrCreateTelecallingSheet(ss) {
+  let sheet = ss.getSheetByName(CONFIG.TELECALLING_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.TELECALLING_SHEET_NAME);
+    sheet.appendRow(CONFIG.TELECALLING_COLUMNS);
+  } else {
+    ensureTelecallingHeaderColumns(sheet);
+  }
+  return sheet;
+}
+
+function ensureTelecallingHeaderColumns(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol >= CONFIG.TELECALLING_COLUMNS.length) return;
+  const missing = CONFIG.TELECALLING_COLUMNS.slice(lastCol);
+  sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+}
+
+function findExistingTelecallingRow(sheet, entryId) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  // Column A is entry_id
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === entryId) {
+      return i + 2;
+    }
+  }
+  return null;
+}
+
+function buildTelecallingRowValues(data) {
+  return CONFIG.TELECALLING_COLUMNS.map(function (col) {
+    switch (col) {
+      case 'entry_id': return data.entry_id || '';
+      case 'date': return data.date || '';
+      case 'company_name': return data.company_name || '';
+      case 'contact_person': return data.contact_person || '';
+      case 'phone': return data.phone || '';
+      case 'other_phone': return data.other_phone || '';
+      case 'location': return data.location || '';
+      case 'email': return data.email || '';
+      case 'call_status': return data.call_status || '';
+      case 'feedback': return data.feedback || '';
+      case 'created_by': return data.created_by || '';
+      case 'created_at': return data.created_at || new Date().toISOString();
+      case 'updated_at': return data.updated_at || new Date().toISOString();
+      default: return '';
+    }
+  });
+}
+
+function upsertTelecallingRow(data) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getOrCreateTelecallingSheet(ss);
+  const existingRow = findExistingTelecallingRow(sheet, data.entry_id);
+  const rowValues = buildTelecallingRowValues(data);
+
+  if (existingRow) {
+    sheet.getRange(existingRow, 1, 1, rowValues.length).setValues([rowValues]);
+    return existingRow;
+  } else {
+    sheet.appendRow(rowValues);
+    return sheet.getLastRow();
+  }
+}
+
+function upsertTelecallingBatch(items) {
+  if (!items || !items.length) return 0;
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = getOrCreateTelecallingSheet(ss);
+  let processed = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item.entry_id) continue;
+    const existingRow = findExistingTelecallingRow(sheet, item.entry_id);
+    const rowValues = buildTelecallingRowValues(item);
+    if (existingRow) {
+      sheet.getRange(existingRow, 1, 1, rowValues.length).setValues([rowValues]);
+    } else {
+      sheet.appendRow(rowValues);
+    }
+    processed++;
+  }
+  return processed;
 }

@@ -1264,3 +1264,97 @@ export const THEME_OPTIONS: ThemeOption[] = [
     cardPreview: '#1e293b'
   }
 ];
+
+// =====================================================================
+// TELECALLING OPERATIONS MODULE (PHASE 1)
+// =====================================================================
+
+export type TelecallingStatus =
+  | 'Appointment Confirmed'
+  | 'Interested / Details Shared'
+  | 'Follow-up Required'
+  | 'Call Back'
+  | 'No Answer / No Response'
+  | 'No Interest'
+  | 'Not Reachable / Switched Off'
+  | 'Wrong / Invalid Number'
+  | 'Other';
+
+export const TELECALLING_STATUSES: TelecallingStatus[] = [
+  'Appointment Confirmed',
+  'Interested / Details Shared',
+  'Follow-up Required',
+  'Call Back',
+  'No Answer / No Response',
+  'No Interest',
+  'Not Reachable / Switched Off',
+  'Wrong / Invalid Number',
+  'Other'
+];
+
+export interface TelecallingEntry {
+  id: string;
+  company_id: string;
+  entry_date: string; // YYYY-MM-DD
+  company_name: string;
+  contact_person?: string | null;
+  phone: string;
+  other_phone?: string | null;
+  location?: string | null;
+  email?: string | null;
+  call_status: TelecallingStatus;
+  feedback?: string | null;
+  created_by?: string | null;
+  created_by_email?: string | null;
+  created_by_name?: string | null;
+  created_at: string;
+  updated_at: string;
+  google_sync_status?: 'pending' | 'syncing' | 'synced' | 'failed';
+  google_synced_at?: string | null;
+  google_sync_error?: string | null;
+}
+
+export interface TelecallingDailyReportData {
+  date: string; // YYYY-MM-DD
+  totalCalls: number;
+  uniqueCompanies: number;
+  statusCounts: Record<TelecallingStatus, number>;
+  telecallerActivity: Record<string, number>;
+  followUpsCount: number;
+  entries: TelecallingEntry[];
+}
+
+export interface TelecallingWeeklyReportData {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  totalCalls: number;
+  uniqueCompanies: number;
+  statusCounts: Record<TelecallingStatus, number>;
+  dailyBreakdown: Array<{
+    date: string;
+    dayName: string;
+    totalCalls: number;
+    statusCounts: Record<TelecallingStatus, number>;
+  }>;
+  telecallerBreakdown: Record<string, { total: number; statusCounts: Record<TelecallingStatus, number> }>;
+  followUpsCount: number;
+  entries: TelecallingEntry[];
+}
+
+export interface TelecallingGoogleSyncQueueRow {
+  id: string;
+  company_id: string;
+  telecalling_entry_id: string;
+  action: string;
+  payload: Record<string, any>;
+  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  attempts: number;
+  max_attempts: number;
+  failed_permanently: boolean;
+  next_attempt_at: string;
+  last_error: string | null;
+  locked_at: string | null;
+  locked_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
