@@ -57,8 +57,6 @@ export const Leads: React.FC<LeadsProps> = ({
     return getAvailableStaffList(userEmail, leads);
   }, [userEmail, leads]);
 
-  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
-
   // Modals state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -95,52 +93,14 @@ export const Leads: React.FC<LeadsProps> = ({
     setDetailModalOpen(true);
   };
 
-  const toggleSelectLead = (id: string) => {
-    setSelectedLeadIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const handleDeleteLead = async (id: string, leadNo?: string) => {
-    if (window.confirm(`Are you sure you want to delete lead ${leadNo || id}? This action cannot be undone.`)) {
+    if (window.confirm(`Are you sure you want to delete lead ${leadNo || id}?`)) {
       try {
         await leadService.deleteLead(id);
-        setSelectedLeadIds(prev => {
-          if (prev.has(id)) {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          }
-          return prev;
-        });
         refreshLeads();
-        if (viewingLead?.id === id) {
-          setViewingLead(null);
-          setDetailModalOpen(false);
-        }
+        if (viewingLead?.id === id) setDetailModalOpen(false);
       } catch (err: any) {
         alert(err.message || 'Failed to delete lead.');
-      }
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    const count = selectedLeadIds.size;
-    if (count === 0) return;
-    if (window.confirm(`Are you sure you want to permanently delete ${count} selected lead${count > 1 ? 's' : ''}? This action cannot be undone.`)) {
-      try {
-        await leadService.deleteLeads(Array.from(selectedLeadIds));
-        setSelectedLeadIds(new Set());
-        refreshLeads();
-        if (viewingLead && selectedLeadIds.has(viewingLead.id)) {
-          setViewingLead(null);
-          setDetailModalOpen(false);
-        }
-      } catch (err: any) {
-        alert(err.message || 'Failed to delete selected leads.');
       }
     }
   };
@@ -200,17 +160,6 @@ export const Leads: React.FC<LeadsProps> = ({
       return sortOrder === 'asc' ? diff : -diff;
     });
   }, [filteredLeads, sortOrder]);
-
-  const allSelected = sortedLeads.length > 0 && sortedLeads.every(l => selectedLeadIds.has(l.id));
-  const someSelected = sortedLeads.some(l => selectedLeadIds.has(l.id)) && !allSelected;
-
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedLeadIds(new Set());
-    } else {
-      setSelectedLeadIds(new Set(sortedLeads.map(l => l.id)));
-    }
-  };
 
   const incomingAdminLeads = useMemo(() => {
     return leads
@@ -443,72 +392,12 @@ export const Leads: React.FC<LeadsProps> = ({
 
       </div>
 
-      {/* Bulk Action Bar */}
-      {selectedLeadIds.size > 0 && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0.65rem 1.25rem',
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
-          borderRadius: '10px',
-          color: '#991b1b',
-          fontSize: '0.84rem',
-          boxShadow: '0 2px 8px rgba(239, 68, 68, 0.08)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 600 }}>
-            <span>{selectedLeadIds.size} lead{selectedLeadIds.size > 1 ? 's' : ''} selected</span>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button
-              type="button"
-              onClick={() => setSelectedLeadIds(new Set())}
-              className="btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
-            >
-              Deselect All
-            </button>
-            <button
-              type="button"
-              onClick={handleBulkDelete}
-              className="btn-primary"
-              style={{
-                fontSize: '0.78rem',
-                padding: '0.35rem 0.85rem',
-                background: '#dc2626',
-                borderColor: '#dc2626',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem'
-              }}
-            >
-              <Trash2 size={13} />
-              <span>Delete ({selectedLeadIds.size}) Selected</span>
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Main CRM Data Table */}
       <div className="table-container animate-fade-in">
         {sortedLeads.length > 0 ? (
           <table>
             <thead>
               <tr>
-                <th style={{ width: '38px', textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    ref={el => {
-                      if (el) el.indeterminate = someSelected;
-                    }}
-                    onChange={toggleSelectAll}
-                    title={allSelected ? "Deselect all leads" : "Select all leads"}
-                    style={{ cursor: 'pointer' }}
-                  />
-                </th>
                 <th 
                   onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
                   style={{ minWidth: '115px', cursor: 'pointer', userSelect: 'none' }}
@@ -540,27 +429,8 @@ export const Leads: React.FC<LeadsProps> = ({
                   <tr 
                     key={lead.id}
                     onClick={() => handleOpenDetailModal(lead)}
-                    style={{
-                      cursor: 'pointer',
-                      transition: 'background-color 0.15s ease',
-                      backgroundColor: selectedLeadIds.has(lead.id) ? 'rgba(59, 130, 246, 0.08)' : undefined
-                    }}
+                    style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
                   >
-                    <td 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSelectLead(lead.id);
-                      }}
-                      style={{ textAlign: 'center', width: '38px' }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedLeadIds.has(lead.id)}
-                        onChange={() => toggleSelectLead(lead.id)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </td>
-
                     <td className="mono" style={{ fontWeight: 700, color: 'var(--brand-blue)', fontSize: '0.8125rem' }}>
                       {lead.lead_number || lead.id}
                     </td>
@@ -668,18 +538,6 @@ export const Leads: React.FC<LeadsProps> = ({
               setViewingLead(savedLead);
             }
           }}
-          onDelete={(deletedId) => {
-            setSelectedLeadIds(prev => {
-              const next = new Set(prev);
-              next.delete(deletedId);
-              return next;
-            });
-            refreshLeads();
-            if (viewingLead?.id === deletedId) {
-              setViewingLead(null);
-              setDetailModalOpen(false);
-            }
-          }}
           customers={customers}
           userEmail={userEmail}
           companyId={companyId}
@@ -696,16 +554,6 @@ export const Leads: React.FC<LeadsProps> = ({
           onUpdated={(updated) => {
             setViewingLead(updated);
             refreshLeads();
-          }}
-          onDelete={(deletedId) => {
-            setSelectedLeadIds(prev => {
-              const next = new Set(prev);
-              next.delete(deletedId);
-              return next;
-            });
-            refreshLeads();
-            setViewingLead(null);
-            setDetailModalOpen(false);
           }}
           userEmail={userEmail}
           userRole={_role}
