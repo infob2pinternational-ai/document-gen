@@ -12,10 +12,17 @@
  * ─── CONFIGURATION — edit this block to match your actual sheet ───────
  */
 const CONFIG = {
+  // 1. Existing Document Backup Spreadsheet (Invoices, Quotations, Work Orders)
   SPREADSHEET_ID: '1OyEjFCHSLKgk4yv0dMIQFmOH8FTCCLwnj35WErF4-_U',
-  DATA_SHEET_NAME: 'Documents',       // the sheet/tab holding one row per document
-  TELECALLING_SHEET_NAME: 'Data',     // the dedicated sheet/tab for telecalling entries
-  LOG_SHEET_NAME: 'Sync Log',         // auto-created if missing
+
+  // 2. Separate Telecalling Spreadsheet (PASTE YOUR NEW SHEET ID HERE)
+  // If provided, telecalling entries go to this separate sheet!
+  // If left empty, telecalling entries will go to the main sheet above.
+  TELECALLING_SPREADSHEET_ID: '',
+
+  DATA_SHEET_NAME: 'Documents',       // Tab holding documents
+  TELECALLING_SHEET_NAME: 'Data',     // Dedicated tab for telecalling entries
+  LOG_SHEET_NAME: 'Sync Log',         // Auto-created audit log
   // Column order in DATA_SHEET_NAME (Documents). document_id MUST be present and
   // should be column A (index 0) for the lookup index to be efficient.
   COLUMNS: [
@@ -326,13 +333,27 @@ function findExistingRow(sheet, documentId, documentNumber, idColIndex, numberCo
   return null;
 }
 
-function getSpreadsheet() {
+function getDocumentSpreadsheet() {
   if (CONFIG.SPREADSHEET_ID && CONFIG.SPREADSHEET_ID !== 'PASTE_YOUR_SPREADSHEET_ID_HERE') {
     return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   }
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) return active;
-  throw new Error('Spreadsheet ID is not configured and no active container spreadsheet was found.');
+  throw new Error('Document Spreadsheet ID is not configured and no active container spreadsheet was found.');
+}
+
+function getTelecallingSpreadsheet() {
+  if (CONFIG.TELECALLING_SPREADSHEET_ID && 
+      CONFIG.TELECALLING_SPREADSHEET_ID.trim() !== '' && 
+      CONFIG.TELECALLING_SPREADSHEET_ID !== 'PASTE_NEW_TELECALLING_SPREADSHEET_ID_HERE' && 
+      CONFIG.TELECALLING_SPREADSHEET_ID !== CONFIG.SPREADSHEET_ID) {
+    return SpreadsheetApp.openById(CONFIG.TELECALLING_SPREADSHEET_ID.trim());
+  }
+  return getDocumentSpreadsheet();
+}
+
+function getSpreadsheet() {
+  return getDocumentSpreadsheet();
 }
 
 function getOrCreateDataSheet(ss) {
@@ -513,7 +534,7 @@ function buildTelecallingRowValues(data) {
 }
 
 function upsertTelecallingRow(data) {
-  const ss = getSpreadsheet();
+  const ss = getTelecallingSpreadsheet();
   const sheet = getOrCreateTelecallingSheet(ss);
   const existingRow = findExistingTelecallingRow(sheet, data.entry_id);
   const rowValues = buildTelecallingRowValues(data);
@@ -529,7 +550,7 @@ function upsertTelecallingRow(data) {
 
 function upsertTelecallingBatch(items) {
   if (!items || !items.length) return 0;
-  const ss = getSpreadsheet();
+  const ss = getTelecallingSpreadsheet();
   const sheet = getOrCreateTelecallingSheet(ss);
   let processed = 0;
 
