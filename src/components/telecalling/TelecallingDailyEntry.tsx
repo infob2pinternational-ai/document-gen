@@ -16,7 +16,8 @@ import {
   User, 
   Calendar,
   Loader2,
-  Trash2
+  Trash2,
+  Pencil
 } from 'lucide-react';
 import type { CompanyProfile, TelecallingEntry, TelecallingStatus } from '../../types';
 import { TELECALLING_STATUSES } from '../../types';
@@ -51,6 +52,7 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
   const [feedback, setFeedback] = useState('');
 
   // UI / submission states
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -81,6 +83,7 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
 
   const resetForm = (keepDate: boolean = true) => {
     if (!keepDate) setEntryDate(getKolkataToday());
+    setEditingId(null);
     setCompanyName('');
     setContactPerson('');
     setPhone('');
@@ -93,6 +96,29 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
     setTimeout(() => {
       companyInputRef.current?.focus();
     }, 50);
+  };
+
+  const handleEditEntry = (entry: TelecallingEntry) => {
+    setEditingId(entry.id);
+    setEntryDate(entry.entry_date || getKolkataToday());
+    setCompanyName(entry.company_name || '');
+    setContactPerson(entry.contact_person || '');
+    setPhone(entry.phone || '');
+    setOtherPhone(entry.other_phone || '');
+    setLocation(entry.location || '');
+    setEmail(entry.email || '');
+    setCallStatus(entry.call_status || 'Interested / Details Shared');
+    setFeedback(entry.feedback || '');
+    setErrorMsg('');
+    setSaveSuccessMsg('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(() => {
+      companyInputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleCancelEdit = () => {
+    resetForm(true);
   };
 
   const handleSave = async (andNew: boolean = false) => {
@@ -123,6 +149,32 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
 
     const callerEmail = user?.email || '';
     const callerName = callerEmail.split('@')[0] || 'Staff';
+
+    if (editingId) {
+      // Update existing record
+      const result = await telecallingService.updateEntry(editingId, {
+        entry_date: entryDate || getKolkataToday(),
+        company_name: cleanCompany,
+        contact_person: contactPerson.trim() || null,
+        phone: cleanPhone,
+        other_phone: otherPhone.trim() || null,
+        location: location.trim() || null,
+        email: email.trim() || null,
+        call_status: callStatus,
+        feedback: feedback.trim() || null
+      });
+
+      setSaving(false);
+
+      if (result.success && result.entry) {
+        setSaveSuccessMsg(`Call record for "${cleanCompany}" updated successfully!`);
+        setTodayEntries(prev => prev.map(item => item.id === editingId ? result.entry! : item));
+        resetForm(true);
+      } else {
+        setErrorMsg(result.error || 'Failed to update telecalling entry. Please retry.');
+      }
+      return;
+    }
 
     const result = await telecallingService.createEntry({
       company_id: companyId,
@@ -267,6 +319,39 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
         }}>
           <AlertCircle size={18} />
           <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Editing Notice Banner */}
+      {editingId && (
+        <div style={{
+          padding: '0.75rem 1rem',
+          background: '#eff6ff',
+          border: '1px solid #93c5fd',
+          borderLeft: '4px solid #2563eb',
+          color: '#1e40af',
+          borderRadius: '8px',
+          marginBottom: '1rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+          fontSize: '0.85rem',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+            <Pencil size={16} color="#2563eb" />
+            <span>Editing Call Record for: <strong>{companyName || 'Selected Entry'}</strong></span>
+          </div>
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            className="btn-secondary"
+            style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+          >
+            Cancel Edit
+          </button>
         </div>
       )}
 
@@ -460,36 +545,71 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <button
-              type="button"
-              onClick={() => handleSave(true)}
-              className="btn-secondary"
-              disabled={saving}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 600 }}
-            >
-              {saving ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
-              <span>Save & New</span>
-            </button>
+            {editingId ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="btn-secondary"
+                  disabled={saving}
+                  style={{ fontSize: '0.85rem', padding: '0.65rem 1rem' }}
+                >
+                  Cancel Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSave(false)}
+                  className="btn-primary"
+                  disabled={saving}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    padding: '0.65rem 1.25rem',
+                    background: '#2563eb',
+                    borderColor: '#2563eb'
+                  }}
+                >
+                  {saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
+                  <span>Update Entry</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleSave(true)}
+                  className="btn-secondary"
+                  disabled={saving}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 600 }}
+                >
+                  {saving ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
+                  <span>Save & New</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => handleSave(false)}
-              className="btn-primary"
-              disabled={saving}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                fontSize: '0.9rem',
-                fontWeight: 700,
-                padding: '0.65rem 1.25rem',
-                background: '#2563eb',
-                borderColor: '#2563eb'
-              }}
-            >
-              {saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-              <span>Save Entry</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => handleSave(false)}
+                  className="btn-primary"
+                  disabled={saving}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    padding: '0.65rem 1.25rem',
+                    background: '#2563eb',
+                    borderColor: '#2563eb'
+                  }}
+                >
+                  {saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
+                  <span>Save Entry</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -563,7 +683,11 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
                   const waNumber = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
 
                   return (
-                    <tr key={e.id} style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                    <tr key={e.id} style={{
+                      borderBottom: '1px solid var(--border-color, #e2e8f0)',
+                      background: e.id === editingId ? '#eff6ff' : undefined,
+                      transition: 'background 0.2s ease'
+                    }}>
                       <td style={{ padding: '8px 10px', fontWeight: 600 }}>
                         {e.company_name}
                         {e.location && (
@@ -642,7 +766,21 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
                           <span style={{ color: '#d97706', fontSize: '0.75rem' }}>Pending</span>
                         )}
                       </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        <button
+                          onClick={() => handleEditEntry(e)}
+                          className="btn-ghost"
+                          title="Edit details & comments"
+                          style={{
+                            padding: '0.25rem',
+                            color: '#2563eb',
+                            marginRight: '0.35rem',
+                            background: e.id === editingId ? '#dbeafe' : 'transparent',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          <Pencil size={15} />
+                        </button>
                         <button
                           onClick={() => handleDeleteEntry(e.id, e.company_name)}
                           className="btn-ghost"

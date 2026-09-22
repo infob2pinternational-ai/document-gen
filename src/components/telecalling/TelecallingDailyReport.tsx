@@ -13,7 +13,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   Settings,
-  Loader2
+  Loader2,
+  Pencil
 } from 'lucide-react';
 import type { CompanyProfile, TelecallingEntry, TelecallingStatus, TelecallingDailyReportData } from '../../types';
 import { TELECALLING_STATUSES } from '../../types';
@@ -25,6 +26,7 @@ import {
   getOwnerWhatsAppNumber 
 } from '../../utils/telecallingShare';
 import { OwnerWhatsAppModal } from './OwnerWhatsAppModal';
+import { TelecallingEditModal } from './TelecallingEditModal';
 
 interface TelecallingDailyReportProps {
   activeProfile: CompanyProfile | null;
@@ -52,6 +54,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
 
   // Modals
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<TelecallingEntry | null>(null);
   const [shareError, setShareError] = useState('');
   const [shareSuccess, setShareSuccess] = useState(false);
 
@@ -525,6 +528,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                       <th style={{ padding: '8px 10px', textAlign: 'left' }}>Result / Status</th>
                       <th style={{ padding: '8px 10px', textAlign: 'left' }}>Feedback / Remarks</th>
                       <th style={{ padding: '8px 10px', textAlign: 'left' }}>Telecaller</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -582,6 +586,16 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                           <td style={{ padding: '8px 10px', fontSize: '0.8rem', color: '#64748b' }}>
                             {e.created_by_name || e.created_by_email?.split('@')[0] || 'Staff'}
                           </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                            <button
+                              onClick={() => setEditingEntry(e)}
+                              className="btn-ghost"
+                              title="Edit details & comments"
+                              style={{ padding: '0.25rem', color: '#2563eb' }}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -601,6 +615,18 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
           onSaved={() => {
             // After saving number, automatically trigger share
             setTimeout(handleShareWhatsApp, 200);
+          }}
+        />
+      )}
+
+      {/* Edit Entry Modal */}
+      {editingEntry && (
+        <TelecallingEditModal
+          isOpen={Boolean(editingEntry)}
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSaved={() => {
+            loadReport();
           }}
         />
       )}
