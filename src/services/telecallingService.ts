@@ -9,6 +9,21 @@ import type {
 import { getSyncSettings, computeBackoffMs } from './sheetsSyncQueue';
 import { getKolkataToday, getKolkataWeekRange } from '../utils/dateUtils';
 
+export const DEFAULT_TELECALLING_WEBHOOK_URL =
+  'https://script.google.com/macros/s/AKfycbysHw97D_vV3j0yIUI94fPN0ycj_pJCq_No0UGsRZlTaQgLo3sTb5vOON0yRz63idBRVQ/exec';
+
+export function getTelecallingWebhookUrl(): string {
+  if (typeof window === 'undefined') return DEFAULT_TELECALLING_WEBHOOK_URL;
+  const custom = localStorage.getItem('b2p_telecalling_webhook_url');
+  return custom && custom.trim() ? custom.trim() : DEFAULT_TELECALLING_WEBHOOK_URL;
+}
+
+export function setTelecallingWebhookUrl(url: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('b2p_telecalling_webhook_url', url.trim());
+  }
+}
+
 const BROWSER_WORKER_ID = `browser_worker_${Math.random().toString(36).substring(2, 9)}`;
 
 export interface CreateTelecallingEntryInput {
@@ -529,9 +544,11 @@ class TelecallingService {
     if (!isSupabaseConfigured() || !supabase) return;
 
     try {
+      const telecallingUrl = getTelecallingWebhookUrl();
       const settings = await getSyncSettings(companyId);
-      if (!settings || !settings.webhook_url || !settings.enabled) {
-        return; // Sync not configured or disabled for this company
+      const webhookUrl = telecallingUrl || settings?.webhook_url;
+      if (!webhookUrl) {
+        return; // Sync not configured
       }
 
       // Claim rows via RPC
@@ -545,7 +562,7 @@ class TelecallingService {
       }
 
       for (const row of rows as TelecallingGoogleSyncQueueRow[]) {
-        await this.syncQueueRow(row, settings.webhook_url);
+        await this.syncQueueRow(row, webhookUrl);
       }
     } catch (err) {
       console.error('[TelecallingSync] processSyncQueueOnce error:', err);
