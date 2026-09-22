@@ -15,10 +15,8 @@ const CONFIG = {
   // 1. Existing Document Backup Spreadsheet (Invoices, Quotations, Work Orders)
   SPREADSHEET_ID: '1OyEjFCHSLKgk4yv0dMIQFmOH8FTCCLwnj35WErF4-_U',
 
-  // 2. Separate Telecalling Spreadsheet (PASTE YOUR NEW SHEET ID HERE)
-  // If provided, telecalling entries go to this separate sheet!
-  // If left empty, telecalling entries will go to the main sheet above.
-  TELECALLING_SPREADSHEET_ID: '',
+  // 2. Separate Telecalling Spreadsheet (B2P Telecalling Operations)
+  TELECALLING_SPREADSHEET_ID: '1bMVaYMeODk3m3wqSmAyALK70fS_r66hkYgFPWw2oCtg',
 
   DATA_SHEET_NAME: 'Documents',       // Tab holding documents
   TELECALLING_SHEET_NAME: 'Data',     // Dedicated tab for telecalling entries
