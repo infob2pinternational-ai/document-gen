@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { Customer, Lead, LeadPriority, LeadSource } from '../types';
-import { X, UserCheck } from 'lucide-react';
+import { X, UserCheck, Trash2 } from 'lucide-react';
 import { leadService } from '../services/leadService';
 import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
 import { KERALA_DISTRICTS, KERALA_SUB_DISTRICTS } from '../utils/districts';
@@ -14,6 +14,7 @@ interface LeadModalProps {
   customers: Customer[];
   userEmail: string;
   companyId?: string;
+  onDelete?: (leadId: string) => void;
 }
 
 import { SERVICE_OPTIONS, SERVICE_SUB_DIVISIONS } from '../types';
@@ -38,7 +39,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   onSaved,
   customers,
   userEmail,
-  companyId = 'default'
+  companyId = 'default',
+  onDelete
 }) => {
   const [customerName, setCustomerName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -694,28 +696,54 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-secondary"
-              style={{ fontSize: '0.8125rem' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="btn-primary"
-              style={{
-                fontSize: '0.8125rem',
-                padding: '0.45rem 1.25rem',
-                opacity: isSaving ? 0.7 : 1,
-                cursor: isSaving ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {isSaving ? 'Saving Lead...' : lead ? 'Update Lead Record' : 'Create & Save Lead'}
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
+            {lead ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  const leadLabel = lead.lead_number ? `${lead.lead_number} (${lead.customer_name})` : lead.customer_name;
+                  if (window.confirm(`Are you sure you want to delete lead ${leadLabel}? This action cannot be undone.`)) {
+                    try {
+                      await leadService.deleteLead(lead.id);
+                      if (onDelete) onDelete(lead.id);
+                      onClose();
+                    } catch (err: any) {
+                      alert(err.message || 'Failed to delete lead.');
+                    }
+                  }
+                }}
+                className="btn-secondary"
+                style={{ fontSize: '0.8125rem', color: '#dc2626', borderColor: '#fca5a5', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                title="Delete this lead"
+              >
+                <Trash2 size={13} />
+                <span>Delete Lead</span>
+              </button>
+            ) : <div />}
+
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn-secondary"
+                style={{ fontSize: '0.8125rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="btn-primary"
+                style={{
+                  fontSize: '0.8125rem',
+                  padding: '0.45rem 1.25rem',
+                  opacity: isSaving ? 0.7 : 1,
+                  cursor: isSaving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isSaving ? 'Saving Lead...' : lead ? 'Update Lead Record' : 'Create & Save Lead'}
+              </button>
+            </div>
           </div>
 
         </form>

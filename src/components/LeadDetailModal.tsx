@@ -14,7 +14,8 @@ import {
   User,
   Briefcase,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
@@ -30,6 +31,7 @@ interface LeadDetailModalProps {
   onClose: () => void;
   onEdit: (lead: Lead) => void;
   onUpdated: (lead: Lead) => void;
+  onDelete?: (leadId: string) => void;
   userEmail: string;
   userRole?: string;
 }
@@ -55,6 +57,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onClose,
   onEdit,
   onUpdated,
+  onDelete,
   userEmail,
   userRole = 'telecaller'
 }) => {
@@ -112,6 +115,21 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     setNewActivityNote('');
     const current = leadService.getLeadById(lead.id);
     if (current) onUpdated(current);
+  };
+
+  const handleDelete = async () => {
+    const leadLabel = lead.lead_number ? `${lead.lead_number} (${lead.customer_name})` : lead.customer_name;
+    if (window.confirm(`Are you sure you want to delete lead ${leadLabel}? This action will permanently remove the lead and all its history.`)) {
+      try {
+        await leadService.deleteLead(lead.id);
+        if (onDelete) {
+          onDelete(lead.id);
+        }
+        onClose();
+      } catch (err: any) {
+        alert(err.message || 'Failed to delete lead.');
+      }
+    }
   };
 
   const handleWhatsAppOpen = () => {
@@ -189,6 +207,16 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             >
               <Edit size={13} />
               <span>Edit</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '0.4rem 0.75rem', gap: '0.35rem', color: '#dc2626', borderColor: '#fca5a5' }}
+              title="Delete this lead"
+            >
+              <Trash2 size={13} />
+              <span>Delete</span>
             </button>
             <button
               onClick={onClose}

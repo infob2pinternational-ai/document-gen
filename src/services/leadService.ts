@@ -555,6 +555,12 @@ export const leadService = {
     }
   },
 
+  async deleteLeads(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      await this.deleteLead(id);
+    }
+  },
+
   getLeadActivities(leadId: string): LeadActivity[] {
     const activities = getStoredActivities();
     return activities

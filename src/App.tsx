@@ -2192,6 +2192,7 @@ function App() {
           onClose={() => setGlobalLeadDetailId(null)}
           onEdit={() => {}}
           onUpdated={() => {}}
+          onDelete={() => setGlobalLeadDetailId(null)}
           userRole={simulatedRole}
           userEmail={`${simulatedRole}@b2p.com`}
         />
