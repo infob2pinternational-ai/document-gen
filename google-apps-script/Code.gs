@@ -12,7 +12,7 @@
  * ─── CONFIGURATION — edit this block to match your actual sheet ───────
  */
 const CONFIG = {
-  SPREADSHEET_ID: 'PASTE_YOUR_SPREADSHEET_ID_HERE', // If opened via Extensions > Apps Script in your Sheet, this is optional
+  SPREADSHEET_ID: '1OyEjFCHSLKgk4yv0dMIQFmOH8FTCCLwnj35WErF4-_U',
   DATA_SHEET_NAME: 'Documents',       // the sheet/tab holding one row per document
   TELECALLING_SHEET_NAME: 'Data',     // the dedicated sheet/tab for telecalling entries
   LOG_SHEET_NAME: 'Sync Log',         // auto-created if missing
