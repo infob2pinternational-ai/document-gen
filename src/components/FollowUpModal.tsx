@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { FollowUp, Lead } from '../types';
-import { X, Clock, CheckCircle2 } from 'lucide-react';
+import { X, Clock, CheckCircle2, Trash2 } from 'lucide-react';
 import { officeService } from '../services/officeService';
 import { leadService } from '../services/leadService';
 import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
@@ -11,6 +11,7 @@ interface FollowUpModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: (followUp: FollowUp) => void;
+  onDeleted?: (id: string) => void;
   prefilledLead?: Lead | null;
   userEmail: string;
 }
@@ -20,6 +21,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   isOpen,
   onClose,
   onSaved,
+  onDeleted,
   prefilledLead,
   userEmail
 }) => {
@@ -334,17 +336,42 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
 
           {/* Modal Actions Footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
-            {followUp && !isCompleting && followUp.status === 'PENDING' && (
-              <button
-                type="button"
-                onClick={() => setIsCompleting(true)}
-                className="btn-secondary"
-                style={{ color: '#16a34a', borderColor: '#bbf7d0', fontSize: '0.78rem' }}
-              >
-                <CheckCircle2 size={13} />
-                <span>Mark as Done</span>
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              {followUp && !isCompleting && followUp.status === 'PENDING' && (
+                <button
+                  type="button"
+                  onClick={() => setIsCompleting(true)}
+                  className="btn-secondary"
+                  style={{ color: '#16a34a', borderColor: '#bbf7d0', fontSize: '0.78rem' }}
+                >
+                  <CheckCircle2 size={13} />
+                  <span>Mark as Done</span>
+                </button>
+              )}
+              {followUp && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const label = followUp.customer_name ? `${followUp.customer_name} (${followUp.reason})` : followUp.reason;
+                    if (window.confirm(`Are you sure you want to delete this follow-up for "${label}"? This action cannot be undone.`)) {
+                      try {
+                        await officeService.deleteFollowUp(followUp.id);
+                        if (onDeleted) onDeleted(followUp.id);
+                        onClose();
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to delete follow-up.');
+                      }
+                    }
+                  }}
+                  className="btn-secondary"
+                  style={{ color: '#dc2626', borderColor: '#fca5a5', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  title="Delete this follow-up task"
+                >
+                  <Trash2 size={13} />
+                  <span>Delete Follow-up</span>
+                </button>
+              )}
+            </div>
             
             <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
               <button type="button" onClick={onClose} className="btn-secondary" style={{ fontSize: '0.8125rem' }}>

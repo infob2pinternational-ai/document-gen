@@ -671,6 +671,33 @@ export const officeService = {
     return current;
   },
 
+  async deleteFollowUp(id: string): Promise<void> {
+    const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
+    const existing = list.find(f => f.id === id);
+    const updated = list.filter(f => f.id !== id);
+    await persistOfficeRowDeleted(FOLLOW_UPS_KEY, 'follow_ups', updated, id);
+
+    if (existing?.lead_id) {
+      try {
+        await leadService.addLeadActivity({
+          lead_id: existing.lead_id,
+          company_id: existing.company_id || leadService.getActiveCompany() || 'default',
+          user_email: existing.assigned_staff_email || 'staff',
+          action: 'Follow-up Deleted',
+          note: `Removed follow-up: "${existing.reason}" (due ${existing.due_date})`
+        });
+      } catch (err) {
+        console.warn('[officeService] Failed to log activity for deleted follow-up:', err);
+      }
+    }
+  },
+
+  async deleteFollowUps(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      await this.deleteFollowUp(id);
+    }
+  },
+
   getDueFollowUps(companyId?: string): FollowUp[] {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
     const today = getTodayStr();

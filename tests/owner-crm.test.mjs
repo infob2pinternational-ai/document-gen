@@ -97,6 +97,7 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
         saved[table] = structuredClone(row);
         return { data: { id: row.id } };
       } }; } }; },
+      delete() { return { eq(col, val) { delete saved[table]; return { select() { return Promise.resolve({ data: [{ id: val }] }); } }; } }; },
       select() { const result = { data: saved[table] ? [saved[table]] : [] };
         return { eq() { return Promise.resolve(result); }, then(resolve) { return Promise.resolve(result).then(resolve); } };
       }
@@ -125,6 +126,8 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
     rows.clear();
     await hydrateCrmFromCloud(company);
     assert.equal(officeService.getFollowUps('completed', company)[0].status, 'COMPLETED');
+    await officeService.deleteFollowUp(follow.id);
+    assert.equal(officeService.getFollowUps('all', company).length, 0);
     const q = { id: '44444444-4444-4444-8444-444444444444', company_id: company, quotation_number: 'Q1', customer_name: 'Enquiry', customer_phone: '1234567890', service_required: 'LED Van', total: 80000, approval_status: 'WAITING_APPROVAL', created_by_email: 'staff@example.com' };
     await officeService.saveQuotation(q, 'staff@example.com');
     await officeService.ownerApproveQuotation(q.id, 'owner@example.com', 'Approved');

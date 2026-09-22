@@ -14,7 +14,8 @@ import {
   User,
   Briefcase,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
@@ -540,13 +541,36 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 <span style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.15rem' }}>
                   Next Follow-up Scheduled
                 </span>
-                <div style={{ fontSize: '0.8125rem', color: nextFollowUp ? '#d97706' : '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <Clock size={13} />
-                  <span>
-                    {nextFollowUp 
-                      ? `${nextFollowUp.due_date} at ${nextFollowUp.due_time || '10:00 AM'} (${nextFollowUp.reason || 'Follow-up'})` 
-                      : 'No pending follow-up scheduled.'}
-                  </span>
+                <div style={{ fontSize: '0.8125rem', color: nextFollowUp ? '#d97706' : '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Clock size={13} />
+                    <span>
+                      {nextFollowUp 
+                        ? `${nextFollowUp.due_date} at ${nextFollowUp.due_time || '10:00 AM'} (${nextFollowUp.reason || 'Follow-up'})` 
+                        : 'No pending follow-up scheduled.'}
+                    </span>
+                  </div>
+                  {nextFollowUp && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to delete this follow-up: "${nextFollowUp.reason}"?`)) {
+                          try {
+                            await officeService.deleteFollowUp(nextFollowUp.id);
+                            if (onUpdated) onUpdated({ ...lead });
+                          } catch (err: any) {
+                            alert(err.message || 'Failed to delete follow-up.');
+                          }
+                        }
+                      }}
+                      className="btn-ghost"
+                      style={{ padding: '0.2rem 0.4rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.72rem' }}
+                      title="Delete this scheduled follow-up"
+                    >
+                      <Trash2 size={12} />
+                      <span>Delete</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

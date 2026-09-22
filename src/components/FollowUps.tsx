@@ -10,7 +10,8 @@ import {
   CheckCircle2, 
   Phone, 
   MessageSquare, 
-  Edit
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { formatStaffDisplayName } from '../utils/staffUtils';
@@ -30,6 +31,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
+  const [selectedFollowUpIds, setSelectedFollowUpIds] = useState<Set<string>>(new Set());
 
   const refreshFollowUps = () => {
     let list: FollowUp[] = [];
@@ -78,6 +80,49 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
     }
   };
 
+  const handleDeleteFollowUp = async (f: FollowUp) => {
+    const label = f.customer_name ? `${f.customer_name} - ${f.reason}` : f.reason;
+    if (window.confirm(`Are you sure you want to delete this follow-up for "${label}"? This action cannot be undone.`)) {
+      try {
+        await officeService.deleteFollowUp(f.id);
+        setSelectedFollowUpIds(prev => {
+          if (prev.has(f.id)) {
+            const next = new Set(prev);
+            next.delete(f.id);
+            return next;
+          }
+          return prev;
+        });
+        refreshFollowUps();
+      } catch (err: any) {
+        alert(err.message || 'Failed to delete follow-up.');
+      }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectedFollowUpIds.size;
+    if (count === 0) return;
+    if (window.confirm(`Are you sure you want to permanently delete ${count} selected follow-up task${count > 1 ? 's' : ''}? This action cannot be undone.`)) {
+      try {
+        await officeService.deleteFollowUps(Array.from(selectedFollowUpIds));
+        setSelectedFollowUpIds(new Set());
+        refreshFollowUps();
+      } catch (err: any) {
+        alert(err.message || 'Failed to delete selected follow-ups.');
+      }
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedFollowUpIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const filtered = followUps.filter(f =>
     f.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (f.company_name && f.company_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -85,6 +130,17 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
     (f.phone && f.phone.includes(searchTerm)) ||
     (f.lead_number && f.lead_number.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const allSelected = filtered.length > 0 && filtered.every(f => selectedFollowUpIds.has(f.id));
+  const someSelected = filtered.some(f => selectedFollowUpIds.has(f.id)) && !allSelected;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedFollowUpIds(new Set());
+    } else {
+      setSelectedFollowUpIds(new Set(filtered.map(f => f.id)));
+    }
+  };
 
   const counts = metricsService.getFollowUpCounts(userEmail);
 
@@ -200,12 +256,72 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedFollowUpIds.size > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.65rem 1.25rem',
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
+          borderRadius: '10px',
+          color: '#991b1b',
+          fontSize: '0.84rem',
+          boxShadow: '0 2px 8px rgba(239, 68, 68, 0.08)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 600 }}>
+            <span>{selectedFollowUpIds.size} follow-up task{selectedFollowUpIds.size > 1 ? 's' : ''} selected</span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setSelectedFollowUpIds(new Set())}
+              className="btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
+            >
+              Deselect All
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="btn-primary"
+              style={{
+                fontSize: '0.78rem',
+                padding: '0.35rem 0.85rem',
+                background: '#dc2626',
+                borderColor: '#dc2626',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+            >
+              <Trash2 size={13} />
+              <span>Delete ({selectedFollowUpIds.size}) Selected</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Follow-up Tasks Table */}
       <div className="table-container animate-fade-in">
         {filtered.length > 0 ? (
           <table>
             <thead>
               <tr>
+                <th style={{ width: '38px', textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={el => {
+                      if (el) el.indeterminate = someSelected;
+                    }}
+                    onChange={toggleSelectAll}
+                    title={allSelected ? "Deselect all tasks" : "Select all tasks"}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </th>
                 <th>Customer / Company</th>
                 <th>Phone / Contact</th>
                 <th>Due Date & Time</th>
@@ -223,8 +339,29 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
                 const isToday = item.status !== 'COMPLETED' && item.due_date === todayStr;
 
                 return (
-                  <tr key={item.id} style={{ opacity: isCompleted ? 0.7 : 1 }}>
+                  <tr 
+                    key={item.id} 
+                    style={{ 
+                      opacity: isCompleted ? 0.85 : 1,
+                      backgroundColor: selectedFollowUpIds.has(item.id) ? 'rgba(59, 130, 246, 0.08)' : undefined
+                    }}
+                  >
                     
+                    <td 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelect(item.id);
+                      }}
+                      style={{ textAlign: 'center', width: '38px' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedFollowUpIds.has(item.id)}
+                        onChange={() => toggleSelect(item.id)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
+
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.customer_name}</div>
                       {item.company_name && (
@@ -342,6 +479,16 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
                         >
                           <Edit size={14} />
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFollowUp(item)}
+                          className="btn-ghost"
+                          style={{ padding: '0.3rem', color: '#dc2626' }}
+                          title="Delete Follow-up Task"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
 
@@ -372,6 +519,14 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
           onSaved={() => refreshFollowUps()}
+          onDeleted={(deletedId) => {
+            setSelectedFollowUpIds(prev => {
+              const next = new Set(prev);
+              next.delete(deletedId);
+              return next;
+            });
+            refreshFollowUps();
+          }}
           userEmail={userEmail}
         />
       )}
