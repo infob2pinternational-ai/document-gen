@@ -12,7 +12,7 @@
  * ─── CONFIGURATION — edit this block to match your actual sheet ───────
  */
 const CONFIG = {
-  SPREADSHEET_ID: 'PASTE_YOUR_SPREADSHEET_ID_HERE',
+  SPREADSHEET_ID: 'PASTE_YOUR_SPREADSHEET_ID_HERE', // If opened via Extensions > Apps Script in your Sheet, this is optional
   DATA_SHEET_NAME: 'Documents',       // the sheet/tab holding one row per document
   TELECALLING_SHEET_NAME: 'Data',     // the dedicated sheet/tab for telecalling entries
   LOG_SHEET_NAME: 'Sync Log',         // auto-created if missing
@@ -215,7 +215,7 @@ function doPost(e) {
  * not thousands of individual reads).
  */
 function upsertDocumentRow(data) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = getOrCreateDataSheet(ss);
   const idColIndex = CONFIG.COLUMNS.indexOf('document_id') + 1; // 1-based
   const numberColIndex = CONFIG.COLUMNS.indexOf('document_number') + 1;
@@ -279,7 +279,7 @@ function upsertDocumentRow(data) {
  * an error).
  */
 function deleteDocumentRow(documentId, documentNumber) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = getOrCreateDataSheet(ss);
   const idColIndex = CONFIG.COLUMNS.indexOf('document_id') + 1;
   const numberColIndex = CONFIG.COLUMNS.indexOf('document_number') + 1;
@@ -324,6 +324,15 @@ function findExistingRow(sheet, documentId, documentNumber, idColIndex, numberCo
   }
 
   return null;
+}
+
+function getSpreadsheet() {
+  if (CONFIG.SPREADSHEET_ID && CONFIG.SPREADSHEET_ID !== 'PASTE_YOUR_SPREADSHEET_ID_HERE') {
+    return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  }
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+  throw new Error('Spreadsheet ID is not configured and no active container spreadsheet was found.');
 }
 
 function getOrCreateDataSheet(ss) {
@@ -375,7 +384,7 @@ function respondAndLog(success, action, documentId, message, startedAt, sheetRow
 }
 
 function logRequest(startedAt, completedAt, action, documentId, success, errorMessage) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   let logSheet = ss.getSheetByName(CONFIG.LOG_SHEET_NAME);
   if (!logSheet) {
     logSheet = ss.insertSheet(CONFIG.LOG_SHEET_NAME);
@@ -504,7 +513,7 @@ function buildTelecallingRowValues(data) {
 }
 
 function upsertTelecallingRow(data) {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = getOrCreateTelecallingSheet(ss);
   const existingRow = findExistingTelecallingRow(sheet, data.entry_id);
   const rowValues = buildTelecallingRowValues(data);
@@ -520,7 +529,7 @@ function upsertTelecallingRow(data) {
 
 function upsertTelecallingBatch(items) {
   if (!items || !items.length) return 0;
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const ss = getSpreadsheet();
   const sheet = getOrCreateTelecallingSheet(ss);
   let processed = 0;
 
