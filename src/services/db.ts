@@ -678,8 +678,35 @@ export const dbService = {
     let saved: Document = { ...payload, status: 'pending_approval', approved_at: undefined, approved_by_email: undefined };
     if (supabase) {
       if (!isCloudActive()) throw new Error('Please sign in again. The document was not saved.');
+
+      // In multi-profile workspaces, services are a shared catalog across profiles.
+      // The database RPC validates: WHERE id=(it->>'service_id')::uuid AND company_id=d.company_id.
+      // If a service was created under another company profile, passing its foreign service_id
+      // triggers 'Invalid service' in the RPC. We check which service_ids belong to payload.company_id;
+      // for any foreign or unknown service, we set service_id to null in the RPC payload so the document
+      // saves cleanly without rejection.
+      let validCompanyServiceIds = new Set<string>();
+      if (payload.company_id && typeof (supabase as any).from === 'function') {
+        try {
+          const { data: compServices } = await (supabase as any)
+            .from('services')
+            .select('id')
+            .eq('company_id', payload.company_id);
+          if (compServices && Array.isArray(compServices)) {
+            validCompanyServiceIds = new Set(compServices.map((s: any) => s.id));
+          }
+        } catch (err) {
+          console.warn('[dbService] Failed to check company services:', err);
+        }
+      }
+
+      const rpcItems = savedItems.map(it => ({
+        ...it,
+        service_id: (it.service_id && validCompanyServiceIds.has(it.service_id)) ? it.service_id : null
+      }));
+
       const { data, error } = await supabase.rpc('save_document_bundle', {
-        p_document: payload, p_items: savedItems, p_comparison: comparison ?? null
+        p_document: payload, p_items: rpcItems, p_comparison: comparison ?? null
       });
       if (error) throw new Error(`Document was not saved: ${error.message}`);
       if (data?.id !== doc.id) throw new Error('The server did not confirm the document save.');

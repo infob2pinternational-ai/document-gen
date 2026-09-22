@@ -1001,7 +1001,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   </thead>
                   <tbody>
                     {items.map((item, idx) => {
-                      const matchedSrv = services.find(s => s.id === item.service_id);
+                      const matchedSrv = services.find(s => s.id === item.service_id || (s.name && item.description && item.description.startsWith(s.name)));
                       const serviceName = matchedSrv ? matchedSrv.name : (item.service_id ? 'Preset Service' : 'Custom');
                       const currSymbol = activeProfile?.currency === 'INR' ? '₹' : (activeProfile?.currency === 'USD' ? '$' : (activeProfile?.currency || '₹') + ' ');
                       const lineTaxAmt = (isB2PInternational || docType === 'non_tax_invoice') ? 0 : ((item.amount || 0) * (item.gst_percentage || 0) / 100);

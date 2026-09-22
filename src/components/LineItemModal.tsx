@@ -73,8 +73,8 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
     }
 
     if (itemToEdit) {
-      setSelectedServiceId(itemToEdit.service_id || '');
-      const matchedSrv = services.find(s => s.id === itemToEdit.service_id);
+      const matchedSrv = services.find(s => s.id === itemToEdit.service_id || (s.name && itemToEdit.description && itemToEdit.description.startsWith(s.name)));
+      setSelectedServiceId(itemToEdit.service_id || matchedSrv?.id || '');
       setServiceSearchQuery(matchedSrv ? matchedSrv.name : '');
       setDescription(itemToEdit.description || '');
       setHsnSac(itemToEdit.hsn_sac || '');

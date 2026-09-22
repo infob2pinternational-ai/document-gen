@@ -122,9 +122,9 @@ BEGIN
  notes=d.notes,terms=d.terms,status=d.status,approved_by_email=NULL,approved_at=NULL WHERE id=d.id;
  END IF;
  DELETE FROM public.document_items WHERE document_id=d.id;
- FOR it IN SELECT value FROM jsonb_array_elements(p_items) LOOP
-  IF nullif(it->>'service_id','') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.services
-   WHERE id=(it->>'service_id')::uuid AND company_id=d.company_id) THEN RAISE EXCEPTION 'Invalid service'; END IF;
+  FOR it IN SELECT value FROM jsonb_array_elements(p_items) LOOP
+   IF nullif(it->>'service_id','') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.services
+    WHERE id=(it->>'service_id')::uuid AND (company_id=d.company_id OR public.can_access_company(company_id))) THEN RAISE EXCEPTION 'Invalid service'; END IF;
   INSERT INTO public.document_items(id,document_id,service_id,description,quantity,days,rate,unit,hsn_sac,gst_percentage,amount,sort_order)
   VALUES(coalesce((it->>'id')::uuid,gen_random_uuid()),d.id,nullif(it->>'service_id','')::uuid,it->>'description',
    (it->>'quantity')::numeric,coalesce((it->>'days')::numeric,1),(it->>'rate')::numeric,it->>'unit',it->>'hsn_sac',
