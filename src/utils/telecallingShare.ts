@@ -77,26 +77,22 @@ export function buildDailyReportWhatsAppMessage(
   const headerCompany = (companyName || 'B2P INTERNATIONAL').toUpperCase();
   const dateStr = formatKolkataDisplayDate(report.date);
 
-  // Filter status counts to show only statuses with count > 0 or key ones
-  const statusLines: string[] = [];
   const statusOrder: TelecallingStatus[] = [
     'Appointment Confirmed',
     'Interested / Details Shared',
     'Follow-up Required',
     'Call Back',
     'No Answer / No Response',
-    'No Interest',
     'Not Reachable / Switched Off',
+    'No Interest',
     'Wrong / Invalid Number',
     'Other'
   ];
 
-  for (const st of statusOrder) {
+  const statusLines: string[] = statusOrder.map((st, idx) => {
     const cnt = report.statusCounts[st] || 0;
-    if (cnt > 0) {
-      statusLines.push(`${st}: ${cnt}`);
-    }
-  }
+    return `${idx + 1}. ${st}: ${cnt}`;
+  });
 
   // Telecaller breakdown lines
   const telecallerLines = Object.entries(report.telecallerActivity)

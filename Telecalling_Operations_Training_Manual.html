@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>B2P ONE Portal & ERP — Telecalling Operations Standard Operating Procedure & Training Manual</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 18mm 16mm;
+    @bottom-center {
+      content: "B2P ONE Portal & ERP — Telecalling Operations Training Manual";
+      font-size: 8pt;
+      color: #94a3b8;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.6;
+    font-size: 9.5pt;
+    background: #ffffff;
+  }
+
+  .cover-page {
+    page-break-after: always;
+    height: 94vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 36px 24px 24px 24px;
+    border: 3px solid #1e3a8a;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 65%, #eff6ff 100%);
+  }
+
+  .cover-badge {
+    align-self: flex-start;
+    background-color: #1e3a8a;
+    color: #ffffff;
+    font-size: 9pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 6px 16px;
+    border-radius: 6px;
+  }
+
+  .cover-header {
+    margin-top: 30px;
+  }
+
+  .cover-title {
+    font-size: 24pt;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+    margin-bottom: 12px;
+  }
+
+  .cover-subtitle {
+    font-size: 13pt;
+    font-weight: 600;
+    color: #2563eb;
+    margin-bottom: 20px;
+    line-height: 1.4;
+  }
+
+  .cover-desc {
+    font-size: 10pt;
+    color: #475569;
+    max-width: 95%;
+    line-height: 1.6;
+    border-left: 4px solid #3b82f6;
+    padding-left: 16px;
+    margin-top: 16px;
+  }
+
+  .cover-meta {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 18px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    font-size: 9pt;
+  }
+
+  .meta-item strong {
+    display: block;
+    color: #64748b;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+
+  .meta-item span {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+
+  h1 {
+    font-size: 16pt;
+    color: #0f172a;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 6px;
+    margin-top: 22px;
+    margin-bottom: 12px;
+    page-break-after: avoid;
+  }
+
+  h2 {
+    font-size: 12pt;
+    color: #1e3a8a;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    page-break-after: avoid;
+    display: flex;
+    align-items: center;
+  }
+
+  h3 {
+    font-size: 10.5pt;
+    color: #334155;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin-bottom: 8px;
+    color: #334155;
+    font-size: 9.2pt;
+  }
+
+  ul, ol {
+    margin-left: 20px;
+    margin-bottom: 10px;
+    color: #334155;
+    font-size: 9.2pt;
+  }
+
+  li {
+    margin-bottom: 4px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 14px 0;
+    font-size: 8.8pt;
+    page-break-inside: avoid;
+  }
+
+  th {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
+    text-align: left;
+    padding: 7px 9px;
+    border: 1px solid #cbd5e1;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  td {
+    padding: 7px 9px;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+
+  .alert {
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin: 10px 0;
+    font-size: 8.8pt;
+    page-break-inside: avoid;
+  }
+
+  .alert-tip {
+    background-color: #f0fdf4;
+    border-left: 4px solid #16a34a;
+    color: #166534;
+  }
+
+  .alert-important {
+    background-color: #eff6ff;
+    border-left: 4px solid #2563eb;
+    color: #1e40af;
+  }
+
+  .alert-warning {
+    background-color: #fffbeb;
+    border-left: 4px solid #d97706;
+    color: #92400e;
+  }
+
+  .alert-danger {
+    background-color: #fef2f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+  }
+
+  .code-box {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 8.2pt;
+    line-height: 1.45;
+    margin: 8px 0;
+    white-space: pre-wrap;
+    page-break-inside: avoid;
+  }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 10px 0;
+    page-break-inside: avoid;
+  }
+
+  .card-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 10px 0;
+    page-break-inside: avoid;
+  }
+
+  .ui-card {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+
+  .kpi-tile {
+    border-radius: 6px;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+  }
+
+  .kpi-title {
+    font-size: 7.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #64748b;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .kpi-num {
+    font-size: 16pt;
+    font-weight: 800;
+    margin: 2px 0;
+  }
+
+  .kpi-sub {
+    font-size: 7.5pt;
+    color: #64748b;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 7.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-orange { background: #ffedd5; color: #9a3412; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-pink { background: #fce7f3; color: #9d174d; }
+  .badge-gray { background: #f1f5f9; color: #334155; }
+
+  .toc-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px dotted #cbd5e1;
+    font-size: 9pt;
+  }
+
+  .toc-item strong {
+    color: #0f172a;
+  }
+
+  .example-box {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 10px 0;
+    page-break-inside: avoid;
+  }
+
+  .example-title {
+    font-weight: 700;
+    font-size: 9pt;
+    color: #1e3a8a;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER PAGE -->
+<div class="cover-page">
+  <div>
+    <div class="cover-badge">B2P ONE Portal &amp; ERP — Operational Guide</div>
+    <div class="cover-header">
+      <div class="cover-title">Telecalling Operations &amp; Daily Intelligence</div>
+      <div class="cover-subtitle">Complete Staff &amp; Management Training Manual with Real-World Scenarios</div>
+      <div class="cover-desc">
+        Standard Operating Procedures (SOP), system architecture, interactive dashboard controls, strict Asia/Kolkata date locking, mandatory remarks validation, duplicate prevention, and multi-channel executive dispatch.
+      </div>
+    </div>
+  </div>
+
+  <div class="cover-meta">
+    <div class="meta-grid">
+      <div class="meta-item">
+        <strong>Organization</strong>
+        <span>B2P International Management Solutions</span>
+      </div>
+      <div class="meta-item">
+        <strong>System Version</strong>
+        <span>B2P ONE ERP — Telecalling v2.4 (Phase 1 Enhanced)</span>
+      </div>
+      <div class="meta-item">
+        <strong>Timezone Authority</strong>
+        <span>Asia/Kolkata (IST — UTC+05:30) Strict Lock</span>
+      </div>
+      <div class="meta-item">
+        <strong>Target Audience</strong>
+        <span>Telecallers, Operations Supervisors, CRM Team, Directors</span>
+      </div>
+      <div class="meta-item">
+        <strong>Database Source of Truth</strong>
+        <span>Supabase PostgreSQL + Google Sheets Sync Engine</span>
+      </div>
+      <div class="meta-item">
+        <strong>Publication Date</strong>
+        <span>September 2026 (Live Release)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<h1>Table of Contents</h1>
+<div style="margin: 16px 0;">
+  <div class="toc-item"><span>1. Executive Overview &amp; Operating Philosophy</span><strong>Page 2</strong></div>
+  <div class="toc-item"><span>2. Strict IST Date Locking Standard &amp; Date Shift Elimination</span><strong>Page 3</strong></div>
+  <div class="toc-item"><span>3. Daily Telecalling Entry Workflow &amp; Mandatory Remarks</span><strong>Page 4</strong></div>
+  <div class="toc-item"><span>4. Duplicate Warning, Call History Search &amp; "Call Again"</span><strong>Page 5</strong></div>
+  <div class="toc-item"><span>5. Interactive Operations Dashboard &amp; 10 KPI Tiles</span><strong>Page 6</strong></div>
+  <div class="toc-item"><span>6. Quick Filter Chips &amp; Instant Click-to-Filter Architecture</span><strong>Page 7</strong></div>
+  <div class="toc-item"><span>7. Unresolved Calls Action Queue &amp; High-Priority Workflows</span><strong>Page 8</strong></div>
+  <div class="toc-item"><span>8. Multi-Channel Reporting: Numbered WhatsApp &amp; Email Dispatch</span><strong>Page 9</strong></div>
+  <div class="toc-item"><span>9. Contextual CSV Export &amp; Google Sheets Cloud Sync</span><strong>Page 10</strong></div>
+  <div class="toc-item"><span>10. Real-World Case Studies &amp; End-to-End Scenarios</span><strong>Page 11</strong></div>
+  <div class="toc-item"><span>11. Staff Daily Checklist &amp; Operational Do's and Don'ts</span><strong>Page 12</strong></div>
+</div>
+
+<div class="alert alert-important">
+  <strong>Notice to All Telecalling Staff:</strong> This manual provides mandatory operating guidelines. Follow these instructions precisely to maintain accurate data integrity, prevent duplicate lead entries, ensure timely follow-ups, and generate reliable executive analytics.
+</div>
+
+<!-- CHAPTER 1 -->
+<div class="page-break"></div>
+<h1>1. Executive Overview &amp; Operating Philosophy</h1>
+
+<p>
+  The Telecalling Operations Module in <strong>B2P ONE Portal &amp; ERP</strong> is designed to capture, organize, and monitor high-volume outbound and inbound customer communication. It connects frontline telecallers directly with business intelligence dashboards, executive dispatch channels (WhatsApp and Email), and automated cloud spreadsheets without manual administrative overhead.
+</p>
+
+<h2>Core Business Objectives</h2>
+<ul>
+  <li><strong>Instant Accountability:</strong> Every phone interaction is timestamped and recorded under the logged-in staff member's profile.</li>
+  <li><strong>Zero Lost Follow-ups:</strong> Prospects who request a call back or require ongoing nurturing are isolated into an actionable <em>Unresolved Calls</em> queue.</li>
+  <li><strong>Strict Temporal Truth:</strong> All activity is anchored to the Indian Standard Time (IST — Asia/Kolkata) calendar day. Daily reports never shift or substitute dates automatically.</li>
+  <li><strong>Frictionless High-Speed Entry:</strong> Telecallers can log 80+ calls per day without repetitive data entry using automatic duplicate detection and the 1-click <em>Call Again</em> workflow.</li>
+  <li><strong>One-Click Management Visibility:</strong> Supervisors can view separate counts for <em>Follow-ups</em>, <em>Call Backs</em>, and <em>Wrong Numbers</em>, click any dashboard tile to see matching calls, and send structured, numbered daily executive summaries via WhatsApp or Email in seconds.</li>
+</ul>
+
+<h2>System Architecture Overview</h2>
+<div class="card-grid">
+  <div class="ui-card" style="border-left: 4px solid #2563eb;">
+    <h3 style="color: #1e40af; margin-top: 0;">1. Frontend Interface (React + Vite)</h3>
+    <p style="font-size: 8.5pt;">
+      Lightweight, responsive, mobile-first interface optimized for rapid telecalling logging. Includes instant validation, non-blocking duplicate alerts, and interactive KPI tiles.
+    </p>
+  </div>
+  <div class="ui-card" style="border-left: 4px solid #16a34a;">
+    <h3 style="color: #166534; margin-top: 0;">2. Database Layer (Supabase PostgreSQL)</h3>
+    <p style="font-size: 8.5pt;">
+      Primary transactional source of truth stored in <code>telecalling_entries</code> with Row Level Security (RLS), phone normalization indexes, and IST date partitioning.
+    </p>
+  </div>
+  <div class="ui-card" style="border-left: 4px solid #d97706;">
+    <h3 style="color: #92400e; margin-top: 0;">3. Background Sync Queue</h3>
+    <p style="font-size: 8.5pt;">
+      Reliable event queue stored in <code>telecalling_google_sync_queue</code>, buffering every insert or update for background sync to Google Sheets without delaying the telecaller.
+    </p>
+  </div>
+  <div class="ui-card" style="border-left: 4px solid #7c3aed;">
+    <h3 style="color: #5b21b6; margin-top: 0;">4. Multi-Channel Dispatch Engine</h3>
+    <p style="font-size: 8.5pt;">
+      Sends numbered WhatsApp messages, triggers Google Apps Script HTML emails to configured management addresses, and exports customized CSV files matching filtered views.
+    </p>
+  </div>
+</div>
+
+<!-- CHAPTER 2 -->
+<div class="page-break"></div>
+<h1>2. Strict IST Date Locking Standard &amp; Date Shift Elimination</h1>
+
+<div class="alert alert-danger">
+  <strong>CRITICAL SYSTEM RULE:</strong> The Daily Report will NEVER automatically shift the report date. If a supervisor selects <code>24 September 2026</code>, the system queries ONLY <code>entry_date = '2026-09-24'</code>. It will NEVER substitute yesterday, previous business days, UTC dates, or the last populated date.
+</div>
+
+<h2>Why Date Shifts Were Completely Eliminated</h2>
+<p>
+  In earlier versions, when a supervisor opened the Daily Report early in the morning before any staff had logged calls, the system automatically shifted backwards to show "yesterday's data" or "the last active day." While well-intentioned, this caused extreme confusion:
+</p>
+<ul>
+  <li>Supervisors mistook yesterday's numbers for today's morning activity.</li>
+  <li>Staff thought previously logged calls were missing or wiped out.</li>
+  <li>Changing a filter unexpectedly bounced the date picker back to previous dates.</li>
+</ul>
+
+<p>
+  Under the current version, <strong>the date selector is completely locked to the user's explicit choice</strong>. If zero records exist for the selected date, the system displays an honest, transparent confirmation:
+</p>
+
+<div class="code-box">
+No telecalling entries found for 24 September 2026.
+No calls were logged on 2026-09-24. The report date remains fixed on your selection.
+</div>
+
+<h2>Removal of Manual Date Field from Daily Entry</h2>
+<p>
+  To prevent human error, backdating, or date discrepancies between client devices and servers, the visible <strong>Date</strong> field has been completely removed from the Daily Entry form.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Factor</th>
+      <th>Legacy Approach (Deprecated)</th>
+      <th>Current Standard (Enforced)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Date Selection</strong></td>
+      <td>Manual calendar picker on entry form.</td>
+      <td><strong>Completely removed</strong> from staff entry screen.</td>
+    </tr>
+    <tr>
+      <td><strong>Timezone Calculation</strong></td>
+      <td>Browser UTC / Local PC time.</td>
+      <td><strong>Asia/Kolkata (IST — UTC+05:30)</strong> calculated at exact save time.</td>
+    </tr>
+    <tr>
+      <td><strong>Midnight Rollover</strong></td>
+      <td>Calls logged after 12:00 AM IST used client timezone.</td>
+      <td>Automatically increments to the new calendar day at 12:00:00 AM IST.</td>
+    </tr>
+    <tr>
+      <td><strong>Database Field</strong></td>
+      <td><code>entry_date</code> set by client input string.</td>
+      <td>Calculated deterministically using <code>getKolkataToday()</code> at save time.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-box">
+  <div class="example-title">Midnight Rollover Example</div>
+  <p>
+    <strong>Scenario A:</strong> Staff member logs a call at 11:58 PM IST on 22 September 2026.<br>
+    &rarr; System sets <code>entry_date = '2026-09-22'</code>.
+  </p>
+  <p>
+    <strong>Scenario B:</strong> Staff member logs a call at 12:05 AM IST on 23 September 2026.<br>
+    &rarr; System sets <code>entry_date = '2026-09-23'</code>. Staff does not need to adjust any date.
+  </p>
+</div>
+
+<!-- CHAPTER 3 -->
+<div class="page-break"></div>
+<h1>3. Daily Telecalling Entry Workflow &amp; Mandatory Remarks</h1>
+
+<p>
+  The Daily Entry screen (<code>TelecallingDailyEntry.tsx</code>) is the core operational cockpit for frontline staff. It is streamlined for maximum typing speed while enforcing strict data hygiene.
+</p>
+
+<h2>Field-by-Field Entry Standard</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field Name</th>
+      <th>Type</th>
+      <th>Requirement</th>
+      <th>Validation &amp; Operating Rules</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Company / Client Name</strong></td>
+      <td>Text</td>
+      <td><span class="badge badge-red">Mandatory</span></td>
+      <td>Full business name or individual name. Triggers real-time duplicate check.</td>
+    </tr>
+    <tr>
+      <td><strong>Contact Person</strong></td>
+      <td>Text</td>
+      <td>Optional</td>
+      <td>Key decision maker, manager, or owner spoken with during the call.</td>
+    </tr>
+    <tr>
+      <td><strong>Phone Number</strong></td>
+      <td>Tel</td>
+      <td><span class="badge badge-red">Mandatory</span></td>
+      <td>10-digit primary mobile number. Auto-normalized and checked for duplicates.</td>
+    </tr>
+    <tr>
+      <td><strong>Other Phone</strong></td>
+      <td>Tel</td>
+      <td>Optional</td>
+      <td>Landline, extension, or alternate mobile number.</td>
+    </tr>
+    <tr>
+      <td><strong>Location / City</strong></td>
+      <td>Text</td>
+      <td>Optional</td>
+      <td>City, industrial area, or state (e.g., "Kochi", "Ernakulam", "Dubai").</td>
+    </tr>
+    <tr>
+      <td><strong>Email Address</strong></td>
+      <td>Email</td>
+      <td>Optional</td>
+      <td>Corporate or direct email for quotation or brochure dispatch.</td>
+    </tr>
+    <tr>
+      <td><strong>Call Result / Status</strong></td>
+      <td>Select</td>
+      <td><span class="badge badge-red">Mandatory</span></td>
+      <td>Choose from the 9 standard outcome categories (see Chapter 5).</td>
+    </tr>
+    <tr>
+      <td><strong>Feedback / Remarks</strong></td>
+      <td>Textarea</td>
+      <td><span class="badge badge-red">Mandatory</span></td>
+      <td><strong>Cannot be blank.</strong> Detailed notes on conversation and agreed next steps.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Why Feedback / Remarks is Strictly Mandatory</h2>
+<p>
+  In high-volume operations, telecallers frequently select a status (such as <em>Follow-up Required</em> or <em>Interested</em>) but leave the remarks field completely blank. This leads to critical business failures:
+</p>
+<ul>
+  <li>Another staff member picking up the lead has no idea what was discussed.</li>
+  <li>Supervisors cannot evaluate call quality or customer objections.</li>
+  <li>Prospects become frustrated when asked the same introductory questions twice.</li>
+</ul>
+
+<div class="alert alert-danger">
+  <strong>System Validation Rule:</strong> If a telecaller attempts to save a record with an empty or whitespace-only feedback field, the form blocks submission with an immediate error:
+  <br><em>"Please enter feedback or remarks for this call."</em>
+</div>
+
+<div class="example-box">
+  <div class="example-title">Examples of High-Quality vs. Rejected Remarks</div>
+  <p>
+    <span class="badge badge-red">Rejected (Blank / Useless):</span> <em>"Ok"</em>, <em>"."</em>, <em>"Call done"</em>, <em>""</em><br>
+    <span class="badge badge-green">Accepted (High Quality):</span> <em>"Spoke with Mr. Suresh (Director). Interested in ISO certification package. Requested proposal by email. Call back on Monday 11:00 AM."</em><br>
+    <span class="badge badge-green">Accepted (Wrong Number):</span> <em>"Person answered stated this is a residential number and has no connection with Apex Trading. Marked wrong number."</em>
+  </p>
+</div>
+
+<!-- CHAPTER 4 -->
+<div class="page-break"></div>
+<h1>4. Duplicate Warning, Call History Search &amp; "Call Again"</h1>
+
+<p>
+  A major challenge in telecalling is multiple callers contacting the same prospect on the same day, or failing to recall what was discussed last week. B2P ONE solves this with <strong>Feature 8 (Search History)</strong> and <strong>Feature 6 (Duplicate Warning)</strong>.
+</p>
+
+<h2>Real-Time Duplicate / Previous Call Warning</h2>
+<p>
+  As soon as a telecaller types <strong>10 digits of a Phone number</strong> or enters a <strong>Company Name</strong>, the system instantly executes an asynchronous query against the complete <code>telecalling_entries</code> database:
+</p>
+
+<div class="alert alert-warning">
+  <strong>NON-BLOCKING WARNING:</strong> If matching records are found, an amber alert banner appears immediately above the form:
+  <br>
+  <strong>⚠️ Previous Call Records Found:</strong> Shows the date of the previous call, the telecaller who made it, the status, and the previous feedback remarks.
+</div>
+
+<p>
+  <strong>Crucial Architectural Decision:</strong> This alert is strictly non-blocking. It informs the staff member of previous activity but does <strong>not</strong> prevent them from submitting a new call. Multiple calls to the same prospect are normal in sales follow-ups.
+</p>
+
+<h2>The 1-Click "Call Again" Workflow</h2>
+<p>
+  Inside both the Previous Call Search results and the Unresolved Calls queue, each record features a blue <strong>"Call Again"</strong> button.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Data Field</th>
+      <th>Behavior on "Call Again" Click</th>
+      <th>Operational Reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Company Name</strong></td>
+      <td><span class="badge badge-green">Copied Exactly</span></td>
+      <td>Eliminates retyping company name and prevents spelling variations.</td>
+    </tr>
+    <tr>
+      <td><strong>Contact Person</strong></td>
+      <td><span class="badge badge-green">Copied Exactly</span></td>
+      <td>Preserves key decision-maker name.</td>
+    </tr>
+    <tr>
+      <td><strong>Phone &amp; Other Phone</strong></td>
+      <td><span class="badge badge-green">Copied Exactly</span></td>
+      <td>Preserves verified telephone numbers.</td>
+    </tr>
+    <tr>
+      <td><strong>Location &amp; Email</strong></td>
+      <td><span class="badge badge-green">Copied Exactly</span></td>
+      <td>Preserves demographic and contact metadata.</td>
+    </tr>
+    <tr>
+      <td><strong>Call Result / Status</strong></td>
+      <td><span class="badge badge-red">Reset to Blank</span></td>
+      <td>Caller must record the outcome of the <em>new</em> call, not the old one.</td>
+    </tr>
+    <tr>
+      <td><strong>Feedback / Remarks</strong></td>
+      <td><span class="badge badge-red">Reset to Blank</span></td>
+      <td>Caller must write fresh notes reflecting the current conversation.</td>
+    </tr>
+    <tr>
+      <td><strong>Entry Date</strong></td>
+      <td><span class="badge badge-blue">Fresh IST Timestamp</span></td>
+      <td>Automatically assigned the current Asia/Kolkata date upon save.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- CHAPTER 5 -->
+<div class="page-break"></div>
+<h1>5. Interactive Operations Dashboard &amp; 10 KPI Tiles</h1>
+
+<p>
+  The Daily Report dashboard features <strong>10 distinct, interactive KPI tiles</strong>. Each tile displays the real-time count for the selected date and functions as an instant 1-click filter for the entire records table.
+</p>
+
+<h2>The 10 Operational KPI Tiles</h2>
+
+<div class="card-grid">
+  <!-- Tile 1 -->
+  <div class="kpi-tile" style="border-left: 4px solid #3b82f6;">
+    <div class="kpi-title"><span>Total Calls</span><span class="badge badge-blue">Tile 1</span></div>
+    <div class="kpi-num" style="color: #0f172a;">Total Logs</div>
+    <div class="kpi-sub">Total call volume across all staff. Click to view all records.</div>
+  </div>
+
+  <!-- Tile 2 -->
+  <div class="kpi-tile" style="border-left: 4px solid #dc2626; background: #fff5f5;">
+    <div class="kpi-title"><span style="color: #991b1b;">Unresolved</span><span class="badge badge-red">Tile 2</span></div>
+    <div class="kpi-num" style="color: #dc2626;">Pending Action</div>
+    <div class="kpi-sub">Follow-up, Call Back, No Answer, or Switched Off.</div>
+  </div>
+
+  <!-- Tile 3 -->
+  <div class="kpi-tile" style="border-left: 4px solid #16a34a; background: #f0fdf4;">
+    <div class="kpi-title"><span style="color: #166534;">Appointments</span><span class="badge badge-green">Tile 3</span></div>
+    <div class="kpi-num" style="color: #166534;">Confirmed</div>
+    <div class="kpi-sub">Confirmed face-to-face or video meetings with clients.</div>
+  </div>
+
+  <!-- Tile 4 -->
+  <div class="kpi-tile" style="border-left: 4px solid #2563eb; background: #eff6ff;">
+    <div class="kpi-title"><span style="color: #1e40af;">Interested</span><span class="badge badge-blue">Tile 4</span></div>
+    <div class="kpi-num" style="color: #1e40af;">Details Shared</div>
+    <div class="kpi-sub">Prospect expressed interest; brochure or quotation sent.</div>
+  </div>
+
+  <!-- Tile 5 -->
+  <div class="kpi-tile" style="border-left: 4px solid #d97706; background: #fffbeb;">
+    <div class="kpi-title"><span style="color: #92400e;">Follow-up (SEPARATE)</span><span class="badge badge-amber">Tile 5</span></div>
+    <div class="kpi-num" style="color: #92400e;">Nurturing</div>
+    <div class="kpi-sub">Ongoing discussions requiring scheduled follow-up.</div>
+  </div>
+
+  <!-- Tile 6 -->
+  <div class="kpi-tile" style="border-left: 4px solid #ea580c; background: #fff7ed;">
+    <div class="kpi-title"><span style="color: #9a3412;">Call Back (SEPARATE)</span><span class="badge badge-orange">Tile 6</span></div>
+    <div class="kpi-num" style="color: #ea580c;">Client Callback</div>
+    <div class="kpi-sub">Client was driving/busy and asked to be called back.</div>
+  </div>
+
+  <!-- Tile 7 -->
+  <div class="kpi-tile" style="border-left: 4px solid #64748b; background: #f8fafc;">
+    <div class="kpi-title"><span style="color: #475569;">No Answer</span><span class="badge badge-gray">Tile 7</span></div>
+    <div class="kpi-num" style="color: #475569;">No Response</div>
+    <div class="kpi-sub">Phone rang completely without answer.</div>
+  </div>
+
+  <!-- Tile 8 -->
+  <div class="kpi-tile" style="border-left: 4px solid #334155; background: #f8fafc;">
+    <div class="kpi-title"><span style="color: #1e293b;">Switched Off</span><span class="badge badge-gray">Tile 8</span></div>
+    <div class="kpi-num" style="color: #1e293b;">Not Reachable</div>
+    <div class="kpi-sub">Network busy, out of coverage area, or switched off.</div>
+  </div>
+
+  <!-- Tile 9 -->
+  <div class="kpi-tile" style="border-left: 4px solid #db2777; background: #fdf2f8;">
+    <div class="kpi-title"><span style="color: #9d174d;">No Interest</span><span class="badge badge-pink">Tile 9</span></div>
+    <div class="kpi-num" style="color: #db2777;">Declined</div>
+    <div class="kpi-sub">Prospect explicitly declined services or no need.</div>
+  </div>
+
+  <!-- Tile 10 -->
+  <div class="kpi-tile" style="border-left: 4px solid #e11d48; background: #fff1f2;">
+    <div class="kpi-title"><span style="color: #9f1239;">Wrong Number</span><span class="badge badge-red">Tile 10</span></div>
+    <div class="kpi-num" style="color: #e11d48;">Invalid</div>
+    <div class="kpi-sub">Incorrect phone number, disconnected, or wrong entity.</div>
+  </div>
+</div>
+
+<div class="alert alert-tip">
+  <strong>Why Follow-up Required and Call Back are Separated:</strong> Mixing these two categories previously caused operational confusion. A <em>Call Back</em> means the client was temporarily occupied (e.g. driving, meeting) and needs a call within hours. A <em>Follow-up</em> is a strategic sales step after sharing pricing or information. Keeping them distinct ensures proper prioritization.
+</div>
+
+<!-- CHAPTER 6 -->
+<div class="page-break"></div>
+<h1>6. Quick Filter Chips &amp; Instant Click-to-Filter Architecture</h1>
+
+<p>
+  Supervisors and telecallers need to switch between call categories instantly without scrolling through long tables or dropdown menus.
+</p>
+
+<h2>Interactive Tile Click Functionality</h2>
+<p>
+  Every single dashboard card is interactive:
+</p>
+<ol>
+  <li><strong>Click any Tile:</strong> Clicking on <em>Appointments</em> (Tile 3) immediately filters the table below to show ONLY the confirmed appointment records.</li>
+  <li><strong>Active Visual Indicators:</strong> The active tile is highlighted with an emphasized colored border, background tint, and an <span class="badge badge-blue">ACTIVE</span> status badge.</li>
+  <li><strong>Toggle Off:</strong> Clicking the active tile a second time clears the filter and restores all records.</li>
+  <li><strong>Clear Filter Banner:</strong> A prominent top banner displays: <em>"Filtered by Status: [Selected Status] (X of Y entries)"</em> with a 1-click <strong>Clear Filter</strong> button.</li>
+</ol>
+
+<h2>Global Metric Stability Architecture</h2>
+<p>
+  A frequent defect in web reporting occurs when applying a filter re-computes the dashboard KPIs based only on the filtered rows—causing all other KPI numbers to suddenly drop to zero.
+</p>
+
+<div class="alert alert-important">
+  <strong>How B2P ONE Solved This:</strong> The data loader (<code>loadReport</code>) fetches the complete daily dataset from Supabase once. The KPI tiles calculate totals across the <strong>entire day's data</strong>. When you click <em>Wrong Number</em>, only the displayed rows are filtered in memory. The dashboard cards retain their full numbers (Appointments: 5, Interested: 8, Follow-up: 12), ensuring supervisors never lose overall operational perspective.
+</div>
+
+<h2>Horizontal Quick Filter Chip Bar</h2>
+<p>
+  Positioned right above the data table, the quick filter bar allows rapid 1-click cycling between:
+</p>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0;">
+  <span class="badge badge-blue">All Statuses</span>
+  <span class="badge badge-red">Unresolved Only</span>
+  <span class="badge badge-green">Appointments</span>
+  <span class="badge badge-blue">Interested</span>
+  <span class="badge badge-amber">Follow-up</span>
+  <span class="badge badge-orange">Call Back</span>
+  <span class="badge badge-gray">No Answer</span>
+  <span class="badge badge-gray">Switched Off</span>
+  <span class="badge badge-pink">No Interest</span>
+  <span class="badge badge-red">Wrong Number</span>
+</div>
+
+<!-- CHAPTER 7 -->
+<div class="page-break"></div>
+<h1>7. Unresolved Calls Action Queue &amp; High-Priority Workflows</h1>
+
+<p>
+  The <strong>Unresolved Calls Queue</strong> (Feature 9 &amp; 10) aggregates every interaction from the selected date that still demands operational follow-through.
+</p>
+
+<h2>Centralized Unresolved Status Definition</h2>
+<p>
+  In <code>src/types/index.ts</code>, unresolved status eligibility is centralized in one strict constant:
+</p>
+<div class="code-box">
+export const UNRESOLVED_STATUSES: TelecallingStatus[] = [
+  'Follow-up Required',
+  'Call Back',
+  'No Answer / No Response',
+  'Not Reachable / Switched Off',
+  'Interested / Details Shared'
+];
+</div>
+
+<p>The following statuses are strictly <strong>excluded</strong> as they represent terminal or closed outcomes:</p>
+<ul>
+  <li><code>Appointment Confirmed</code> (Converted into field appointment).</li>
+  <li><code>No Interest</code> (Prospect explicitly opted out).</li>
+  <li><code>Wrong / Invalid Number</code> (Dead contact; flagged for database cleanup).</li>
+</ul>
+
+<h2>Dedicated Action Buttons for Every Unresolved Lead</h2>
+<p>Each card in the Unresolved Calls view provides 4 rapid-fire actions:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Action Button</th>
+      <th>Icon</th>
+      <th>Function &amp; Behavior</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Call</strong></td>
+      <td>📞 Phone</td>
+      <td>Triggers native device dialer (<code>tel:+91XXXXXXXXXX</code>) on mobile or VOIP software on PC.</td>
+    </tr>
+    <tr>
+      <td><strong>WhatsApp</strong></td>
+      <td>💬 Message</td>
+      <td>Opens WhatsApp Web or mobile app directly to the client's normalized phone number.</td>
+    </tr>
+    <tr>
+      <td><strong>Copy Phone</strong></td>
+      <td>📋 Copy</td>
+      <td>Copies 10-digit number to clipboard with instant visual confirmation ("Copied!").</td>
+    </tr>
+    <tr>
+      <td><strong>Call Again</strong></td>
+      <td>🔄 Refresh</td>
+      <td>Opens Daily Entry pre-filled with company, contact, and phone for a fresh IST log.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- CHAPTER 8 -->
+<div class="page-break"></div>
+<h1>8. Multi-Channel Reporting: Numbered WhatsApp &amp; Email Dispatch</h1>
+
+<p>
+  Management requires daily visibility without logging into the ERP. The system provides two instant executive dispatch channels: <strong>Numbered WhatsApp Summaries</strong> and <strong>Comprehensive HTML Email Reports</strong>.
+</p>
+
+<h2>1. Formatted Numbered WhatsApp Dispatch</h2>
+<p>
+  When the user clicks the green <strong>WhatsApp</strong> button on the Daily Report, the system builds an executive text payload. Every single result status is listed on a separate, numbered line with its explicit count:
+</p>
+
+<div class="code-box">
+*B2P INTERNATIONAL — DAILY TELECALLING REPORT*
+📅 *Date:* 24 September 2026
+
+*SUMMARY:*
+• Total Calls: 68
+• Unique Companies: 59
+• Action / Unresolved Pending: 31
+
+*CALL OUTCOMES:*
+1. Appointment Confirmed: 6
+2. Interested / Details Shared: 14
+3. Follow-up Required: 11
+4. Call Back: 7
+5. No Answer / No Response: 15
+6. Not Reachable / Switched Off: 8
+7. No Interest: 5
+8. Wrong / Invalid Number: 2
+9. Other: 0
+
+*TELECALLER PERFORMANCE:*
+• Anju: 38 calls
+• Priya: 30 calls
+
+*UNRESOLVED ACTION QUEUE (TOP ITEMS):*
+1. Skyline Logistics (Suresh - 9847123456)
+   Status: Follow-up Required | Caller: Anju
+   Remarks: Send quotation for ISO audit.
+
+2. Horizon Enterprises (Rahul - 9447654321)
+   Status: Call Back | Caller: Priya
+   Remarks: Client in meeting. Call at 4 PM.
+
+_Generated automatically via B2P ONE Portal & ERP_
+</div>
+
+<h2>2. Executive Email Dispatch (Google Apps Script Integration)</h2>
+<p>
+  Clicking <strong>Send Mail</strong> triggers an asynchronous HTTP POST request to the Google Apps Script Web App:
+</p>
+<ul>
+  <li><strong>Configurable Recipient:</strong> Reads from dedicated key <code>b2p_owner_report_email</code> (or company profile). Never hardcoded to a personal developer email.</li>
+  <li><strong>Executive HTML Table:</strong> Renders a styled, responsive HTML table containing full daily KPI counts, telecaller productivity metrics, and the unresolved action list.</li>
+  <li><strong>Zero-Failure Fallback:</strong> If the cloud script is unreachable or returns a network error, the system automatically displays an <em>"Open in Email App (mailto:)"</em> fallback button pre-populated with subject and body.</li>
+</ul>
+
+<!-- CHAPTER 9 -->
+<div class="page-break"></div>
+<h1>9. Contextual CSV Export &amp; Google Sheets Cloud Sync</h1>
+
+<p>
+  Data portability and external auditing are supported through <strong>Feature 11 (Contextual CSV Export)</strong> and continuous <strong>Google Sheets Cloud Sync</strong>.
+</p>
+
+<h2>Feature 11: Contextual / Filter-Aware CSV Export</h2>
+<p>
+  A frequent complaint with standard ERP systems is that clicking "Export" downloads the entire multi-year database rather than what the user is currently examining.
+</p>
+
+<div class="alert alert-important">
+  <strong>Contextual Export Rule:</strong> The CSV Export button generates a file containing <strong>ONLY the currently filtered records</strong>. If a supervisor has filtered by <em>Call Back</em> and telecaller <em>"Anju"</em>, the CSV will contain only those specific calls.
+</div>
+
+<h3>Automatic Filename Naming Convention</h3>
+<ul>
+  <li><strong>Unfiltered Daily Export:</strong> <code>Telecalling_Report_2026-09-24.csv</code></li>
+  <li><strong>Filtered View Export:</strong> <code>Telecalling_Report_2026-09-24_Filtered.csv</code></li>
+</ul>
+
+<h3>Data Hygiene &amp; RFC-4180 Escaping</h3>
+<p>The CSV generator strictly implements:</p>
+<ul>
+  <li><strong>UTF-8 Byte Order Mark (BOM):</strong> Ensures Microsoft Excel opens Indian names and symbols without character corruption.</li>
+  <li><strong>Field Quoting &amp; Escape:</strong> Quotes all fields containing commas, line breaks, or double quotes (escaped as <code>""</code>).</li>
+  <li><strong>Excluded Technical IDs:</strong> Internal database UUIDs and raw sync payloads are omitted for executive clarity.</li>
+</ul>
+
+<h2>Google Sheets Background Cloud Sync Architecture</h2>
+<p>
+  Every call logged in B2P ONE is automatically queued for cloud synchronization:
+</p>
+<ol>
+  <li>Upon save, the record is inserted into <code>telecalling_entries</code> and simultaneously written to <code>telecalling_google_sync_queue</code> with status <code>pending</code>.</li>
+  <li>A background synchronization service dispatches the queue payload to the Google Apps Script Web App.</li>
+  <li>The Google Apps Script appends the row to the organization's master Google Sheet.</li>
+  <li>If the telecaller's internet connection drops, the queue holds the record offline and retries automatically once connectivity is restored—guaranteeing <strong>zero lost records</strong>.</li>
+</ol>
+
+<!-- CHAPTER 10 -->
+<div class="page-break"></div>
+<h1>10. Real-World Case Studies &amp; End-to-End Scenarios</h1>
+
+<h2>Scenario A: First Contact with a New Prospect</h2>
+<div class="example-box">
+  <div class="example-title">Workflow: Logging a Fresh Call</div>
+  <p><strong>1. Search Check:</strong> Telecaller Anju receives a list of prospects. She enters phone <code>9847112233</code> in the search bar. The system shows: <em>"No previous calls found."</em></p>
+  <p><strong>2. Information Entry:</strong> Anju inputs Company: <code>Apex Marine Supplies</code>, Contact Person: <code>Capt. Varma</code>, Location: <code>Cochin Port</code>.</p>
+  <p><strong>3. Conversation:</strong> Capt. Varma states he needs calibration services next month and asks for a company profile via WhatsApp.</p>
+  <p><strong>4. Logging Outcome:</strong> Anju selects Status: <strong>Interested / Details Shared</strong>.</p>
+  <p><strong>5. Remarks Validation:</strong> She writes: <em>"Capt. Varma requested company profile. Interested in calibration services for October drydock. Profile sent via WhatsApp."</em></p>
+  <p><strong>6. Save:</strong> Anju clicks <strong>Save Telecalling Entry</strong>. The entry is permanently recorded under <code>2026-09-24</code> (IST).</p>
+</div>
+
+<h2>Scenario B: Handling a Callback with "Call Again"</h2>
+<div class="example-box">
+  <div class="example-title">Workflow: Managing Callbacks without Retyping</div>
+  <p><strong>1. Initial Call:</strong> At 10:30 AM, Priya calls <code>Delta Logistics</code> (Phone: <code>9447889900</code>). Contact <code>Mr. Roy</code> says: <em>"I'm driving right now, call me back sharp at 3:30 PM."</em></p>
+  <p><strong>2. Initial Log:</strong> Priya logs Status: <strong>Call Back</strong>, Remarks: <em>"Driving. Requested call back at 3:30 PM today."</em></p>
+  <p><strong>3. Afternoon Follow-up:</strong> At 3:30 PM, Priya opens the <strong>Unresolved Calls</strong> dashboard. Delta Logistics is at the top of the queue.</p>
+  <p><strong>4. Rapid Dial:</strong> Priya clicks the <strong>Call Again</strong> button on the Delta Logistics card.</p>
+  <p><strong>5. Auto-Population:</strong> The entry form opens instantly with Company, Contact Person, and Phone already filled in. Date and Status are blank.</p>
+  <p><strong>6. Conclusion:</strong> Priya speaks with Mr. Roy and schedules a video demo. She selects Status: <strong>Appointment Confirmed</strong>, Remarks: <em>"Confirmed demo on Friday 11 AM via Google Meet."</em></p>
+</div>
+
+<h2>Scenario C: Supervisor Evening Review &amp; Dispatch</h2>
+<div class="example-box">
+  <div class="example-title">Workflow: End-of-Day Management Reporting</div>
+  <p><strong>1. Open Daily Report:</strong> Supervisor opens Daily Report at 5:30 PM. The date is locked to <code>2026-09-24</code>.</p>
+  <p><strong>2. Review KPIs:</strong> Supervisor reviews the 10 tiles: Total Calls = 74, Appointments = 5, Call Back = 6, Wrong Number = 3.</p>
+  <p><strong>3. Tile Inspection:</strong> Supervisor clicks the <strong>Wrong Number</strong> tile. The table immediately filters to 3 records. Supervisor verifies staff remarks and removes those bad numbers from the marketing sheet.</p>
+  <p><strong>4. Export Audit CSV:</strong> Supervisor clicks <strong>CSV Export</strong>. The file <code>Telecalling_Report_2026-09-24_Filtered.csv</code> is downloaded with the 3 wrong numbers for data cleansing.</p>
+  <p><strong>5. Dispatch to Owner:</strong> Supervisor clicks <strong>Reset</strong>, then clicks <strong>WhatsApp</strong>. The system opens WhatsApp with the structured numbered breakdown (1 to 9) and top unresolved leads. Supervisor clicks Send.</p>
+</div>
+
+<!-- CHAPTER 11 -->
+<div class="page-break"></div>
+<h1>11. Staff Daily Checklist &amp; Operational Do's and Don'ts</h1>
+
+<div class="card-grid">
+  <div class="ui-card" style="border-top: 4px solid #16a34a;">
+    <h3 style="color: #166534; margin-top: 0;">DO'S (Mandatory Practices)</h3>
+    <ul style="font-size: 8.5pt;">
+      <li><strong>Always search phone first:</strong> Check if a colleague called the prospect earlier today to avoid duplicate calling.</li>
+      <li><strong>Write meaningful feedback:</strong> Always note the contact's job title, objections, specific requirements, and promised next steps.</li>
+      <li><strong>Use "Call Again" for callbacks:</strong> Save time and preserve data integrity by using the 1-click button instead of typing from scratch.</li>
+      <li><strong>Clear unresolved items daily:</strong> Review your Unresolved queue before leaving for the day.</li>
+      <li><strong>Mark Wrong Numbers accurately:</strong> Flag invalid or disconnected numbers so the database remains clean.</li>
+    </ul>
+  </div>
+
+  <div class="ui-card" style="border-top: 4px solid #ef4444;">
+    <h3 style="color: #991b1b; margin-top: 0;">DON'TS (Strictly Prohibited)</h3>
+    <ul style="font-size: 8.5pt;">
+      <li><strong>Do NOT enter placeholder remarks:</strong> Entering dots, "ok", or single words is a violation of operational standards.</li>
+      <li><strong>Do NOT mark Appointments without agreement:</strong> Only use <em>Appointment Confirmed</em> when the client agreed to an exact date/time.</li>
+      <li><strong>Do NOT ignore duplicate warnings:</strong> When an amber alert appears, read the previous feedback before proceeding.</li>
+      <li><strong>Do NOT use browser UTC extensions:</strong> Do not tamper with PC clock or timezone settings; the server enforces IST.</li>
+      <li><strong>Do NOT share reports outside authorized channels:</strong> Telecalling data contains confidential customer contact details.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Staff Daily Operational Checklist</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Time Window</th>
+      <th>Operational Task</th>
+      <th>Verification Mechanism</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>09:00 AM — 09:30 AM</strong></td>
+      <td>Open Unresolved Queue. Review yesterday's pending Call Backs and Follow-ups.</td>
+      <td>Check Tile 2 (Unresolved Calls) on Daily Report.</td>
+    </tr>
+    <tr>
+      <td><strong>09:30 AM — 01:00 PM</strong></td>
+      <td>Primary calling session. Log every call immediately after hanging up.</td>
+      <td>Ensure Feedback / Remarks is completed for every log.</td>
+    </tr>
+    <tr>
+      <td><strong>02:00 PM — 04:30 PM</strong></td>
+      <td>Afternoon calling session &amp; scheduled callbacks from morning conversations.</td>
+      <td>Use <em>Call Again</em> action to log callback outcomes.</td>
+    </tr>
+    <tr>
+      <td><strong>04:30 PM — 05:00 PM</strong></td>
+      <td>Review personal daily numbers and resolve any remaining callbacks.</td>
+      <td>Filter by your name in Daily Report dropdown.</td>
+    </tr>
+    <tr>
+      <td><strong>05:00 PM — 05:30 PM</strong></td>
+      <td>Supervisor review: Dispatch numbered WhatsApp summary and HTML email to management.</td>
+      <td>WhatsApp message sent; CSV archived if required.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div style="margin-top: 24px; padding-top: 12px; border-top: 1px solid #cbd5e1; text-align: center; font-size: 8pt; color: #64748b;">
+  B2P ONE Portal &amp; ERP &bull; Telecalling Operations Standard Operating Procedure (SOP) &bull; Confidential &bull; For Internal Training &amp; Operational Use Only
+</div>
+
+</body>
+</html>

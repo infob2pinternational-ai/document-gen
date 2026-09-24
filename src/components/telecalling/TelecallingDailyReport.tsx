@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Calendar,
-  Share2,
-  Download,
-  Printer,
-  Filter,
-  Search,
-  MessageSquare,
-  RefreshCw,
-  User,
-  PhoneCall,
-  CheckCircle2,
+import { 
+  Calendar, 
+  Share2, 
+  Download, 
+  Printer, 
+  Filter, 
+  Search, 
+  MessageSquare, 
+  RefreshCw, 
+  User, 
+  PhoneCall, 
+  CheckCircle2, 
   AlertCircle,
   Settings,
   Loader2,
@@ -19,15 +19,15 @@ import {
   Copy,
   Check,
   Smartphone,
-  AlertTriangle
+  X
 } from 'lucide-react';
 import type { CompanyProfile, TelecallingEntry, TelecallingStatus, TelecallingDailyReportData } from '../../types';
 import { TELECALLING_STATUSES, isUnresolvedStatus } from '../../types';
 import { telecallingService } from '../../services/telecallingService';
 import { getKolkataToday, formatKolkataDisplayDate } from '../../utils/dateUtils';
-import {
-  buildDailyReportWhatsAppMessage,
-  openWhatsAppShare,
+import { 
+  buildDailyReportWhatsAppMessage, 
+  openWhatsAppShare, 
   getOwnerWhatsAppNumber,
   getOwnerReportEmail,
   buildDailyReportEmailContent,
@@ -78,17 +78,13 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
   const [emailStatus, setEmailStatus] = useState<'idle' | 'success' | 'failed'>('idle');
   const [emailStatusMsg, setEmailStatusMsg] = useState('');
 
-  // Strictly query the date selected by the user with zero fallback
+  // Strictly query all entries for the selected date so KPI totals never zero out
   const loadReport = async () => {
     if (!companyId) return;
     setLoading(true);
     setShareError('');
     try {
-      const data = await telecallingService.getEntriesForDate(companyId, selectedDate, {
-        telecaller: selectedTelecaller,
-        status: selectedStatus,
-        search: searchQuery
-      });
+      const data = await telecallingService.getEntriesForDate(companyId, selectedDate);
       setEntries(data);
       const computed = telecallingService.computeDailyReport(data, selectedDate);
       setReportData(computed);
@@ -104,7 +100,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
     loadReport();
   }, [companyId, selectedDate]);
 
-  // Handle WhatsApp Share
+  // Handle WhatsApp Share (sends separate numbered status counts)
   const handleShareWhatsApp = () => {
     if (!reportData) return;
     setShareError('');
@@ -170,6 +166,32 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
     openMailtoShare(targetEmail, emailPayload.subject, emailPayload.body);
   };
 
+  // Interactive Tile Click Handlers
+  const handleToggleStatusFilter = (status: TelecallingStatus) => {
+    if (selectedStatus === status && !unresolvedFilterOnly) {
+      setSelectedStatus('all');
+    } else {
+      setSelectedStatus(status);
+      setUnresolvedFilterOnly(false);
+    }
+  };
+
+  const handleToggleUnresolvedFilter = () => {
+    if (unresolvedFilterOnly) {
+      setUnresolvedFilterOnly(false);
+    } else {
+      setUnresolvedFilterOnly(true);
+      setSelectedStatus('all');
+    }
+  };
+
+  const handleResetFilters = () => {
+    setSelectedStatus('all');
+    setSelectedTelecaller('all');
+    setSearchQuery('');
+    setUnresolvedFilterOnly(false);
+  };
+
   // Filtered dataset currently displayed
   const displayedEntries = entries.filter(e => {
     if (unresolvedFilterOnly && !isUnresolvedStatus(e.call_status)) {
@@ -199,7 +221,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
   const handleExportFilteredCSV = () => {
     if (!displayedEntries.length) return;
     const isFiltered = unresolvedFilterOnly || selectedStatus !== 'all' || selectedTelecaller !== 'all' || Boolean(searchQuery.trim());
-    const filename = isFiltered
+    const filename = isFiltered 
       ? `Telecalling_Report_${selectedDate}_Filtered.csv`
       : `Telecalling_Report_${selectedDate}.csv`;
 
@@ -220,6 +242,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
   ));
 
   const unresolvedTotalCount = reportData?.unresolvedCallsCount ?? entries.filter(e => isUnresolvedStatus(e.call_status)).length;
+  const isAnyFilterActive = unresolvedFilterOnly || selectedStatus !== 'all' || selectedTelecaller !== 'all' || Boolean(searchQuery.trim());
 
   return (
     <div className="telecalling-report-container" style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
@@ -454,7 +477,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
           />
         </div>
 
-        {/* Status Filter */}
+        {/* Status Dropdown Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <Filter size={16} color="#64748b" />
           <select
@@ -466,9 +489,9 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                 setUnresolvedFilterOnly(false);
               }
             }}
-            style={{ padding: '0.45rem 0.65rem', fontSize: '0.85rem' }}
+            style={{ padding: '0.45rem 0.65rem', fontSize: '0.85rem', fontWeight: selectedStatus !== 'all' ? 700 : 500 }}
           >
-            <option value="all">All Call Results</option>
+            <option value="all">All Results / Statuses</option>
             {TELECALLING_STATUSES.map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -493,7 +516,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
           </div>
         )}
 
-        {/* Search */}
+        {/* Search Input */}
         <div style={{ flex: 1, minWidth: '180px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <Search size={16} color="#64748b" />
           <input
@@ -506,15 +529,10 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
           />
         </div>
 
-        {/* Unresolved Calls quick toggle button */}
+        {/* Unresolved Calls toggle button */}
         <button
           type="button"
-          onClick={() => {
-            setUnresolvedFilterOnly(!unresolvedFilterOnly);
-            if (!unresolvedFilterOnly) {
-              setSelectedStatus('all');
-            }
-          }}
+          onClick={handleToggleUnresolvedFilter}
           className="btn-secondary"
           style={{
             fontSize: '0.8rem',
@@ -525,13 +543,26 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
             fontWeight: unresolvedFilterOnly ? 700 : 500
           }}
         >
-          {unresolvedFilterOnly ? '✓ Unresolved Filter Active' : 'Show Unresolved Only'}
+          {unresolvedFilterOnly ? '✓ Unresolved Active' : 'Unresolved Only'}
         </button>
 
-        <button
-          onClick={loadReport}
-          className="btn-secondary"
-          title="Refresh Report Data"
+        {isAnyFilterActive && (
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="btn-ghost"
+            title="Reset all filters"
+            style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+          >
+            <X size={14} />
+            <span>Reset</span>
+          </button>
+        )}
+
+        <button 
+          onClick={loadReport} 
+          className="btn-secondary" 
+          title="Refresh Report Data" 
           style={{ padding: '0.45rem 0.75rem' }}
         >
           <RefreshCw size={15} />
@@ -546,7 +577,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
           </p>
         </div>
       ) : entries.length === 0 ? (
-        /* STRICT REQUIREMENT: ZERO AUTOMATIC DATE SHIFTING. Show clean empty state */
+        /* STRICT REQUIREMENT: ZERO AUTOMATIC DATE SHIFTING */
         <div style={{
           background: 'var(--bg-primary, #ffffff)',
           border: '1px solid var(--border-color, #e2e8f0)',
@@ -575,175 +606,412 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
         </div>
       ) : reportData ? (
         <>
-          {/* Summary Metric Cards with UNRESOLVED CALLS KPI */}
+          {/* INTERACTIVE DASHBOARD TILES: Clicking any tile filters the table */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '0.85rem',
-            marginBottom: '1.25rem'
+            gap: '0.75rem',
+            marginBottom: '1rem'
           }}>
-            {/* Total Calls */}
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #3b82f6'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                Total Calls
+            {/* Tile 1: Total Calls */}
+            <div 
+              onClick={handleResetFilters}
+              style={{
+                background: (selectedStatus === 'all' && !unresolvedFilterOnly) ? '#eff6ff' : 'var(--bg-primary, #ffffff)',
+                border: (selectedStatus === 'all' && !unresolvedFilterOnly) ? '2px solid #2563eb' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #3b82f6',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: (selectedStatus === 'all' && !unresolvedFilterOnly) ? '0 4px 12px rgba(37, 99, 235, 0.12)' : undefined
+              }}
+              title="Click to view all calls"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Total Calls</span>
+                {(selectedStatus === 'all' && !unresolvedFilterOnly) && (
+                  <span style={{ fontSize: '0.65rem', background: '#dbeafe', color: '#1e40af', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', margin: '0.15rem 0' }}>
                 {reportData.totalCalls}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
                 {reportData.uniqueCompanies} unique companies
               </div>
             </div>
 
-            {/* Feature 10: UNRESOLVED CALLS KPI CARD (Interactive) */}
-            <div
-              onClick={() => setUnresolvedFilterOnly(!unresolvedFilterOnly)}
+            {/* Tile 2: Unresolved Calls */}
+            <div 
+              onClick={handleToggleUnresolvedFilter}
               style={{
                 background: unresolvedFilterOnly ? '#fef2f2' : 'var(--bg-primary, #ffffff)',
                 border: unresolvedFilterOnly ? '2px solid #ef4444' : '1px solid var(--border-color, #e2e8f0)',
                 borderRadius: '10px',
-                padding: '1rem',
+                padding: '0.85rem 1rem',
                 borderLeft: '4px solid #dc2626',
                 cursor: 'pointer',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.15s ease',
+                boxShadow: unresolvedFilterOnly ? '0 4px 12px rgba(239, 68, 68, 0.15)' : undefined
               }}
-              title="Click to toggle only unresolved calls requiring action"
+              title="Click to filter unresolved calls"
             >
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Unresolved Calls</span>
-                <span style={{ fontSize: '0.65rem', background: '#fee2e2', padding: '1px 5px', borderRadius: '4px' }}>
-                  {unresolvedFilterOnly ? 'Filtering' : 'Click to View'}
-                </span>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Unresolved</span>
+                {unresolvedFilterOnly && (
+                  <span style={{ fontSize: '0.65rem', background: '#fee2e2', color: '#991b1b', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', margin: '0.2rem 0' }}>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#dc2626', margin: '0.15rem 0' }}>
                 {unresolvedTotalCount}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>
+              <div style={{ fontSize: '0.7rem', color: '#991b1b' }}>
                 Action / Follow-up pending
               </div>
             </div>
 
-            {/* Appointment Confirmed */}
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #16a34a'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
-                Appointments
+            {/* Tile 3: Appointments Confirmed */}
+            <div 
+              onClick={() => handleToggleStatusFilter('Appointment Confirmed')}
+              style={{
+                background: selectedStatus === 'Appointment Confirmed' ? '#f0fdf4' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'Appointment Confirmed' ? '2px solid #16a34a' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #16a34a',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'Appointment Confirmed' ? '0 4px 12px rgba(22, 163, 74, 0.15)' : undefined
+              }}
+              title="Click to filter confirmed appointments"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Appointments</span>
+                {selectedStatus === 'Appointment Confirmed' && (
+                  <span style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#166534', margin: '0.2rem 0' }}>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#166534', margin: '0.15rem 0' }}>
                 {reportData.statusCounts['Appointment Confirmed']}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#166534' }}>
+              <div style={{ fontSize: '0.7rem', color: '#166534' }}>
                 Confirmed meetings
               </div>
             </div>
 
-            {/* Interested / Details Shared */}
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #2563eb'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
-                Interested / Details Sent
+            {/* Tile 4: Interested / Details Shared */}
+            <div 
+              onClick={() => handleToggleStatusFilter('Interested / Details Shared')}
+              style={{
+                background: selectedStatus === 'Interested / Details Shared' ? '#eff6ff' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'Interested / Details Shared' ? '2px solid #2563eb' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #2563eb',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'Interested / Details Shared' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : undefined
+              }}
+              title="Click to filter interested leads"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Interested</span>
+                {selectedStatus === 'Interested / Details Shared' && (
+                  <span style={{ fontSize: '0.65rem', background: '#dbeafe', color: '#1e40af', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1e40af', margin: '0.2rem 0' }}>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e40af', margin: '0.15rem 0' }}>
                 {reportData.statusCounts['Interested / Details Shared']}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#1e40af' }}>
-                Positive potential
+              <div style={{ fontSize: '0.7rem', color: '#1e40af' }}>
+                Details shared
               </div>
             </div>
 
-            {/* Follow-up Required */}
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #d97706'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
-                Follow-ups / Call Back
+            {/* Tile 5: Follow-up Required (SEPARATE!) */}
+            <div 
+              onClick={() => handleToggleStatusFilter('Follow-up Required')}
+              style={{
+                background: selectedStatus === 'Follow-up Required' ? '#fffbeb' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'Follow-up Required' ? '2px solid #d97706' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #d97706',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'Follow-up Required' ? '0 4px 12px rgba(217, 119, 6, 0.15)' : undefined
+              }}
+              title="Click to filter follow-up required"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Follow-up</span>
+                {selectedStatus === 'Follow-up Required' && (
+                  <span style={{ fontSize: '0.65rem', background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#92400e', margin: '0.2rem 0' }}>
-                {reportData.statusCounts['Follow-up Required'] + reportData.statusCounts['Call Back']}
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#92400e', margin: '0.15rem 0' }}>
+                {reportData.statusCounts['Follow-up Required']}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#92400e' }}>
-                Action needed
+              <div style={{ fontSize: '0.7rem', color: '#92400e' }}>
+                Follow-up needed
               </div>
             </div>
 
-            {/* No Response / Switched Off */}
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #64748b'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                No Response / Off
+            {/* Tile 6: Call Back (SEPARATE!) */}
+            <div 
+              onClick={() => handleToggleStatusFilter('Call Back')}
+              style={{
+                background: selectedStatus === 'Call Back' ? '#fff7ed' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'Call Back' ? '2px solid #ea580c' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #ea580c',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'Call Back' ? '0 4px 12px rgba(234, 88, 12, 0.15)' : undefined
+              }}
+              title="Click to filter call back requests"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Call Back</span>
+                {selectedStatus === 'Call Back' && (
+                  <span style={{ fontSize: '0.65rem', background: '#ffedd5', color: '#9a3412', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
               </div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#475569', margin: '0.2rem 0' }}>
-                {reportData.statusCounts['No Answer / No Response'] + reportData.statusCounts['Not Reachable / Switched Off']}
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#c2410c', margin: '0.15rem 0' }}>
+                {reportData.statusCounts['Call Back']}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                Unanswered
+              <div style={{ fontSize: '0.7rem', color: '#9a3412' }}>
+                Client requested callback
+              </div>
+            </div>
+
+            {/* Tile 7: No Answer / No Response */}
+            <div 
+              onClick={() => handleToggleStatusFilter('No Answer / No Response')}
+              style={{
+                background: selectedStatus === 'No Answer / No Response' ? '#f8fafc' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'No Answer / No Response' ? '2px solid #475569' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #64748b',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'No Answer / No Response' ? '0 4px 12px rgba(100, 116, 139, 0.15)' : undefined
+              }}
+              title="Click to filter no answer"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>No Answer</span>
+                {selectedStatus === 'No Answer / No Response' && (
+                  <span style={{ fontSize: '0.65rem', background: '#e2e8f0', color: '#334155', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#475569', margin: '0.15rem 0' }}>
+                {reportData.statusCounts['No Answer / No Response']}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                Ringing / no response
+              </div>
+            </div>
+
+            {/* Tile 8: Not Reachable / Switched Off */}
+            <div 
+              onClick={() => handleToggleStatusFilter('Not Reachable / Switched Off')}
+              style={{
+                background: selectedStatus === 'Not Reachable / Switched Off' ? '#f8fafc' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'Not Reachable / Switched Off' ? '2px solid #334155' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #334155',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'Not Reachable / Switched Off' ? '0 4px 12px rgba(51, 65, 85, 0.15)' : undefined
+              }}
+              title="Click to filter not reachable / switched off"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Switched Off</span>
+                {selectedStatus === 'Not Reachable / Switched Off' && (
+                  <span style={{ fontSize: '0.65rem', background: '#cbd5e1', color: '#1e293b', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', margin: '0.15rem 0' }}>
+                {reportData.statusCounts['Not Reachable / Switched Off']}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                Not reachable
+              </div>
+            </div>
+
+            {/* Tile 9: No Interest */}
+            <div 
+              onClick={() => handleToggleStatusFilter('No Interest')}
+              style={{
+                background: selectedStatus === 'No Interest' ? '#fdf2f8' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'No Interest' ? '2px solid #db2777' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #db2777',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'No Interest' ? '0 4px 12px rgba(219, 39, 119, 0.15)' : undefined
+              }}
+              title="Click to filter no interest"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#9d174d', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>No Interest</span>
+                {selectedStatus === 'No Interest' && (
+                  <span style={{ fontSize: '0.65rem', background: '#fce7f3', color: '#9d174d', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#9d174d', margin: '0.15rem 0' }}>
+                {reportData.statusCounts['No Interest']}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#9d174d' }}>
+                Declined / Not interested
+              </div>
+            </div>
+
+            {/* Tile 10: Wrong / Invalid Number (NOW INCLUDED!) */}
+            <div 
+              onClick={() => handleToggleStatusFilter('Wrong / Invalid Number')}
+              style={{
+                background: selectedStatus === 'Wrong / Invalid Number' ? '#fff1f2' : 'var(--bg-primary, #ffffff)',
+                border: selectedStatus === 'Wrong / Invalid Number' ? '2px solid #e11d48' : '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                borderLeft: '4px solid #e11d48',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: selectedStatus === 'Wrong / Invalid Number' ? '0 4px 12px rgba(225, 29, 72, 0.15)' : undefined
+              }}
+              title="Click to filter wrong or invalid numbers"
+            >
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#9f1239', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Wrong Number</span>
+                {selectedStatus === 'Wrong / Invalid Number' && (
+                  <span style={{ fontSize: '0.65rem', background: '#ffe4e6', color: '#9f1239', padding: '1px 5px', borderRadius: '4px' }}>Active</span>
+                )}
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#be123c', margin: '0.15rem 0' }}>
+                {reportData.statusCounts['Wrong / Invalid Number']}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#9f1239' }}>
+                Invalid / incorrect contact
               </div>
             </div>
           </div>
 
-          {/* Feature 9 & 10: Dedicated Unresolved Calls Highlight Card */}
-          {unresolvedTotalCount > 0 && !unresolvedFilterOnly && (
+          {/* Quick Filter Bar (Clickable Chips for Fast Status Filtering) */}
+          <div style={{
+            background: 'var(--bg-primary, #ffffff)',
+            border: '1px solid var(--border-color, #e2e8f0)',
+            borderRadius: '10px',
+            padding: '0.75rem 1rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            flexWrap: 'wrap'
+          }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginRight: '0.3rem' }}>
+              Quick Status Filter:
+            </span>
+
+            {/* All Chip */}
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '999px',
+                fontSize: '0.75rem',
+                fontWeight: (selectedStatus === 'all' && !unresolvedFilterOnly) ? 700 : 500,
+                background: (selectedStatus === 'all' && !unresolvedFilterOnly) ? '#2563eb' : '#f1f5f9',
+                color: (selectedStatus === 'all' && !unresolvedFilterOnly) ? '#ffffff' : '#334155',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              All ({reportData.totalCalls})
+            </button>
+
+            {/* Unresolved Chip */}
+            <button
+              type="button"
+              onClick={handleToggleUnresolvedFilter}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '999px',
+                fontSize: '0.75rem',
+                fontWeight: unresolvedFilterOnly ? 700 : 500,
+                background: unresolvedFilterOnly ? '#dc2626' : '#fee2e2',
+                color: unresolvedFilterOnly ? '#ffffff' : '#991b1b',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              Unresolved ({unresolvedTotalCount})
+            </button>
+
+            {/* Individual Status Chips */}
+            {TELECALLING_STATUSES.map(status => {
+              const count = reportData.statusCounts[status] || 0;
+              const isActive = selectedStatus === status && !unresolvedFilterOnly;
+
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => handleToggleStatusFilter(status)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '999px',
+                    fontSize: '0.75rem',
+                    fontWeight: isActive ? 700 : 500,
+                    background: isActive ? '#0f172a' : '#f8fafc',
+                    color: isActive ? '#ffffff' : '#334155',
+                    border: isActive ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {status} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Filter Indicator Banner */}
+          {isAnyFilterActive && (
             <div style={{
-              background: '#fffbeb',
-              border: '1px solid #fde68a',
-              borderRadius: '10px',
-              padding: '1rem',
-              marginBottom: '1.25rem',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              padding: '0.5rem 0.85rem',
+              marginBottom: '1rem',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '0.75rem'
+              fontSize: '0.85rem',
+              color: '#1e40af',
+              animation: 'fadeIn 0.2s ease'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <AlertTriangle size={20} color="#d97706" />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#92400e' }}>
-                    {unresolvedTotalCount} Unresolved Call{unresolvedTotalCount > 1 ? 's' : ''} Require Action for {formatKolkataDisplayDate(selectedDate)}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#b45309' }}>
-                    Calls requiring follow-up, callback, or unreachable leads pending contact.
-                  </div>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Filter size={15} color="#2563eb" />
+                <span>
+                  Filtering by: <strong>{unresolvedFilterOnly ? 'Unresolved Calls' : selectedStatus !== 'all' ? selectedStatus : 'Search / Telecaller'}</strong>
+                  {' '}(Showing <strong>{displayedEntries.length}</strong> of {reportData.totalCalls} calls)
+                </span>
               </div>
               <button
                 type="button"
-                onClick={() => setUnresolvedFilterOnly(true)}
+                onClick={handleResetFilters}
                 className="btn-secondary"
-                style={{
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  background: '#fef3c7',
-                  borderColor: '#f59e0b',
-                  color: '#92400e'
-                }}
+                style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
               >
-                View Unresolved Calls ({unresolvedTotalCount})
+                Clear Filter
               </button>
             </div>
           )}
@@ -778,7 +1046,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
             </div>
           </div>
 
-          {/* Detailed Call Record Table (Feature 10: Quick Actions included) */}
+          {/* Detailed Call Record Table */}
           <div style={{
             background: 'var(--bg-primary, #ffffff)',
             border: '1px solid var(--border-color, #e2e8f0)',
@@ -818,12 +1086,24 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                     Unresolved Only
                   </span>
                 )}
+                {selectedStatus !== 'all' && !unresolvedFilterOnly && (
+                  <span style={{
+                    background: '#f1f5f9',
+                    color: '#0f172a',
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700
+                  }}>
+                    {selectedStatus}
+                  </span>
+                )}
               </h4>
 
-              {unresolvedFilterOnly && (
+              {isAnyFilterActive && (
                 <button
                   type="button"
-                  onClick={() => setUnresolvedFilterOnly(false)}
+                  onClick={handleResetFilters}
                   className="btn-ghost"
                   style={{ fontSize: '0.8rem', color: '#2563eb' }}
                 >
@@ -834,7 +1114,12 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
 
             {displayedEntries.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
-                No call entries match the selected filters for {formatKolkataDisplayDate(selectedDate)}.
+                No call entries match the selected filter for {formatKolkataDisplayDate(selectedDate)}.
+                <div style={{ marginTop: '0.5rem' }}>
+                  <button onClick={handleResetFilters} className="btn-secondary" style={{ fontSize: '0.8rem' }}>
+                    View All Calls for Today ({reportData.totalCalls})
+                  </button>
+                </div>
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -859,9 +1144,9 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                       const isUnres = isUnresolvedStatus(e.call_status);
 
                       return (
-                        <tr
-                          key={e.id}
-                          style={{
+                        <tr 
+                          key={e.id} 
+                          style={{ 
                             borderBottom: '1px solid var(--border-color, #e2e8f0)',
                             background: isUnres ? '#fffdfa' : undefined
                           }}
@@ -887,12 +1172,16 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                               fontWeight: 700,
                               background: e.call_status === 'Appointment Confirmed' ? '#dcfce7' :
                                           e.call_status === 'Interested / Details Shared' ? '#dbeafe' :
-                                          e.call_status === 'Follow-up Required' || e.call_status === 'Call Back' ? '#fef3c7' :
-                                          e.call_status === 'No Interest' ? '#fee2e2' : '#f1f5f9',
+                                          e.call_status === 'Follow-up Required' ? '#fef3c7' :
+                                          e.call_status === 'Call Back' ? '#ffedd5' :
+                                          e.call_status === 'No Interest' ? '#fce7f3' :
+                                          e.call_status === 'Wrong / Invalid Number' ? '#ffe4e6' : '#f1f5f9',
                               color: e.call_status === 'Appointment Confirmed' ? '#166534' :
                                      e.call_status === 'Interested / Details Shared' ? '#1e40af' :
-                                     e.call_status === 'Follow-up Required' || e.call_status === 'Call Back' ? '#92400e' :
-                                     e.call_status === 'No Interest' ? '#991b1b' : '#475569'
+                                     e.call_status === 'Follow-up Required' ? '#92400e' :
+                                     e.call_status === 'Call Back' ? '#c2410c' :
+                                     e.call_status === 'No Interest' ? '#9d174d' :
+                                     e.call_status === 'Wrong / Invalid Number' ? '#be123c' : '#475569'
                             }}>
                               {e.call_status}
                             </span>
@@ -903,7 +1192,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                           <td style={{ padding: '8px 10px', fontSize: '0.8rem', color: '#64748b' }}>
                             {e.created_by_name || e.created_by_email?.split('@')[0] || 'Staff'}
                           </td>
-                          {/* Feature 10 Quick Actions: Call, WhatsApp, Copy Phone, Call Again, Edit */}
+                          {/* Quick Actions: Call, WhatsApp, Copy Phone, Call Again, Edit */}
                           <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                               {cleanPhone && (
