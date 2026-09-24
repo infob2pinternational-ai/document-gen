@@ -41,7 +41,7 @@ const {
 } = await loadTsModule('../src/utils/telecallingShare.ts', {
   './whatsappShare': 'export function normalizeIndianPhone(p) { return p.replace(/\\D/g, ""); }',
   './dateUtils': 'export function formatKolkataDisplayDate(d) { return d; }',
-  '../types': 'export function isUnresolvedStatus(s) { return ["Follow-up Required", "Call Back", "No Answer / No Response", "Not Reachable / Switched Off", "Interested / Details Shared"].includes(s); }'
+  '../types': 'export function isUnresolvedStatus(s) { return ["Follow-up Required", "Call Back"].includes(s); }'
 });
 
 const {
@@ -189,18 +189,15 @@ test('buildWeeklyReportWhatsAppMessage formats week range and breakdowns', () =>
 // ─── 4. Unresolved Statuses & Definition Tests ───────────────────────────────
 
 test('UNRESOLVED_TELECALLING_STATUSES contains required statuses and isUnresolvedStatus works correctly', () => {
-  assert.equal(UNRESOLVED_TELECALLING_STATUSES.length, 5);
+  assert.equal(UNRESOLVED_TELECALLING_STATUSES.length, 2);
   assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Follow-up Required'));
   assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Call Back'));
-  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('No Answer / No Response'));
-  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Not Reachable / Switched Off'));
-  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Interested / Details Shared'));
 
   assert.equal(isUnresolvedStatus('Follow-up Required'), true);
   assert.equal(isUnresolvedStatus('Call Back'), true);
-  assert.equal(isUnresolvedStatus('No Answer / No Response'), true);
-  assert.equal(isUnresolvedStatus('Not Reachable / Switched Off'), true);
-  assert.equal(isUnresolvedStatus('Interested / Details Shared'), true);
+  assert.equal(isUnresolvedStatus('No Answer / No Response'), false);
+  assert.equal(isUnresolvedStatus('Not Reachable / Switched Off'), false);
+  assert.equal(isUnresolvedStatus('Interested / Details Shared'), false);
 
   assert.equal(isUnresolvedStatus('Appointment Confirmed'), false);
   assert.equal(isUnresolvedStatus('No Interest'), false);

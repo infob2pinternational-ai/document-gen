@@ -16,7 +16,6 @@ import {
   ChevronDown, 
   ChevronLeft,
   ChevronRight,
-  X,
   Wallet,
   Truck,
   Building,
@@ -208,12 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       borderRight: '1px solid rgba(255, 255, 255, 0.8)',
       boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.03)'
     }}>
-      {/* Mobile close button */}
-      <div className="mobile-only-display" style={{ width: '100%', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
-        <button onClick={onClose} className="btn-ghost" style={{ padding: '0.35rem' }} title="Close Menu">
-          <X size={18} />
-        </button>
-      </div>
+
 
       {/* Brand Header */}
       <div style={{
@@ -603,78 +597,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         flexDirection: 'column',
         gap: '0.5rem'
       }}>
-        <div style={{
-          background: 'var(--glass-bg-subtle)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '12px',
-          padding: isCollapsed ? '0.4rem' : '0.45rem 0.65rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: isCollapsed ? 'center' : 'space-between',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
-            {user?.user_metadata?.avatar_url ? (
-              <img 
-                src={user.user_metadata.avatar_url} 
-                alt={user?.user_metadata?.full_name || user?.email || 'User'}
-                style={{
-                  width: '30px',
-                  height: '30px',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  border: '1.5px solid var(--border-color)',
-                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
-                  flexShrink: 0
-                }}
-              />
-            ) : (
-              <div style={{
-                width: '30px',
-                height: '30px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
-                color: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '0.8rem',
-                border: '1.5px solid var(--border-color)',
-                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
-                flexShrink: 0
-              }}>
-                {((user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'U').charAt(0)).toUpperCase()}
-              </div>
-            )}
-            {!isCollapsed && (
-              <div className="profile-details" style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                <span style={{
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  color: 'var(--text-primary)',
-                  lineHeight: 1.2,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Staff User')}
-                </span>
-                <span style={{
-                  fontSize: '0.6875rem',
-                  color: 'var(--text-muted)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {user?.email || userRole}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
+
 
         {/* Theme Switcher button */}
         {(onOpenThemeSelector || toggleTheme) && (

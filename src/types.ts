@@ -1294,10 +1294,7 @@ export const TELECALLING_STATUSES: TelecallingStatus[] = [
 
 export const UNRESOLVED_TELECALLING_STATUSES: TelecallingStatus[] = [
   'Follow-up Required',
-  'Call Back',
-  'No Answer / No Response',
-  'Not Reachable / Switched Off',
-  'Interested / Details Shared'
+  'Call Back'
 ];
 
 export function isUnresolvedStatus(status: TelecallingStatus | string | null | undefined): boolean {
