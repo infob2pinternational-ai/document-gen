@@ -691,6 +691,46 @@ No calls were logged on 2026-09-24. The report date remains fixed on your select
   </tbody>
 </table>
 
+<h2>Triple-Layer Anti-Duplicate &amp; Double-Submission Protection</h2>
+<p>
+  To guarantee that accidental double-clicks or repeated submissions never create redundant rows in the database or Google Sheets, the system enforces three independent defensive layers:
+</p>
+
+<div class="card-grid">
+  <div class="ui-card" style="border-left: 4px solid #ef4444;">
+    <h3 style="color: #991b1b; margin-top: 0;">1. Synchronous Click Lock</h3>
+    <p style="font-size: 8.5pt;">
+      The moment a caller clicks <em>Save Entry</em> or <em>Save &amp; Log Another</em>, an in-memory synchronous ref (<code>isSubmittingRef</code>) blocks all subsequent clicks before React can even re-render. All submit buttons are immediately disabled, the label changes to <em>"Saving Call Record..."</em>, and a loading spinner appears.
+    </p>
+  </div>
+
+  <div class="ui-card" style="border-left: 4px solid #d97706;">
+    <h3 style="color: #92400e; margin-top: 0;">2. Pre-Insert Duplicate Check Modal</h3>
+    <p style="font-size: 8.5pt;">
+      Before creating a new database record, the system checks whether an entry with the same <strong>Phone number</strong> or <strong>Company Name</strong> was already submitted today (or within the last 10 minutes). If found, an interactive modal prompts the caller with side-by-side comparison:
+    </p>
+    <ul style="font-size: 8pt; margin-left: 14px; margin-top: 4px;">
+      <li><strong>Update Existing Record (Recommended):</strong> Overwrites the existing record's status and remarks without appending a duplicate row to Google Sheets.</li>
+      <li><strong>Save as Separate Call:</strong> Explicitly logs a distinct secondary interaction.</li>
+      <li><strong>Cancel:</strong> Returns to editing.</li>
+    </ul>
+  </div>
+
+  <div class="ui-card" style="border-left: 4px solid #16a34a;">
+    <h3 style="color: #166534; margin-top: 0;">3. Form Reset &amp; Cache Wipe</h3>
+    <p style="font-size: 8.5pt;">
+      After every successful save or update, <code>resetForm()</code> executes immediately. All inputs (Company, Contact, Phone, Status, Feedback) are cleared, preventing the browser from retaining old payloads. Refreshing the browser starts with a completely clean form.
+    </p>
+  </div>
+
+  <div class="ui-card" style="border-left: 4px solid #2563eb;">
+    <h3 style="color: #1e40af; margin-top: 0;">4. Backend Idempotency Cooldown</h3>
+    <p style="font-size: 8.5pt;">
+      Even in the event of browser network retries or parallel requests, <code>telecallingService</code> maintains a 15-second de-duplication cache on <code>company_id + entry_date + phone + company_name</code>. Redundant payloads within 15 seconds return the existing entry rather than inserting a duplicate.
+    </p>
+  </div>
+</div>
+
 <!-- CHAPTER 5 -->
 <div class="page-break"></div>
 <h1>5. Interactive Operations Dashboard &amp; 10 KPI Tiles</h1>

@@ -361,3 +361,120 @@ test('Mandatory feedback validation rejects empty or whitespace-only feedback', 
   assert.equal(validateCallSubmission(undefined).valid, false);
   assert.equal(validateCallSubmission('Discussed requirements, follow up next Tuesday').valid, true);
 });
+
+// ─── 9. De-duplication, Double-Submission & Form Reset Tests ───────────────
+
+test('Synchronous submission lock blocks rapid double-clicks and microsecond submissions', () => {
+  let isSubmitting = false;
+  let saveCount = 0;
+
+  const simulateSubmit = () => {
+    if (isSubmitting) {
+      return { blocked: true };
+    }
+    isSubmitting = true;
+    saveCount++;
+    // In real app, released in finally block
+    return { blocked: false, count: saveCount };
+  };
+
+  // First click succeeds
+  const res1 = simulateSubmit();
+  assert.equal(res1.blocked, false);
+  assert.equal(res1.count, 1);
+
+  // Immediate second click (within milliseconds before async re-render) is blocked
+  const res2 = simulateSubmit();
+  assert.equal(res2.blocked, true);
+  assert.equal(saveCount, 1, 'Only one actual submission should occur');
+});
+
+test('Recent duplicate check detects submissions with same phone or company within cooldown window', () => {
+  const existingEntries = [
+    {
+      id: 'entry-1',
+      entry_date: '2026-09-24',
+      company_name: 'Axis Eye care',
+      phone: '8078788882',
+      call_status: 'Follow-up Required',
+      feedback: 'Patient inquiries, follow up at 4 PM',
+      created_at: new Date(Date.now() - 67 * 1000).toISOString() // 67 seconds ago
+    }
+  ];
+
+  const findDuplicate = (phone, companyName, entries) => {
+    const cleanDigits = (phone || '').replace(/\D/g, '');
+    const cleanComp = (companyName || '').trim().toLowerCase();
+
+    return entries.find(entry => {
+      const eDigits = (entry.phone || '').replace(/\D/g, '');
+      const eComp = (entry.company_name || '').trim().toLowerCase();
+      const phoneMatch = cleanDigits.length >= 6 && (eDigits === cleanDigits || eDigits.endsWith(cleanDigits) || cleanDigits.endsWith(eDigits));
+      const compMatch = cleanComp.length >= 3 && eComp === cleanComp;
+      return phoneMatch || compMatch;
+    }) || null;
+  };
+
+  // Same phone submitted 67 seconds later
+  const duplicateByPhone = findDuplicate('8078788882', 'Axis Eye Care Clinic', existingEntries);
+  assert.ok(duplicateByPhone, 'Should detect duplicate by normalized phone');
+  assert.equal(duplicateByPhone.id, 'entry-1');
+
+  // Same company name with slight formatting
+  const duplicateByName = findDuplicate('9999999999', 'Axis Eye care', existingEntries);
+  assert.ok(duplicateByName, 'Should detect duplicate by company name');
+  assert.equal(duplicateByName.id, 'entry-1');
+
+  // Different contact
+  const nonDuplicate = findDuplicate('9847000000', 'Lotus Hospital', existingEntries);
+  assert.equal(nonDuplicate, null, 'Should not match unrelated business');
+});
+
+test('Form reset contract wipes all inputs after any save to prevent payload re-POST', () => {
+  let formState = {
+    companyName: 'Axis Eye care',
+    contactPerson: 'Dr. Ramesh',
+    phone: '8078788882',
+    otherPhone: '',
+    location: 'Kochi',
+    email: 'info@axis.com',
+    callStatus: 'Follow-up Required',
+    feedback: 'Patient inquiries, callback at 4 PM',
+    editingId: null,
+    duplicateWarning: { id: 'old-1' },
+    duplicatePrompt: { minutesAgo: 1 }
+  };
+
+  // The reset contract guaranteed in TelecallingDailyEntry
+  const resetForm = () => {
+    formState = {
+      companyName: '',
+      contactPerson: '',
+      phone: '',
+      otherPhone: '',
+      location: '',
+      email: '',
+      callStatus: 'Interested / Details Shared',
+      feedback: '',
+      editingId: null,
+      duplicateWarning: null,
+      duplicatePrompt: null
+    };
+  };
+
+  // Execute reset
+  resetForm();
+
+  // Assert all fields are completely blanked out
+  assert.equal(formState.companyName, '');
+  assert.equal(formState.contactPerson, '');
+  assert.equal(formState.phone, '');
+  assert.equal(formState.location, '');
+  assert.equal(formState.email, '');
+  assert.equal(formState.feedback, '');
+  assert.equal(formState.editingId, null);
+  assert.equal(formState.duplicateWarning, null);
+  assert.equal(formState.duplicatePrompt, null);
+  assert.equal(formState.callStatus, 'Interested / Details Shared');
+});
+

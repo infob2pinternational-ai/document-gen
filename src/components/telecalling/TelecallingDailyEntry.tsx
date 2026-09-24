@@ -70,9 +70,30 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
 
-  // Duplicate warning state
+  // Duplicate warning state (inline gentle alert while typing)
   const [duplicateWarning, setDuplicateWarning] = useState<TelecallingEntry | null>(null);
   const [duplicateDismissed, setDuplicateDismissed] = useState(false);
+
+  // Duplicate confirmation prompt modal state (triggered on save)
+  interface DuplicatePromptState {
+    existingEntry: TelecallingEntry;
+    newPayload: {
+      company_name: string;
+      contact_person: string | null;
+      phone: string;
+      other_phone: string | null;
+      location: string | null;
+      email: string | null;
+      call_status: TelecallingStatus;
+      feedback: string;
+    };
+    andNew: boolean;
+    minutesAgo: number;
+  }
+  const [duplicatePrompt, setDuplicatePrompt] = useState<DuplicatePromptState | null>(null);
+
+  // Double-submission protection: Synchronous ref lock
+  const isSubmittingRef = useRef(false);
 
   // Previous Records Search states
   const [searchOpen, setSearchOpen] = useState(false);
@@ -131,6 +152,7 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
   }, [companyId, phone, companyName, editingId, duplicateDismissed]);
 
   const resetForm = () => {
+    isSubmittingRef.current = false;
     setEditingId(null);
     setEditingOriginalDate(null);
     setCompanyName('');
@@ -144,12 +166,14 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
     setErrorMsg('');
     setDuplicateWarning(null);
     setDuplicateDismissed(false);
+    setDuplicatePrompt(null);
     setTimeout(() => {
       companyInputRef.current?.focus();
     }, 50);
   };
 
   const handleEditEntry = (entry: TelecallingEntry) => {
+    isSubmittingRef.current = false;
     setEditingId(entry.id);
     setEditingOriginalDate(entry.entry_date);
     setCompanyName(entry.company_name || '');
@@ -164,6 +188,7 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
     setSaveSuccessMsg('');
     setDuplicateWarning(null);
     setDuplicateDismissed(true);
+    setDuplicatePrompt(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(() => {
       companyInputRef.current?.focus();
@@ -180,6 +205,7 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
    * STRICTLY DOES NOT COPY: Date (uses today Asia/Kolkata), Call Status (resets), or Feedback (cleared).
    */
   const handleCallAgain = (record: TelecallingEntry) => {
+    isSubmittingRef.current = false;
     setEditingId(null);
     setEditingOriginalDate(null);
     setCompanyName(record.company_name || '');
@@ -192,6 +218,7 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
     setFeedback('');
     setDuplicateWarning(null);
     setDuplicateDismissed(true);
+    setDuplicatePrompt(null);
     setErrorMsg('');
     setSaveSuccessMsg(`Prefilled contact details for "${record.company_name}". Enter call feedback below.`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -223,7 +250,10 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
     }
   };
 
-  const handleSave = async (andNew: boolean = false) => {
+  const handleSave = async (andNew: boolean = false, forceCreateNew: boolean = false) => {
+    // DOUBLE-SUBMISSION PROTECTION: Synchronous check prevents microsecond double clicks
+    if (isSubmittingRef.current || saving) return;
+
     if (!companyId) {
       setErrorMsg('No active company profile selected. Please select a company.');
       return;
@@ -250,19 +280,98 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
       return;
     }
 
-    if (saving) return; // Prevent double submission
-
+    // Immediately lock submission and show loading spinner
+    isSubmittingRef.current = true;
     setSaving(true);
     setErrorMsg('');
     setSaveSuccessMsg('');
 
-    const callerEmail = user?.email || '';
-    const callerName = callerEmail.split('@')[0] || 'Staff';
+    try {
+      const callerEmail = user?.email || '';
+      const callerName = callerEmail.split('@')[0] || 'Staff';
 
-    if (editingId) {
-      // Update existing record (preserves original entry_date)
-      const result = await telecallingService.updateEntry(editingId, {
-        entry_date: editingOriginalDate || todayKolkataDate,
+      if (editingId) {
+        // Update existing record (preserves original entry_date)
+        const result = await telecallingService.updateEntry(editingId, {
+          entry_date: editingOriginalDate || todayKolkataDate,
+          company_name: cleanCompany,
+          contact_person: contactPerson.trim() || null,
+          phone: cleanPhone,
+          other_phone: otherPhone.trim() || null,
+          location: location.trim() || null,
+          email: email.trim() || null,
+          call_status: callStatus,
+          feedback: cleanFeedback
+        });
+
+        if (result.success && result.entry) {
+          setSaveSuccessMsg(`Call record for "${cleanCompany}" updated successfully!`);
+          setTodayEntries(prev => prev.map(item => item.id === editingId ? result.entry! : item));
+          resetForm();
+        } else {
+          setErrorMsg(result.error || 'Failed to update telecalling entry. Please retry.');
+        }
+        return;
+      }
+
+      // ─── DUPLICATE CHECK BEFORE INSERT ────────────────────────────
+      // Check if this phone or company was already submitted today (or within the last 10 minutes)
+      if (!forceCreateNew) {
+        const cleanDigits = cleanPhone.replace(/\D/g, '');
+        const lowerComp = cleanCompany.toLowerCase();
+
+        // 1. Check local today's entries first
+        let duplicateCandidate = todayEntries.find(entry => {
+          const eDigits = (entry.phone || '').replace(/\D/g, '');
+          const eComp = (entry.company_name || '').trim().toLowerCase();
+          const phoneMatch = cleanDigits.length >= 6 && (eDigits === cleanDigits || eDigits.endsWith(cleanDigits) || cleanDigits.endsWith(eDigits));
+          const compMatch = lowerComp.length >= 3 && eComp === lowerComp;
+          return phoneMatch || compMatch;
+        });
+
+        // 2. If not found locally, check database for recent submissions within last 10 minutes
+        if (!duplicateCandidate) {
+          try {
+            duplicateCandidate = (await telecallingService.findRecentDuplicate(companyId, cleanPhone, cleanCompany, 10)) || undefined;
+          } catch (e) {
+            console.warn('[Telecalling] Pre-insert duplicate check notice:', e);
+          }
+        }
+
+        // 3. If duplicate found, show the interactive prompt modal instead of creating a second row
+        if (duplicateCandidate) {
+          const createdTimestamp = duplicateCandidate.created_at ? new Date(duplicateCandidate.created_at).getTime() : Date.now();
+          const minutesAgo = Math.max(0, Math.round((Date.now() - createdTimestamp) / 60000));
+
+          // Release lock so caller can choose action in the modal
+          isSubmittingRef.current = false;
+          setSaving(false);
+
+          setDuplicatePrompt({
+            existingEntry: duplicateCandidate,
+            newPayload: {
+              company_name: cleanCompany,
+              contact_person: contactPerson.trim() || null,
+              phone: cleanPhone,
+              other_phone: otherPhone.trim() || null,
+              location: location.trim() || null,
+              email: email.trim() || null,
+              call_status: callStatus,
+              feedback: cleanFeedback
+            },
+            andNew,
+            minutesAgo
+          });
+          return;
+        }
+      }
+
+      // NEW ENTRY: entry_date is STRICTLY determined at save time via getKolkataToday()
+      const autoSaveDate = getKolkataToday();
+
+      const result = await telecallingService.createEntry({
+        company_id: companyId,
+        entry_date: autoSaveDate,
         company_name: cleanCompany,
         contact_person: contactPerson.trim() || null,
         phone: cleanPhone,
@@ -270,55 +379,78 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
         location: location.trim() || null,
         email: email.trim() || null,
         call_status: callStatus,
-        feedback: cleanFeedback
+        feedback: cleanFeedback,
+        created_by: user?.id || null,
+        created_by_email: callerEmail,
+        created_by_name: callerName
       });
 
+      if (result.success && result.entry) {
+        setSaveSuccessMsg(`Call record for "${cleanCompany}" saved successfully!`);
+        // Prepend to today's list
+        setTodayEntries(prev => [result.entry!, ...prev.filter(e => e.id !== result.entry!.id)]);
+        // CRITICAL BUG FIX: ALWAYS RESET FORM TO PREVENT DUPLICATES OR ACCIDENTAL RE-SUBMISSION
+        resetForm();
+      } else {
+        setErrorMsg(result.error || 'Failed to save telecalling entry. Please retry.');
+      }
+    } finally {
+      isSubmittingRef.current = false;
       setSaving(false);
+    }
+  };
+
+  // Handler: Caller chooses to update the existing record instead of creating a duplicate row
+  const handleConfirmUpdateDuplicate = async () => {
+    if (!duplicatePrompt || isSubmittingRef.current) return;
+    const { existingEntry, newPayload } = duplicatePrompt;
+    setDuplicatePrompt(null);
+
+    isSubmittingRef.current = true;
+    setSaving(true);
+    setErrorMsg('');
+    setSaveSuccessMsg('');
+
+    try {
+      const result = await telecallingService.updateEntry(existingEntry.id, {
+        entry_date: existingEntry.entry_date || todayKolkataDate,
+        company_name: newPayload.company_name,
+        contact_person: newPayload.contact_person,
+        phone: newPayload.phone,
+        other_phone: newPayload.other_phone,
+        location: newPayload.location,
+        email: newPayload.email,
+        call_status: newPayload.call_status,
+        feedback: newPayload.feedback
+      });
 
       if (result.success && result.entry) {
-        setSaveSuccessMsg(`Call record for "${cleanCompany}" updated successfully!`);
-        setTodayEntries(prev => prev.map(item => item.id === editingId ? result.entry! : item));
+        setSaveSuccessMsg(`Existing call record for "${newPayload.company_name}" updated successfully (duplicate avoided)!`);
+        setTodayEntries(prev => prev.map(item => item.id === existingEntry.id ? result.entry! : item));
         resetForm();
       } else {
-        setErrorMsg(result.error || 'Failed to update telecalling entry. Please retry.');
+        setErrorMsg(result.error || 'Failed to update existing record. Please retry.');
       }
-      return;
+    } finally {
+      isSubmittingRef.current = false;
+      setSaving(false);
     }
+  };
 
-    // NEW ENTRY: entry_date is STRICTLY determined at save time via getKolkataToday()
-    const autoSaveDate = getKolkataToday();
+  // Handler: Caller explicitly confirms saving this as a separate call log
+  const handleConfirmCreateDuplicate = async () => {
+    if (!duplicatePrompt) return;
+    const andNew = duplicatePrompt.andNew;
+    setDuplicatePrompt(null);
+    // Execute save with forceCreateNew = true
+    await handleSave(andNew, true);
+  };
 
-    const result = await telecallingService.createEntry({
-      company_id: companyId,
-      entry_date: autoSaveDate,
-      company_name: cleanCompany,
-      contact_person: contactPerson.trim() || null,
-      phone: cleanPhone,
-      other_phone: otherPhone.trim() || null,
-      location: location.trim() || null,
-      email: email.trim() || null,
-      call_status: callStatus,
-      feedback: cleanFeedback,
-      created_by: user?.id || null,
-      created_by_email: callerEmail,
-      created_by_name: callerName
-    });
-
+  // Handler: Caller cancels duplicate modal
+  const handleCancelDuplicatePrompt = () => {
+    setDuplicatePrompt(null);
+    isSubmittingRef.current = false;
     setSaving(false);
-
-    if (result.success && result.entry) {
-      setSaveSuccessMsg(`Call record for "${cleanCompany}" saved successfully!`);
-      // Prepend to today's list
-      setTodayEntries(prev => [result.entry!, ...prev.filter(e => e.id !== result.entry!.id)]);
-
-      if (andNew) {
-        resetForm();
-      } else {
-        setTimeout(() => setSaveSuccessMsg(''), 4500);
-      }
-    } else {
-      setErrorMsg(result.error || 'Failed to save telecalling entry. Please retry.');
-    }
   };
 
   const handleDeleteEntry = async (id: string, name: string) => {
@@ -592,6 +724,172 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
               </div>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* Duplicate Submission Confirmation Modal */}
+      {duplicatePrompt && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem',
+          backdropFilter: 'blur(3px)'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '12px',
+            maxWidth: '560px',
+            width: '100%',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden',
+            border: '1px solid #fde68a'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              background: '#fffbeb',
+              padding: '1rem 1.25rem',
+              borderBottom: '1px solid #fef3c7',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem'
+            }}>
+              <AlertTriangle size={24} color="#d97706" style={{ flexShrink: 0 }} />
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#92400e' }}>
+                  Recent Record Found — Potential Duplicate
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#b45309' }}>
+                  A call record for this contact was already submitted {duplicatePrompt.minutesAgo <= 1 ? 'just a minute ago' : `${duplicatePrompt.minutesAgo} minutes ago`} today.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <p style={{ fontSize: '0.88rem', color: '#334155', margin: 0 }}>
+                A call record for <strong>{duplicatePrompt.newPayload.company_name}</strong> (<code>{duplicatePrompt.newPayload.phone}</code>) was already submitted today by <strong>{duplicatePrompt.existingEntry.created_by_name || 'Staff'}</strong>.
+              </p>
+
+              {/* Comparison Box */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '0.75rem',
+                margin: '0.25rem 0'
+              }}>
+                {/* Existing Record */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  fontSize: '0.8rem'
+                }}>
+                  <div style={{ fontWeight: 700, color: '#64748b', textTransform: 'uppercase', fontSize: '0.7rem', marginBottom: '0.35rem' }}>
+                    Existing Record ({duplicatePrompt.minutesAgo <= 1 ? 'Just Now' : `${duplicatePrompt.minutesAgo}m ago`})
+                  </div>
+                  <div>Status: <strong style={{ color: '#0f172a' }}>{duplicatePrompt.existingEntry.call_status}</strong></div>
+                  <div style={{ color: '#475569', marginTop: '0.25rem' }}>
+                    Remarks: <em>"{duplicatePrompt.existingEntry.feedback || '(none)'}"</em>
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.35rem' }}>
+                    Logged by {duplicatePrompt.existingEntry.created_by_name || 'Staff'}
+                  </div>
+                </div>
+
+                {/* New Submission */}
+                <div style={{
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  fontSize: '0.8rem'
+                }}>
+                  <div style={{ fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', fontSize: '0.7rem', marginBottom: '0.35rem' }}>
+                    New Submission Being Saved
+                  </div>
+                  <div>Status: <strong style={{ color: '#1e40af' }}>{duplicatePrompt.newPayload.call_status}</strong></div>
+                  <div style={{ color: '#1e3a8a', marginTop: '0.25rem' }}>
+                    Remarks: <em>"{duplicatePrompt.newPayload.feedback}"</em>
+                  </div>
+                  <div style={{ color: '#3b82f6', fontSize: '0.75rem', marginTop: '0.35rem' }}>
+                    Current entry
+                  </div>
+                </div>
+              </div>
+
+              <div style={{
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '6px',
+                padding: '0.6rem 0.85rem',
+                fontSize: '0.8rem',
+                color: '#166534'
+              }}>
+                <strong>Recommended:</strong> Update the existing record so your Google Sheets database and CRM stay clean without duplicate rows.
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{
+              background: '#f8fafc',
+              borderTop: '1px solid #e2e8f0',
+              padding: '0.85rem 1.25rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.6rem'
+            }}>
+              <button
+                type="button"
+                onClick={handleCancelDuplicatePrompt}
+                className="btn-ghost"
+                style={{ fontSize: '0.85rem', color: '#64748b' }}
+              >
+                Cancel
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <button
+                  type="button"
+                  onClick={handleConfirmCreateDuplicate}
+                  className="btn-secondary"
+                  style={{ fontSize: '0.8rem', padding: '0.45rem 0.85rem' }}
+                  title="Save as an intentional separate call"
+                >
+                  Save as Separate Call
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmUpdateDuplicate}
+                  className="btn-primary"
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    padding: '0.5rem 1.1rem',
+                    background: '#16a34a',
+                    borderColor: '#16a34a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                >
+                  <RotateCcw size={15} />
+                  <span>Update Existing (No Duplicate)</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -936,8 +1234,16 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
           <button
             type="button"
             onClick={resetForm}
+            disabled={saving}
             className="btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontSize: '0.85rem',
+              opacity: saving ? 0.6 : 1,
+              cursor: saving ? 'not-allowed' : 'pointer'
+            }}
           >
             <RotateCcw size={15} />
             <span>Clear</span>
@@ -949,8 +1255,14 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
                 <button
                   type="button"
                   onClick={handleCancelEdit}
+                  disabled={saving}
                   className="btn-secondary"
-                  style={{ fontSize: '0.85rem', padding: '0.55rem 1rem' }}
+                  style={{
+                    fontSize: '0.85rem',
+                    padding: '0.55rem 1rem',
+                    opacity: saving ? 0.6 : 1,
+                    cursor: saving ? 'not-allowed' : 'pointer'
+                  }}
                 >
                   Cancel
                 </button>
@@ -966,11 +1278,13 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
                     fontSize: '0.85rem',
                     padding: '0.55rem 1.25rem',
                     background: '#2563eb',
-                    borderColor: '#2563eb'
+                    borderColor: '#2563eb',
+                    opacity: saving ? 0.75 : 1,
+                    cursor: saving ? 'not-allowed' : 'pointer'
                   }}
                 >
                   {saving ? <Loader2 className="spin" size={15} /> : <Save size={15} />}
-                  <span>Update Call Record</span>
+                  <span>{saving ? 'Updating Call Record...' : 'Update Call Record'}</span>
                 </button>
               </>
             ) : (
@@ -980,10 +1294,17 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
                   onClick={() => handleSave(true)}
                   disabled={saving}
                   className="btn-secondary"
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontSize: '0.85rem',
+                    opacity: saving ? 0.75 : 1,
+                    cursor: saving ? 'not-allowed' : 'pointer'
+                  }}
                 >
-                  <Plus size={15} />
-                  <span>Save &amp; Log Another</span>
+                  {saving ? <Loader2 className="spin" size={15} /> : <Plus size={15} />}
+                  <span>{saving ? 'Saving...' : 'Save & Log Another'}</span>
                 </button>
 
                 <button
@@ -999,11 +1320,13 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
                     fontWeight: 700,
                     padding: '0.65rem 1.25rem',
                     background: '#2563eb',
-                    borderColor: '#2563eb'
+                    borderColor: '#2563eb',
+                    opacity: saving ? 0.75 : 1,
+                    cursor: saving ? 'not-allowed' : 'pointer'
                   }}
                 >
                   {saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-                  <span>Save Entry</span>
+                  <span>{saving ? 'Saving Call Record...' : 'Save Entry'}</span>
                 </button>
               </>
             )}

@@ -52,6 +52,9 @@ export interface TelecallingSaveResult {
 // In-memory idempotency lock to prevent double-clicks or concurrent double saves
 const activeSaveKeys = new Set<string>();
 
+// Cache to prevent duplicate inserts for identical payloads within 15 seconds
+const recentSubmissions = new Map<string, { timestamp: number; entry: TelecallingEntry }>();
+
 class TelecallingService {
   /**
    * Creates a new telecalling entry in Supabase (Single Source of Truth).
@@ -65,8 +68,30 @@ class TelecallingService {
       };
     }
 
+    const cleanCompany = (input.company_name || '').trim();
+    const cleanPhone = (input.phone || '').trim();
+    const entryDate = input.entry_date || getKolkataToday();
+
+    // Clean entries older than 30 seconds
+    const now = Date.now();
+    for (const [k, v] of recentSubmissions.entries()) {
+      if (now - v.timestamp > 30000) {
+        recentSubmissions.delete(k);
+      }
+    }
+
+    // De-duplication check: if identical phone and company was saved within last 15 seconds, return existing record
+    const dedupeKey = `${input.company_id}_${entryDate}_${cleanPhone}_${cleanCompany.toLowerCase()}`;
+    const recentCached = recentSubmissions.get(dedupeKey);
+    if (recentCached && (now - recentCached.timestamp < 15000)) {
+      return {
+        success: true,
+        entry: recentCached.entry
+      };
+    }
+
     // Idempotency lock key based on company, date, phone and company_name
-    const lockKey = `${input.company_id}_${input.entry_date}_${input.phone}_${(input.company_name || '').trim().toLowerCase()}`;
+    const lockKey = dedupeKey;
     if (activeSaveKeys.has(lockKey)) {
       return {
         success: false,
@@ -79,10 +104,10 @@ class TelecallingService {
     try {
       const payload: any = {
         company_id: input.company_id,
-        entry_date: input.entry_date || getKolkataToday(),
-        company_name: input.company_name.trim(),
+        entry_date: entryDate,
+        company_name: cleanCompany,
         contact_person: input.contact_person?.trim() || null,
-        phone: input.phone.trim(),
+        phone: cleanPhone,
         other_phone: input.other_phone?.trim() || null,
         location: input.location?.trim() || null,
         email: input.email?.trim() || null,
@@ -106,6 +131,9 @@ class TelecallingService {
       }
 
       const savedEntry = data as TelecallingEntry;
+
+      // Cache recent submission to block immediate re-inserts
+      recentSubmissions.set(dedupeKey, { timestamp: Date.now(), entry: savedEntry });
 
       // Automatically enqueue to dedicated Google sync queue (non-blocking)
       void this.enqueueGoogleSync(savedEntry).catch(syncErr => {
@@ -741,6 +769,59 @@ class TelecallingService {
       return data && data.length > 0 ? (data[0] as TelecallingEntry) : null;
     } catch (err) {
       console.warn('[Telecalling] checkDuplicateWarning notice:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Checks if an entry with the same phone or company was already submitted today
+   * or within the last maxAgeMinutes window.
+   */
+  async findRecentDuplicate(
+    companyId: string,
+    phone: string,
+    companyName?: string,
+    maxAgeMinutes: number = 10
+  ): Promise<TelecallingEntry | null> {
+    if (!isSupabaseConfigured() || !supabase || !companyId) return null;
+
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    const cleanCompany = (companyName || '').trim();
+
+    if (cleanPhone.length < 6 && cleanCompany.length < 3) {
+      return null;
+    }
+
+    try {
+      const todayKolkata = getKolkataToday();
+      const orClauses: string[] = [];
+      if (cleanPhone.length >= 6) {
+        orClauses.push(`phone.ilike.%${cleanPhone}%`);
+        orClauses.push(`other_phone.ilike.%${cleanPhone}%`);
+      }
+      if (cleanCompany.length >= 3) {
+        const sanitized = cleanCompany.replace(/[%_,]/g, ' ');
+        orClauses.push(`company_name.ilike.%${sanitized}%`);
+      }
+
+      let query = supabase
+        .from('telecalling_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('entry_date', todayKolkata)
+        .or(orClauses.join(','))
+        .order('created_at', { ascending: false });
+
+      if (maxAgeMinutes > 0) {
+        const cutoffTime = new Date(Date.now() - maxAgeMinutes * 60 * 1000).toISOString();
+        query = query.gte('created_at', cutoffTime);
+      }
+
+      const { data, error } = await query.limit(1);
+      if (error) throw error;
+      return data && data.length > 0 ? (data[0] as TelecallingEntry) : null;
+    } catch (err) {
+      console.warn('[Telecalling] findRecentDuplicate notice:', err);
       return null;
     }
   }
