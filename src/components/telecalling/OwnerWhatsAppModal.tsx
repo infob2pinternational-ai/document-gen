@@ -1,52 +1,73 @@
 import React, { useState, useEffect } from 'react';
-import { X, Smartphone, CheckCircle, AlertCircle } from 'lucide-react';
-import { getOwnerWhatsAppNumber, setOwnerWhatsAppNumber } from '../../utils/telecallingShare';
+import { X, Smartphone, Mail, CheckCircle, AlertCircle, Settings } from 'lucide-react';
+import {
+  getOwnerWhatsAppNumber,
+  setOwnerWhatsAppNumber,
+  getOwnerReportEmail,
+  setOwnerReportEmail
+} from '../../utils/telecallingShare';
 import { normalizeIndianPhone } from '../../utils/whatsappShare';
 
 interface OwnerWhatsAppModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSaved?: (phone: string) => void;
+  onSaved?: (phone: string, email?: string) => void;
+  defaultEmail?: string;
 }
 
 export const OwnerWhatsAppModal: React.FC<OwnerWhatsAppModalProps> = ({
   isOpen,
   onClose,
-  onSaved
+  onSaved,
+  defaultEmail
 }) => {
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setPhone(getOwnerWhatsAppNumber());
+      setEmail(getOwnerReportEmail(defaultEmail));
       setError('');
       setSuccess(false);
     }
-  }, [isOpen]);
+  }, [isOpen, defaultEmail]);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    const trimmed = phone.trim();
-    if (!trimmed) {
-      setError('Please enter a valid phone number for the owner.');
+    const trimmedPhone = phone.trim();
+    const trimmedEmail = email.trim();
+
+    if (trimmedPhone) {
+      const cleanPhone = normalizeIndianPhone(trimmedPhone);
+      if (cleanPhone.length < 10) {
+        setError('Please enter a valid 10-digit Indian phone number.');
+        return;
+      }
+      setOwnerWhatsAppNumber(trimmedPhone);
+    }
+
+    if (trimmedEmail) {
+      if (!trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
+        setError('Please enter a valid email address.');
+        return;
+      }
+      setOwnerReportEmail(trimmedEmail);
+    }
+
+    if (!trimmedPhone && !trimmedEmail) {
+      setError('Please provide at least a phone number or email recipient.');
       return;
     }
 
-    const clean = normalizeIndianPhone(trimmed);
-    if (clean.length < 10) {
-      setError('Please enter a valid 10-digit Indian phone number.');
-      return;
-    }
-
-    setOwnerWhatsAppNumber(trimmed);
     setSuccess(true);
-    if (onSaved) onSaved(trimmed);
+    if (onSaved) onSaved(trimmedPhone, trimmedEmail);
     setTimeout(() => {
       onClose();
-    }, 900);
+    }, 700);
   };
 
   return (
@@ -65,7 +86,7 @@ export const OwnerWhatsAppModal: React.FC<OwnerWhatsAppModalProps> = ({
         background: 'var(--bg-primary, #ffffff)',
         color: 'var(--text-primary, #0f172a)',
         borderRadius: '12px',
-        maxWidth: '440px',
+        maxWidth: '480px',
         width: '100%',
         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
         overflow: 'hidden',
@@ -84,18 +105,18 @@ export const OwnerWhatsAppModal: React.FC<OwnerWhatsAppModalProps> = ({
               width: '34px',
               height: '34px',
               borderRadius: '8px',
-              background: '#dcfce7',
-              color: '#16a34a',
+              background: '#eff6ff',
+              color: '#2563eb',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              <Smartphone size={20} />
+              <Settings size={20} />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Owner WhatsApp Number</h3>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Report Delivery Settings</h3>
               <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted, #64748b)' }}>
-                Destination number for Daily & Weekly reports
+                Configure Owner WhatsApp &amp; Email recipients
               </p>
             </div>
           </div>
@@ -138,28 +159,53 @@ export const OwnerWhatsAppModal: React.FC<OwnerWhatsAppModalProps> = ({
               gap: '0.5rem'
             }}>
               <CheckCircle size={16} />
-              <span>Owner WhatsApp number updated successfully!</span>
+              <span>Report delivery settings saved successfully!</span>
             </div>
           )}
 
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-            Owner WhatsApp Phone (e.g. 9847012345)
-          </label>
-          <input
-            type="tel"
-            className="input-field"
-            value={phone}
-            onChange={(e) => {
-              setPhone(e.target.value);
-              setError('');
-            }}
-            placeholder="Enter 10-digit mobile number"
-            style={{ width: '100%', padding: '0.65rem 0.85rem', fontSize: '0.95rem' }}
-            autoFocus
-          />
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginTop: '0.5rem' }}>
-            When staff click "Share to Owner WhatsApp", the pre-filled report will open targeting this number.
-          </p>
+          {/* Owner WhatsApp Number */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem' }}>
+              <Smartphone size={15} color="#16a34a" />
+              <span>Owner WhatsApp Number</span>
+            </label>
+            <input
+              type="tel"
+              className="input-field"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setError('');
+              }}
+              placeholder="e.g. 9847012345"
+              style={{ width: '100%', padding: '0.65rem 0.85rem', fontSize: '0.9rem' }}
+            />
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', margin: '0.3rem 0 0 0' }}>
+              When clicking "Share to Owner WhatsApp", the pre-filled report opens targeting this number.
+            </p>
+          </div>
+
+          {/* Owner Report Email */}
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem' }}>
+              <Mail size={15} color="#2563eb" />
+              <span>Management / Owner Report Email</span>
+            </label>
+            <input
+              type="email"
+              className="input-field"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError('');
+              }}
+              placeholder="e.g. director@company.com or reports@company.com"
+              style={{ width: '100%', padding: '0.65rem 0.85rem', fontSize: '0.9rem' }}
+            />
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', margin: '0.3rem 0 0 0' }}>
+              When clicking "Send Email", the Daily Report and Unresolved Calls summary will be emailed here.
+            </p>
+          </div>
         </div>
 
         {/* Footer */}
@@ -174,12 +220,11 @@ export const OwnerWhatsAppModal: React.FC<OwnerWhatsAppModalProps> = ({
           <button onClick={onClose} className="btn-secondary">
             Cancel
           </button>
-          <button onClick={handleSave} className="btn-primary" style={{ background: '#16a34a', borderColor: '#16a34a' }}>
-            Save Number
+          <button onClick={handleSave} className="btn-primary" style={{ background: '#2563eb', borderColor: '#2563eb' }}>
+            Save Settings
           </button>
         </div>
       </div>
     </div>
   );
 };
-

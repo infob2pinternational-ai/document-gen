@@ -40,7 +40,7 @@ import { AccessRestricted } from './components/finance/AccessRestricted';
 import { TelecallingDailyEntry } from './components/telecalling/TelecallingDailyEntry';
 import { TelecallingDailyReport } from './components/telecalling/TelecallingDailyReport';
 import { TelecallingWeeklyReport } from './components/telecalling/TelecallingWeeklyReport';
-import type { UserRole } from './types';
+import type { UserRole, TelecallingEntry } from './types';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { financeService } from './services/financeService';
 import { leadService } from './services/leadService';
@@ -56,7 +56,7 @@ const playNotificationSound = () => {
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
-    
+
     // First chime note
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
@@ -68,7 +68,7 @@ const playNotificationSound = () => {
     gain1.connect(ctx.destination);
     osc1.start();
     osc1.stop(ctx.currentTime + 0.4);
-    
+
     // Second chime note (slightly delayed)
     setTimeout(() => {
       const osc2 = ctx.createOscillator();
@@ -91,13 +91,13 @@ function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [theme, setTheme] = useState<AppTheme>('dark-obsidian');
   const [themeModalOpen, setThemeModalOpen] = useState(false);
-  
+
   // Profiles & Loading States
   const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<CompanyProfile | null>(null);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const hasLoadedInitialProfilesRef = React.useRef(false);
-  
+
   // Data States (Preloaded to prevent tab switching lag)
   const [documents, setDocuments] = useState<Document[]>([]);
   const documentsRef = React.useRef<Document[]>([]);
@@ -107,7 +107,7 @@ function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [syncQueue, setSyncQueue] = useState<SyncQueueRow[]>([]);
-  
+
   // Sub-views
   const [editorOpen, setEditorOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -116,7 +116,8 @@ function App() {
   const [documentToPreview, setDocumentToPreview] = useState<Document | null>(null);
   const [recoverableDrafts, setRecoverableDrafts] = useState<DraftSummary[]>([]);
   const [draftToRestore, setDraftToRestore] = useState<any>(null);
-  
+  const [callAgainEntry, setCallAgainEntry] = useState<TelecallingEntry | null>(null);
+
   // Modals
   const [showAddProfileModal, setShowAddProfileModal] = useState(false);
   const [newProfileName, setNewProfileName] = useState('');
@@ -178,7 +179,7 @@ function App() {
       const dismissedDate = localStorage.getItem('docgen_saturday_backup_dismissed_date');
       if (dismissedDate !== todayDateStr) {
         setShowSaturdayBackupReminder(true);
-        
+
         // Dispatch browser system notification if permitted
         if ('Notification' in window && Notification.permission === 'granted') {
           const lastNotifDate = localStorage.getItem('docgen_saturday_notif_date');
@@ -239,10 +240,10 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const viewIdParam = params.get('view');
     const path = window.location.pathname;
-    
+
     let viewId: string | null = viewIdParam;
     let docNumber: string | null = null;
-    
+
     if (path.startsWith('/doc/') || path.startsWith('/view/')) {
       const parts = path.split('/');
       viewId = parts[2] || null;
@@ -261,7 +262,7 @@ function App() {
         viewId = hashMatch[1];
       }
     }
-    
+
     if (viewId) {
       if (import.meta.env.DEV) console.log('App: Public view detected for ID:', viewId);
       setPublicViewDocId(viewId);
@@ -322,7 +323,7 @@ function App() {
   // Initialize Supabase User Session
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
-    
+
     // Read cached user
     const cached = localStorage.getItem('supabase_user');
     if (cached) {
@@ -400,7 +401,7 @@ function App() {
   // Real-time listener for document approvals and state sync
   useEffect(() => {
     if (!supabase || !activeProfile || !user) return;
-    
+
     const channelName = `company-alerts-${activeProfile.id}`;
     console.log(`[Realtime] Subscription created for channel: ${channelName}`);
     let isInitialConnection = true;
@@ -466,17 +467,17 @@ function App() {
           console.log('[Realtime] Documents updated locally from payload (no re-fetch)');
 
           if (!newDoc) return; // For DELETE event, newDoc is null
-          
+
           // Get the previous version of this document from our current React state
           const prevDoc = documentsRef.current.find(d => d.id === newDoc.id);
           const prevStatus = prevDoc ? prevDoc.status : (oldDoc ? oldDoc.status : undefined);
 
           // 1. Alert for approval request
           const isNewPending = payload.eventType === 'INSERT' && newDoc.status === 'pending_approval';
-          const isUpdatedPending = payload.eventType === 'UPDATE' && 
-                                   newDoc.status === 'pending_approval' && 
+          const isUpdatedPending = payload.eventType === 'UPDATE' &&
+                                   newDoc.status === 'pending_approval' &&
                                    prevStatus !== 'pending_approval';
-                                   
+
           if (isNewPending || isUpdatedPending) {
             const allowedToApprove = isOwner;
 
@@ -491,8 +492,8 @@ function App() {
           }
 
           // 2. Alert for document approval
-          const isApproved = payload.eventType === 'UPDATE' && 
-                             newDoc.status === 'approved' && 
+          const isApproved = payload.eventType === 'UPDATE' &&
+                             newDoc.status === 'approved' &&
                              prevStatus !== 'approved';
 
           if (isApproved) {
@@ -509,8 +510,8 @@ function App() {
           }
 
           // 3. Alert for document rejection
-          const isRejected = payload.eventType === 'UPDATE' && 
-                             newDoc.status === 'rejected' && 
+          const isRejected = payload.eventType === 'UPDATE' &&
+                             newDoc.status === 'rejected' &&
                              prevStatus !== 'rejected';
 
           if (isRejected) {
@@ -532,7 +533,7 @@ function App() {
         if (err) {
           console.error('[Realtime] WebSocket error:', err);
         }
-        
+
         if (status === 'SUBSCRIBED') {
           if (isInitialConnection) {
             console.log('[Realtime] Subscription connected');
@@ -545,7 +546,7 @@ function App() {
           console.log('[Realtime] Subscription disconnected');
         }
       });
-      
+
     return () => {
       supabase?.removeChannel(channel);
       console.log('[Realtime] Subscription disconnected');
@@ -993,7 +994,7 @@ function App() {
       await dbService.saveProfile(newProf);
       setNewProfileName('');
       setShowAddProfileModal(false);
-      
+
       // Reload and set this new profile as active
       await loadData(newId);
     } catch (err) {
@@ -1073,7 +1074,7 @@ function App() {
   // If Supabase credentials exist and user is not authenticated: Show AuthPanel (forced)
   if (isSupabaseConfigured() && !user) {
     return (
-      <AuthPanel 
+      <AuthPanel
         onAuthSuccess={(usr) => setUser(usr)}
       />
     );
@@ -1143,7 +1144,7 @@ function App() {
           }}>
             <Building size={32} />
           </div>
-          
+
           <h2 style={{ fontSize: '1.75rem', marginBottom: '0.75rem', fontWeight: 700 }}>
             Set Up Your Business
           </h2>
@@ -1279,15 +1280,15 @@ function App() {
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem', lineHeight: '1.3' }}>{toast.message}</div>
           </div>
-          <button 
+          <button
             onClick={(event) => {
               event.stopPropagation();
               setToast(null);
-            }} 
-            style={{ 
-              background: 'transparent', 
-              border: 'none', 
-              color: 'var(--text-secondary)', 
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
               cursor: 'pointer',
               fontSize: '0.9rem',
               padding: '0.2rem'
@@ -1340,7 +1341,7 @@ function App() {
                 It's Saturday 5:00 PM! Back up your weekly documents to Google Drive (<strong>info.b2pinternational@gmail.com</strong>) or download a local ZIP file.
               </p>
             </div>
-            <button 
+            <button
               onClick={handleDismissSaturdayReminder}
               style={{
                 background: 'none',
@@ -1428,10 +1429,10 @@ function App() {
           </div>
         </div>
       )}
-      
+
       {/* Mobile top-bar header */}
       <header className="mobile-header">
-        <button 
+        <button
           onClick={() => setMobileMenuOpen(true)}
           className="btn-secondary"
           style={{ padding: '0.5rem', borderRadius: 'var(--radius-sm)' }}
@@ -1458,7 +1459,7 @@ function App() {
       )}
 
       {/* Navigation Sidebar */}
-      <Sidebar 
+      <Sidebar
         currentTab={currentTab}
         setCurrentTab={(tab) => {
           setCurrentTab(tab);
@@ -1490,7 +1491,7 @@ function App() {
 
       {/* Main Content viewport */}
       <main className={`main-content ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-        
+
         {/* Apple-inspired Floating Glass Top Bar */}
         {!editorOpen && !previewOpen && (
           <div style={{
@@ -1548,7 +1549,7 @@ function App() {
 
             {/* Right Controls: Role Simulation Switcher + Notification Bell + Theme Switcher + User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              
+
               {/* Role Simulation Switcher - REMEDIATION (2026-08-24):
                   dev-only now. Production builds (import.meta.env.DEV
                   false) never render this, and simulatedRole itself
@@ -1593,7 +1594,7 @@ function App() {
               )}
 
               {/* Notification Center */}
-              <NotificationCenter 
+              <NotificationCenter
                 onSelectNotification={(type, id) => {
                   if (type === 'lead' && id) {
                     setGlobalLeadDetailId(id);
@@ -1652,8 +1653,8 @@ function App() {
                 boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
               }}>
                 {user?.user_metadata?.avatar_url ? (
-                  <img 
-                    src={user.user_metadata.avatar_url} 
+                  <img
+                    src={user.user_metadata.avatar_url}
                     alt={user?.user_metadata?.full_name || user?.email || 'User'}
                     style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
                   />
@@ -1774,7 +1775,7 @@ function App() {
               onClose={() => setPreviewOpen(false)}
             />
           ) : (
-            <DocumentPreview 
+            <DocumentPreview
               activeProfile={profiles.find(p => p.id === documentToPreview.company_id) || activeProfile!}
               document={documentToPreview}
               onClose={() => setPreviewOpen(false)}
@@ -1805,7 +1806,7 @@ function App() {
                 />
               )
             )}
-            
+
             {editorOpen && (
               <div style={{ display: currentTab === 'documents' ? 'block' : 'none' }}>
                 {documentToEdit?.document_type === 'comparison_quotation' || documentToEdit?.document_type === 'comparison_invoice' || comparisonEditorActive ? (
@@ -1824,7 +1825,7 @@ function App() {
                     }}
                   />
                 ) : (
-                  <DocumentEditor 
+                  <DocumentEditor
                     activeProfile={activeProfile}
                     documentToEdit={documentToEdit}
                     onClose={handleCloseEditor}
@@ -1838,7 +1839,7 @@ function App() {
             )}
 
             {currentTab === 'documents' && !editorOpen && (
-              <Documents 
+              <Documents
                 role={simulatedRole}
                 activeProfile={activeProfile}
                 documents={documents}
@@ -1855,13 +1856,13 @@ function App() {
             {/* FINANCE & ACCOUNTS MODULE ROUTES */}
             {(currentTab === 'finance-accounts' || currentTab === 'accounts') && (
               hasFinanceAccess ? (
-                <AccountsDashboard 
+                <AccountsDashboard
                   onNavigate={setCurrentTab}
                   userRole={simulatedRole}
                   userEmail={currentUserEmail}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1870,11 +1871,11 @@ function App() {
 
             {currentTab === 'journal-entries' && (
               hasFinanceAccess ? (
-                <JournalEntries 
+                <JournalEntries
                   userEmail={currentUserEmail}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1885,7 +1886,7 @@ function App() {
               hasFinanceAccess ? (
                 <ChartOfAccounts />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1894,12 +1895,12 @@ function App() {
 
             {currentTab === 'banking-reconciliation' && (
               hasFinanceAccess ? (
-                <BankingReconciliation 
+                <BankingReconciliation
                   userRole={simulatedRole}
                   userEmail={currentUserEmail}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1908,12 +1909,12 @@ function App() {
 
             {currentTab === 'sales-receivables' && (
               hasFinanceAccess ? (
-                <SalesReceivables 
+                <SalesReceivables
                   onOpenDocument={handleViewDocument}
                   userEmail={currentUserEmail}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1922,11 +1923,11 @@ function App() {
 
             {currentTab === 'expenses' && (
               hasFinanceAccess ? (
-                <Expenses 
+                <Expenses
                   userEmail={currentUserEmail}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1935,11 +1936,11 @@ function App() {
 
             {currentTab === 'suppliers' && (
               hasFinanceAccess ? (
-                <Suppliers 
+                <Suppliers
                   onNewPurchaseForSupplier={() => setCurrentTab('purchases-payables')}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1948,11 +1949,11 @@ function App() {
 
             {(currentTab === 'purchases-payables' || currentTab === 'finance-purchases') && (
               hasFinanceAccess ? (
-                <Purchases 
+                <Purchases
                   userEmail={currentUserEmail}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1963,7 +1964,7 @@ function App() {
               hasFinanceAccess ? (
                 <GSTComplianceCenter />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1974,7 +1975,7 @@ function App() {
               hasFinanceAccess ? (
                 <ProfitAndLoss />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -1983,12 +1984,12 @@ function App() {
 
             {currentTab === 'financial-reports' && (
               hasFinanceAccess ? (
-                <FinancialReports 
+                <FinancialReports
                   userRole={simulatedRole}
                   userEmail={currentUserEmail}
                 />
               ) : (
-                <AccessRestricted 
+                <AccessRestricted
                   currentRole={simulatedRole}
                   onNavigateToDashboard={() => setCurrentTab('dashboard')}
                 />
@@ -2005,7 +2006,7 @@ function App() {
             )}
 
             {currentTab === 'calendar' && (
-              <BookingCalendar 
+              <BookingCalendar
                 role={simulatedRole}
                 userEmail={currentUserEmail}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
@@ -2013,7 +2014,7 @@ function App() {
             )}
 
             {currentTab === 'follow-ups' && (
-              <FollowUps 
+              <FollowUps
                 role={simulatedRole}
                 userEmail={currentUserEmail}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
@@ -2021,7 +2022,7 @@ function App() {
             )}
 
             {currentTab === 'whatsapp' && (
-              <WhatsAppInbox 
+              <WhatsAppInbox
                 userRole={simulatedRole}
                 userEmail={currentUserEmail}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
@@ -2029,7 +2030,7 @@ function App() {
             )}
 
             {currentTab === 'reports' && (
-              <Reports 
+              <Reports
                 userRole={simulatedRole}
                 userEmail={currentUserEmail}
               />
@@ -2040,6 +2041,8 @@ function App() {
                 activeProfile={activeProfile}
                 user={user}
                 userRole={simulatedRole}
+                initialPrefillEntry={callAgainEntry}
+                onClearInitialPrefill={() => setCallAgainEntry(null)}
                 onNavigateToDailyReport={() => setCurrentTab('telecalling-daily-report')}
               />
             )}
@@ -2050,6 +2053,10 @@ function App() {
                 user={user}
                 userRole={simulatedRole}
                 onNavigateToEntry={() => setCurrentTab('telecalling-entry')}
+                onCallAgain={(entry) => {
+                  setCallAgainEntry(entry);
+                  setCurrentTab('telecalling-entry');
+                }}
               />
             )}
 
@@ -2072,7 +2079,7 @@ function App() {
             )}
 
             {currentTab === 'customers' && (
-              <Customers 
+              <Customers
                 role={simulatedRole}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
@@ -2084,7 +2091,7 @@ function App() {
             )}
 
             {currentTab === 'services' && (
-              <Services 
+              <Services
                 role={simulatedRole}
                 activeProfile={activeProfile}
                 onRefreshStats={() => loadData(activeProfile?.id)}
@@ -2100,7 +2107,7 @@ function App() {
             )}
 
             {currentTab === 'settings' && (
-              <Settings 
+              <Settings
                 role={simulatedRole}
                 profiles={profiles}
                 activeProfile={activeProfile}

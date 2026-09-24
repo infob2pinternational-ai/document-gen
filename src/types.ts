@@ -1292,6 +1292,19 @@ export const TELECALLING_STATUSES: TelecallingStatus[] = [
   'Other'
 ];
 
+export const UNRESOLVED_TELECALLING_STATUSES: TelecallingStatus[] = [
+  'Follow-up Required',
+  'Call Back',
+  'No Answer / No Response',
+  'Not Reachable / Switched Off',
+  'Interested / Details Shared'
+];
+
+export function isUnresolvedStatus(status: TelecallingStatus | string | null | undefined): boolean {
+  if (!status) return false;
+  return (UNRESOLVED_TELECALLING_STATUSES as string[]).includes(status);
+}
+
 export interface TelecallingEntry {
   id: string;
   company_id: string;
@@ -1321,6 +1334,8 @@ export interface TelecallingDailyReportData {
   statusCounts: Record<TelecallingStatus, number>;
   telecallerActivity: Record<string, number>;
   followUpsCount: number;
+  unresolvedCallsCount: number;
+  unresolvedEntries: TelecallingEntry[];
   entries: TelecallingEntry[];
 }
 

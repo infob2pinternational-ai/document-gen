@@ -163,10 +163,37 @@ function doPost(e) {
       return respondAndLog(true, action, null, `Batch synced ${count} telecalling entries`, startedAt);
     }
 
+    // Daily Telecalling Report email dispatch via MailApp
+    if (action === 'send_telecalling_report_email') {
+      const recipient = data.to;
+      const subject = data.subject;
+      const body = data.body || '';
+      const htmlBody = data.htmlBody || null;
+
+      if (!recipient) {
+        return respondAndLog(false, action, null, 'Missing recipient email (to)', startedAt);
+      }
+      if (!subject) {
+        return respondAndLog(false, action, null, 'Missing email subject', startedAt);
+      }
+
+      const mailOptions = {
+        to: recipient,
+        subject: subject,
+        body: body
+      };
+      if (htmlBody) {
+        mailOptions.htmlBody = htmlBody;
+      }
+
+      MailApp.sendEmail(mailOptions);
+      return respondAndLog(true, action, null, `Daily Report email successfully sent to ${recipient}`, startedAt);
+    }
+
     documentId = data.document_id;
 
     if (!action || (action !== 'save_document' && action !== 'delete_document')) {
-      return respondAndLog(false, action, documentId, 'Invalid or missing action (expected save_document, delete_document, save_telecalling_entry, sync_telecalling_batch, or full_backup)', startedAt);
+      return respondAndLog(false, action, documentId, 'Invalid or missing action (expected save_document, delete_document, save_telecalling_entry, sync_telecalling_batch, send_telecalling_report_email, or full_backup)', startedAt);
     }
     if (!documentId) {
       return respondAndLog(false, action, documentId, 'Missing document_id', startedAt);
@@ -341,9 +368,9 @@ function getDocumentSpreadsheet() {
 }
 
 function getTelecallingSpreadsheet() {
-  if (CONFIG.TELECALLING_SPREADSHEET_ID && 
-      CONFIG.TELECALLING_SPREADSHEET_ID.trim() !== '' && 
-      CONFIG.TELECALLING_SPREADSHEET_ID !== 'PASTE_NEW_TELECALLING_SPREADSHEET_ID_HERE' && 
+  if (CONFIG.TELECALLING_SPREADSHEET_ID &&
+      CONFIG.TELECALLING_SPREADSHEET_ID.trim() !== '' &&
+      CONFIG.TELECALLING_SPREADSHEET_ID !== 'PASTE_NEW_TELECALLING_SPREADSHEET_ID_HERE' &&
       CONFIG.TELECALLING_SPREADSHEET_ID !== CONFIG.SPREADSHEET_ID) {
     return SpreadsheetApp.openById(CONFIG.TELECALLING_SPREADSHEET_ID.trim());
   }

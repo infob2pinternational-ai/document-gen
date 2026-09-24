@@ -54,6 +54,10 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
       setErrorMsg('Phone Number is required.');
       return;
     }
+    if (!feedback.trim()) {
+      setErrorMsg('Feedback / Remarks is required. Please enter call comments.');
+      return;
+    }
 
     setSaving(true);
     setErrorMsg('');
@@ -259,13 +263,14 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
           {/* Feedback / Comments / Remarks */}
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Feedback / Remarks / Comments
+              Feedback / Remarks / Comments <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <textarea
               className="input-field"
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               rows={3}
+              required
               placeholder="Enter client response, comments, or follow-up notes..."
               style={{ width: '100%', padding: '0.6rem 0.75rem', fontSize: '0.85rem', resize: 'vertical' }}
             />

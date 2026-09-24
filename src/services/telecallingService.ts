@@ -1,11 +1,12 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import type { 
-  TelecallingEntry, 
-  TelecallingStatus, 
-  TelecallingDailyReportData, 
+import type {
+  TelecallingEntry,
+  TelecallingStatus,
+  TelecallingDailyReportData,
   TelecallingWeeklyReportData,
   TelecallingGoogleSyncQueueRow
 } from '../types';
+import { isUnresolvedStatus } from '../types';
 import { getSyncSettings, computeBackoffMs } from './sheetsSyncQueue';
 import { getKolkataToday, getKolkataWeekRange } from '../utils/dateUtils';
 
@@ -255,7 +256,7 @@ class TelecallingService {
 
       if (filters?.search && filters.search.trim()) {
         const s = filters.search.trim().toLowerCase();
-        entries = entries.filter(e => 
+        entries = entries.filter(e =>
           (e.company_name && e.company_name.toLowerCase().includes(s)) ||
           (e.contact_person && e.contact_person.toLowerCase().includes(s)) ||
           (e.phone && e.phone.includes(s)) ||
@@ -331,6 +332,7 @@ class TelecallingService {
     const telecallerActivity: Record<string, number> = {};
     const uniqueCompanySet = new Set<string>();
     let followUps = 0;
+    const unresolvedEntries: TelecallingEntry[] = [];
 
     for (const e of entries) {
       if (e.call_status && statusCounts[e.call_status] !== undefined) {
@@ -341,6 +343,10 @@ class TelecallingService {
 
       if (e.call_status === 'Follow-up Required' || e.call_status === 'Call Back') {
         followUps++;
+      }
+
+      if (isUnresolvedStatus(e.call_status)) {
+        unresolvedEntries.push(e);
       }
 
       const callerKey = e.created_by_name || (e.created_by_email ? e.created_by_email.split('@')[0] : 'Unassigned');
@@ -358,6 +364,8 @@ class TelecallingService {
       statusCounts,
       telecallerActivity,
       followUpsCount: followUps,
+      unresolvedCallsCount: unresolvedEntries.length,
+      unresolvedEntries,
       entries
     };
   }
@@ -654,6 +662,135 @@ class TelecallingService {
     } catch (err) {
       console.error('[TelecallingSync] Retry error:', err);
       return false;
+    }
+  }
+
+  /**
+   * Fast search across historical telecalling records by company, contact person, or phone.
+   */
+  async searchPreviousEntries(
+    companyId: string,
+    rawQuery: string,
+    limit: number = 30
+  ): Promise<TelecallingEntry[]> {
+    if (!isSupabaseConfigured() || !supabase || !companyId) return [];
+    const q = rawQuery.trim();
+    if (!q) return [];
+
+    try {
+      const sanitized = q.replace(/[%_,]/g, ' ');
+      const queryFilter = `company_name.ilike.%${sanitized}%,contact_person.ilike.%${sanitized}%,phone.ilike.%${sanitized}%,other_phone.ilike.%${sanitized}%`;
+
+      const { data, error } = await supabase
+        .from('telecalling_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(queryFilter)
+        .order('entry_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      return (data || []) as TelecallingEntry[];
+    } catch (err) {
+      console.error('[Telecalling] Historical search failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Checks if phone or company already exists in previous records.
+   * Returns the most recent matching record for gentle duplicate warning.
+   */
+  async checkDuplicateWarning(
+    companyId: string,
+    phone: string,
+    companyName?: string
+  ): Promise<TelecallingEntry | null> {
+    if (!isSupabaseConfigured() || !supabase || !companyId) return null;
+
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    const cleanCompany = (companyName || '').trim();
+
+    // Only search if phone has >= 6 digits or company name has >= 3 chars
+    if (cleanPhone.length < 6 && cleanCompany.length < 3) {
+      return null;
+    }
+
+    try {
+      const orClauses: string[] = [];
+      if (cleanPhone.length >= 6) {
+        orClauses.push(`phone.ilike.%${cleanPhone}%`);
+        orClauses.push(`other_phone.ilike.%${cleanPhone}%`);
+      }
+      if (cleanCompany.length >= 3) {
+        const sanitized = cleanCompany.replace(/[%_,]/g, ' ');
+        orClauses.push(`company_name.ilike.%${sanitized}%`);
+      }
+
+      const { data, error } = await supabase
+        .from('telecalling_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(orClauses.join(','))
+        .order('entry_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      return data && data.length > 0 ? (data[0] as TelecallingEntry) : null;
+    } catch (err) {
+      console.warn('[Telecalling] checkDuplicateWarning notice:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Sends the Daily Report via Google Apps Script Web App (MailApp).
+   */
+  async sendDailyReportEmail(payload: {
+    to: string;
+    subject: string;
+    body: string;
+    htmlBody?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    const webhookUrl = getTelecallingWebhookUrl();
+    if (!webhookUrl) {
+      return {
+        success: false,
+        error: 'Google Apps Script Web App URL is not configured.'
+      };
+    }
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'send_telecalling_report_email',
+          to: payload.to.trim(),
+          subject: payload.subject,
+          body: payload.body,
+          htmlBody: payload.htmlBody || null
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const res = await response.json();
+      if (!res || res.success === false) {
+        throw new Error(res?.error || res?.message || 'Apps Script returned failure');
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[Telecalling] sendDailyReportEmail failed:', err);
+      return {
+        success: false,
+        error: err.message || 'Failed to send email via Google Apps Script'
+      };
     }
   }
 }

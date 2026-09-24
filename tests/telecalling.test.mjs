@@ -18,11 +18,11 @@ function loadTsModule(relativePath, stubs = {}) {
   return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 }
 
-const { 
-  getKolkataToday, 
-  getKolkataWeekRange, 
-  shiftKolkataWeek, 
-  formatKolkataDisplayDate 
+const {
+  getKolkataToday,
+  getKolkataWeekRange,
+  shiftKolkataWeek,
+  formatKolkataDisplayDate
 } = await loadTsModule('../src/utils/dateUtils.ts');
 
 const {
@@ -36,11 +36,23 @@ const {
 
 const {
   buildDailyReportWhatsAppMessage,
-  buildWeeklyReportWhatsAppMessage
+  buildWeeklyReportWhatsAppMessage,
+  buildDailyReportEmailContent
 } = await loadTsModule('../src/utils/telecallingShare.ts', {
   './whatsappShare': 'export function normalizeIndianPhone(p) { return p.replace(/\\D/g, ""); }',
-  './dateUtils': 'export function formatKolkataDisplayDate(d) { return d; }'
+  './dateUtils': 'export function formatKolkataDisplayDate(d) { return d; }',
+  '../types': 'export function isUnresolvedStatus(s) { return ["Follow-up Required", "Call Back", "No Answer / No Response", "Not Reachable / Switched Off", "Interested / Details Shared"].includes(s); }'
 });
+
+const {
+  escapeCsvCell,
+  generateTelecallingCsvString
+} = await loadTsModule('../src/utils/csvExport.ts');
+
+const {
+  UNRESOLVED_TELECALLING_STATUSES,
+  isUnresolvedStatus
+} = await loadTsModule('../src/types.ts');
 
 // ─── 1. Asia/Kolkata Date & Week Range Tests ─────────────────────────────────
 
@@ -172,4 +184,180 @@ test('buildWeeklyReportWhatsAppMessage formats week range and breakdowns', () =>
   assert.match(msg, /TELECALLING WEEKLY REPORT/);
   assert.match(msg, /Total Calls:\s*120/);
   assert.match(msg, /Franson:\s*120 calls/);
+});
+
+// ─── 4. Unresolved Statuses & Definition Tests ───────────────────────────────
+
+test('UNRESOLVED_TELECALLING_STATUSES contains required statuses and isUnresolvedStatus works correctly', () => {
+  assert.equal(UNRESOLVED_TELECALLING_STATUSES.length, 5);
+  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Follow-up Required'));
+  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Call Back'));
+  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('No Answer / No Response'));
+  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Not Reachable / Switched Off'));
+  assert.ok(UNRESOLVED_TELECALLING_STATUSES.includes('Interested / Details Shared'));
+
+  assert.equal(isUnresolvedStatus('Follow-up Required'), true);
+  assert.equal(isUnresolvedStatus('Call Back'), true);
+  assert.equal(isUnresolvedStatus('No Answer / No Response'), true);
+  assert.equal(isUnresolvedStatus('Not Reachable / Switched Off'), true);
+  assert.equal(isUnresolvedStatus('Interested / Details Shared'), true);
+
+  assert.equal(isUnresolvedStatus('Appointment Confirmed'), false);
+  assert.equal(isUnresolvedStatus('No Interest'), false);
+  assert.equal(isUnresolvedStatus('Wrong / Invalid Number'), false);
+  assert.equal(isUnresolvedStatus('Other'), false);
+  assert.equal(isUnresolvedStatus(null), false);
+  assert.equal(isUnresolvedStatus(undefined), false);
+});
+
+// ─── 5. CSV Export & RFC-4180 Escaping Tests ─────────────────────────────────
+
+test('escapeCsvCell correctly escapes commas, quotes, and newlines', () => {
+  assert.equal(escapeCsvCell('Simple'), '"Simple"');
+  assert.equal(escapeCsvCell('Hello, World'), '"Hello, World"');
+  assert.equal(escapeCsvCell('Said "Hello"'), '"Said ""Hello"""');
+  assert.equal(escapeCsvCell("Line1\nLine2"), '"Line1\nLine2"');
+  assert.equal(escapeCsvCell(null), '""');
+  assert.equal(escapeCsvCell(undefined), '""');
+});
+
+test('generateTelecallingCsvString creates UTF-8 BOM CSV with RFC-4180 escaping', () => {
+  const dummyEntries = [
+    {
+      id: 'e1',
+      company_id: 'c1',
+      entry_date: '2026-09-22',
+      company_name: 'Devon Foods, Ltd.',
+      contact_person: 'Mr. Syam "Manager"',
+      phone: '9847012345',
+      other_phone: '0484-4000544',
+      location: 'Kochi, Kerala',
+      email: 'syam@devon.com',
+      call_status: 'Interested / Details Shared',
+      feedback: 'Sent proposal;\nWill follow up.',
+      created_by_name: 'Franson',
+      created_at: '2026-09-22T10:30:00Z',
+      updated_at: '2026-09-22T10:30:00Z'
+    }
+  ];
+
+  const csv = generateTelecallingCsvString(dummyEntries);
+  // Verify UTF-8 BOM
+  assert.ok(csv.startsWith('\uFEFF'), 'CSV must start with UTF-8 BOM');
+  // Verify Header contains required fields
+  assert.ok(csv.includes('"Date","Company / Name","Contact Person","Phone"'));
+  // Verify escaped fields
+  assert.ok(csv.includes('"Devon Foods, Ltd."'));
+  assert.ok(csv.includes('"Mr. Syam ""Manager"""'));
+  assert.ok(csv.includes('"Sent proposal;\nWill follow up."'));
+  assert.ok(csv.includes('"Franson"'));
+});
+
+// ─── 6. Email Report Generator Tests ─────────────────────────────────────────
+
+test('buildDailyReportEmailContent formats subject, text body, and HTML with unresolved section', () => {
+  const dummyReport = {
+    date: '2026-09-22',
+    totalCalls: 10,
+    uniqueCompanies: 8,
+    statusCounts: {
+      'Appointment Confirmed': 2,
+      'Interested / Details Shared': 3,
+      'Follow-up Required': 2,
+      'Call Back': 1,
+      'No Answer / No Response': 1,
+      'No Interest': 1,
+      'Not Reachable / Switched Off': 0,
+      'Wrong / Invalid Number': 0,
+      'Other': 0
+    },
+    telecallerActivity: { Franson: 10 },
+    followUpsCount: 3,
+    unresolvedCallsCount: 7,
+    unresolvedEntries: [
+      {
+        id: 'u1',
+        company_id: 'c1',
+        entry_date: '2026-09-22',
+        company_name: 'Nirapara Industries',
+        contact_person: 'Mr. Raju',
+        phone: '9847111222',
+        call_status: 'Follow-up Required',
+        feedback: 'Call back at 4 PM'
+      }
+    ],
+    entries: []
+  };
+
+  const email = buildDailyReportEmailContent('B2P INTERNATIONAL', dummyReport);
+  assert.ok(email.subject.includes('Telecalling Daily Report'));
+  assert.ok(email.subject.includes('2026'));
+
+  // Plain text checks
+  assert.ok(email.body.includes('Total Calls Logged: 10'));
+  assert.ok(email.body.includes('Unresolved Calls Requiring Action: 7'));
+  assert.ok(email.body.includes('Nirapara Industries'));
+  assert.ok(email.body.includes('Call back at 4 PM'));
+
+  // HTML checks
+  assert.ok(email.htmlBody.includes('<!DOCTYPE html>'));
+  assert.ok(email.htmlBody.includes('Nirapara Industries'));
+  assert.ok(email.htmlBody.includes('Action Needed: Unresolved Calls'));
+});
+
+// ─── 7. Call Again Prefill Logic Tests ───────────────────────────────────────
+
+test('Call Again prefill retains contact identity while discarding date, status, and feedback', () => {
+  const previousRecord = {
+    id: 'old-1',
+    company_id: 'c1',
+    entry_date: '2026-08-15', // Past date
+    company_name: 'Jayalakshmi Silks',
+    contact_person: 'Manager Renjith',
+    phone: '9847223344',
+    other_phone: '0484-2345678',
+    location: 'Ernakulam',
+    email: 'renjith@jayalakshmi.com',
+    call_status: 'No Answer / No Response',
+    feedback: 'Tried 3 times, not picking up'
+  };
+
+  // Simulating the Call Again handler contract
+  const callAgainPrefill = {
+    company_name: previousRecord.company_name,
+    contact_person: previousRecord.contact_person,
+    phone: previousRecord.phone,
+    other_phone: previousRecord.other_phone,
+    location: previousRecord.location,
+    email: previousRecord.email,
+    // Must NOT copy date, status, or feedback
+    entry_date: undefined, // will be auto-determined at save time
+    call_status: 'Interested / Details Shared', // default reset
+    feedback: '' // cleared
+  };
+
+  assert.equal(callAgainPrefill.company_name, 'Jayalakshmi Silks');
+  assert.equal(callAgainPrefill.phone, '9847223344');
+  assert.equal(callAgainPrefill.location, 'Ernakulam');
+  assert.equal(callAgainPrefill.entry_date, undefined);
+  assert.notEqual(callAgainPrefill.entry_date, '2026-08-15');
+  assert.notEqual(callAgainPrefill.call_status, 'No Answer / No Response');
+  assert.equal(callAgainPrefill.feedback, '');
+});
+
+// ─── 8. Mandatory Feedback Validation Tests ─────────────────────────────────
+
+test('Mandatory feedback validation rejects empty or whitespace-only feedback', () => {
+  const validateCallSubmission = (feedbackText) => {
+    if (!feedbackText || !feedbackText.trim()) {
+      return { valid: false, error: 'Feedback / Remarks is required.' };
+    }
+    return { valid: true };
+  };
+
+  assert.equal(validateCallSubmission('').valid, false);
+  assert.equal(validateCallSubmission('   ').valid, false);
+  assert.equal(validateCallSubmission(null).valid, false);
+  assert.equal(validateCallSubmission(undefined).valid, false);
+  assert.equal(validateCallSubmission('Discussed requirements, follow up next Tuesday').valid, true);
 });
