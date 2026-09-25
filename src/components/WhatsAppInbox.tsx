@@ -204,7 +204,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
               WhatsApp Business Workspace
             </h1>
             <span className="badge badge-success">
-              Connected: +91 98470 00000
+              Connected: +91 81390 09034
             </span>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', margin: '0.2rem 0 0 0' }}>
