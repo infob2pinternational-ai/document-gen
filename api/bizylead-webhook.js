@@ -67,6 +67,7 @@ async function supabaseRest(endpoint, method = 'GET', body = null) {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
+    console.warn(`[Bizylead Webhook] supabaseRest SKIPPED: url=${!!supabaseUrl}, key=${!!supabaseKey}, SERVICE_ROLE_KEY=${!!process.env.SUPABASE_SERVICE_ROLE_KEY} (len=${(process.env.SUPABASE_SERVICE_ROLE_KEY||'').length}), ANON_KEY=${!!process.env.SUPABASE_ANON_KEY}`);
     return null;
   }
 

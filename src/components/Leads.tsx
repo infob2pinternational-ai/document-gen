@@ -179,7 +179,7 @@ export const Leads: React.FC<LeadsProps> = ({
       });
   }, [leads]);
 
-  const leadCounts = metricsService.getLeadCounts(telecallerFilter === 'all' ? undefined : telecallerFilter);
+  const leadCounts = metricsService.getLeadCounts(telecallerFilter === 'all' ? undefined : telecallerFilter, companyId);
   const hasActiveFilters = searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || sourceFilter !== 'all' || telecallerFilter !== 'all';
 
   return (

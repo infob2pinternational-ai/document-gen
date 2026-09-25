@@ -224,8 +224,11 @@ export const metricsService = {
   },
 
   // 1. LEAD COUNTS
-  getLeadCounts(staffEmail?: string): LeadCounts {
+  getLeadCounts(staffEmail?: string, companyId?: string): LeadCounts {
     let leads = readStorage<Lead[]>(LEADS_KEY, []);
+    if (companyId) {
+      leads = leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === companyId);
+    }
     if (staffEmail && staffEmail !== 'owner@b2p.com' && staffEmail !== 'admin@b2p.com' && staffEmail.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanengadan@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
       leads = leads.filter(l => l.assigned_telecaller_email === staffEmail);
     }
@@ -255,8 +258,10 @@ export const metricsService = {
       if (byStatus[l.status] !== undefined) {
         byStatus[l.status]++;
       }
-      if (l.priority && byPriority[l.priority] !== undefined) {
-        byPriority[l.priority]++;
+      const rawPriority = (l.priority || '').toUpperCase();
+      const p = (rawPriority === 'HOT' || rawPriority === 'COLD' ? rawPriority : 'WARM') as LeadPriority;
+      if (byPriority[p] !== undefined) {
+        byPriority[p]++;
       }
     });
 

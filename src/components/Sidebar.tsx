@@ -83,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [whatsAppUnreadCount, setWhatsAppUnreadCount] = useState(0);
 
   const refreshBadges = () => {
-    const leads = metricsService.getLeadCounts();
+    const leads = metricsService.getLeadCounts(undefined, activeProfile?.id);
     const followUps = metricsService.getFollowUpCounts();
     const quotes = metricsService.getQuotationCounts();
     const convs = officeService.getConversations();
@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     refreshBadges();
     const unsub = metricsService.subscribe(refreshBadges);
     return unsub;
-  }, []);
+  }, [activeProfile?.id]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

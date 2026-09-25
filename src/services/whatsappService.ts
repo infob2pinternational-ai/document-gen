@@ -37,19 +37,15 @@ class WhatsAppService {
    * Fetches all WhatsApp conversations (cloud-first with local fallback).
    * Note: Dedicated to WhatsApp conversations only. Leads are NOT auto-merged.
    */
-  async getConversations(companyId?: string | null): Promise<WhatsAppConversation[]> {
+  async getConversations(_companyId?: string | null): Promise<WhatsAppConversation[]> {
     let baseList: WhatsAppConversation[] = [];
 
     if (isCloudActive() && supabase) {
       try {
-        let query = supabase
+        const query = supabase
           .from('whatsapp_conversations')
           .select('*')
           .order('last_message_at', { ascending: false });
-
-        if (companyId) {
-          query = query.eq('company_id', companyId);
-        }
 
         const { data, error } = await query;
         if (!error && data) {
