@@ -106,9 +106,9 @@ function getKolkataDateString(date = new Date()) {
 }
 
 // Format display date in DD MMM YYYY
-function formatDisplayDate(dateStr) {
+export function formatDisplayDate(dateStr) {
   try {
-    const [y, m, d] = dateStr.split('-');
+    const [y, m, d] = (dateStr || '').split('-');
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1]} ${y}`;
   } catch {
@@ -116,8 +116,45 @@ function formatDisplayDate(dateStr) {
   }
 }
 
+// Format time in Asia/Kolkata 12-hour format
+export function formatISTTime(date) {
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(d);
+  } catch {
+    return '';
+  }
+}
+
+// Format document type to human-friendly title
+export function formatDocTypeLabel(type) {
+  switch (type) {
+    case 'invoice': return 'Tax Invoice';
+    case 'proforma_invoice': return 'Proforma Invoice';
+    case 'quotation': return 'Quotation';
+    case 'work_order': return 'Work Order';
+    case 'non_tax_invoice': return 'Non-Tax Invoice';
+    case 'comparison_quotation': return 'Comparison Quote';
+    case 'comparison_invoice': return 'Comparison Invoice';
+    case 'crm_quotation': return 'CRM Quote';
+    default: return 'Document';
+  }
+}
+
+// Format currency amount in Indian numbering format
+export function formatAmount(val) {
+  const n = Number(val) || 0;
+  return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
 // Check if status is unresolved
-function isUnresolvedStatus(status) {
+export function isUnresolvedStatus(status) {
   const UNRESOLVED = [
     'Follow-up Required',
     'Call Back',
@@ -137,12 +174,34 @@ export function formatFollowUpClientLabel(item) {
   return cust || comp || 'Client';
 }
 
-// Builds detailed breakdown for staff members (Shiva, Brutt, etc.)
-export function buildStaffDetailedBreakdown(report) {
-  const entries = report.entries || [];
+// Helper to resolve canonical staff key from email or name
+export function resolveStaffKey(email, name) {
+  const cleanEmail = (email || '').toLowerCase().trim();
+  const cleanName = (name || '').toLowerCase().trim();
 
+  if (cleanEmail === 'sivasatheesan33@gmail.com' || cleanName.includes('shiva') || cleanName.includes('siva')) {
+    return 'shiva';
+  }
+  if (cleanEmail === 'brutf5354@gmail.com' || cleanName.includes('brutt') || cleanName.includes('brut')) {
+    return 'brutt';
+  }
+  if (cleanEmail === 'fransonputhukkara@gmail.com' || cleanName.includes('franson')) {
+    return 'franson';
+  }
+  if (cleanEmail === 'sarathjohnpanengadan@gmail.com' || cleanName.includes('sarath')) {
+    return 'sarath';
+  }
+  return cleanName || (cleanEmail ? cleanEmail.split('@')[0] : 'staff');
+}
+
+/**
+ * Builds individual staff records grouping telecalling entries, completed follow-ups,
+ * rescheduled follow-ups, documents generated, and pending/overdue follow-ups.
+ */
+export function buildStaffRecordsMap(report) {
   const staffRecords = {
     'shiva': {
+      key: 'shiva',
       label: 'SHIVA (Sivasatheesan)',
       email: 'sivasatheesan33@gmail.com',
       total: 0,
@@ -155,9 +214,16 @@ export function buildStaffDetailedBreakdown(report) {
       noInterest: 0,
       wrongNumber: 0,
       other: 0,
-      unresolved: []
+      unresolved: [],
+      completedFollowUps: [],
+      rescheduledFollowUps: [],
+      documents: [],
+      dueToday: [],
+      overdue: [],
+      timeline: []
     },
     'brutt': {
+      key: 'brutt',
       label: 'BRUTT (Brutf5354)',
       email: 'brutf5354@gmail.com',
       total: 0,
@@ -170,90 +236,141 @@ export function buildStaffDetailedBreakdown(report) {
       noInterest: 0,
       wrongNumber: 0,
       other: 0,
-      unresolved: []
+      unresolved: [],
+      completedFollowUps: [],
+      rescheduledFollowUps: [],
+      documents: [],
+      dueToday: [],
+      overdue: [],
+      timeline: []
     }
   };
 
   const otherStaff = {};
 
-  for (const e of entries) {
-    const rawEmail = (e.created_by_email || '').toLowerCase().trim();
-    const rawName = (e.created_by_name || '').toLowerCase().trim();
-
-    let key = '';
-    if (rawEmail === 'sivasatheesan33@gmail.com' || rawName.includes('shiva') || rawName.includes('siva')) {
-      key = 'shiva';
-    } else if (rawEmail === 'brutf5354@gmail.com' || rawName.includes('brutt') || rawName.includes('brut')) {
-      key = 'brutt';
-    } else {
-      const otherKey = e.created_by_name || (e.created_by_email ? e.created_by_email.split('@')[0] : 'Staff');
-      if (!otherStaff[otherKey]) {
-        otherStaff[otherKey] = {
-          label: otherKey.toUpperCase(),
-          email: e.created_by_email || '',
-          total: 0,
-          confirmed: 0,
-          interested: 0,
-          followUp: 0,
-          callBack: 0,
-          noAnswer: 0,
-          switchedOff: 0,
-          noInterest: 0,
-          wrongNumber: 0,
-          other: 0,
-          unresolved: []
-        };
-      }
-      key = otherKey;
+  function getStaffRecord(key, email, name) {
+    if (staffRecords[key]) return staffRecords[key];
+    if (!otherStaff[key]) {
+      const label = (name || (email ? email.split('@')[0] : key)).toUpperCase();
+      otherStaff[key] = {
+        key,
+        label,
+        email: email || '',
+        total: 0,
+        confirmed: 0,
+        interested: 0,
+        followUp: 0,
+        callBack: 0,
+        noAnswer: 0,
+        switchedOff: 0,
+        noInterest: 0,
+        wrongNumber: 0,
+        other: 0,
+        unresolved: [],
+        completedFollowUps: [],
+        rescheduledFollowUps: [],
+        documents: [],
+        dueToday: [],
+        overdue: [],
+        timeline: []
+      };
     }
-
-    const rec = staffRecords[key] || otherStaff[key];
-    if (rec) {
-      rec.total++;
-      const st = e.call_status;
-      if (st === 'Appointment Confirmed') rec.confirmed++;
-      else if (st === 'Interested / Details Shared') rec.interested++;
-      else if (st === 'Follow-up Required') rec.followUp++;
-      else if (st === 'Call Back') rec.callBack++;
-      else if (st === 'No Answer / No Response') rec.noAnswer++;
-      else if (st === 'Not Reachable / Switched Off') rec.switchedOff++;
-      else if (st === 'No Interest') rec.noInterest++;
-      else if (st === 'Wrong / Invalid Number') rec.wrongNumber++;
-      else rec.other++;
-
-      if (isUnresolvedStatus(st)) {
-        rec.unresolved.push({
-          company: e.company_name || 'Contact',
-          phone: e.phone || '',
-          status: st,
-          remarks: (e.feedback || '').trim() || 'Pending follow-up'
-        });
-      }
-    }
+    return otherStaff[key];
   }
 
-  // If entries array is empty but telecallerActivity summary exists
+  // 1. Process Telecalling Entries
+  const entries = report.entries || [];
+  for (const e of entries) {
+    const key = resolveStaffKey(e.created_by_email, e.created_by_name);
+    const rec = getStaffRecord(key, e.created_by_email, e.created_by_name);
+
+    rec.total++;
+    const st = e.call_status;
+    if (st === 'Appointment Confirmed') rec.confirmed++;
+    else if (st === 'Interested / Details Shared') rec.interested++;
+    else if (st === 'Follow-up Required') rec.followUp++;
+    else if (st === 'Call Back') rec.callBack++;
+    else if (st === 'No Answer / No Response') rec.noAnswer++;
+    else if (st === 'Not Reachable / Switched Off') rec.switchedOff++;
+    else if (st === 'No Interest') rec.noInterest++;
+    else if (st === 'Wrong / Invalid Number') rec.wrongNumber++;
+    else rec.other++;
+
+    if (isUnresolvedStatus(st)) {
+      rec.unresolved.push({
+        company: e.company_name || 'Contact',
+        phone: e.phone || '',
+        status: st,
+        remarks: (e.feedback || '').trim() || 'Pending follow-up'
+      });
+    }
+
+    if (e.created_at) rec.timeline.push(e.created_at);
+  }
+
+  // Fallback if entries array is empty but telecallerActivity summary exists
   if (entries.length === 0 && report.telecallerActivity) {
     for (const [caller, count] of Object.entries(report.telecallerActivity)) {
-      const lower = caller.toLowerCase();
-      if (lower.includes('shiva') || lower.includes('siva')) {
-        staffRecords['shiva'].total = count;
-      } else if (lower.includes('brutt') || lower.includes('brut')) {
-        staffRecords['brutt'].total = count;
-      } else {
-        otherStaff[caller] = {
-          label: caller.toUpperCase(),
-          email: '',
-          total: count,
-          confirmed: 0, interested: 0, followUp: 0, callBack: 0,
-          noAnswer: 0, switchedOff: 0, noInterest: 0, wrongNumber: 0, other: 0,
-          unresolved: []
-        };
-      }
+      const key = resolveStaffKey(null, caller);
+      const rec = getStaffRecord(key, null, caller);
+      rec.total = count;
     }
   }
 
+  // 2. Process Completed Follow-ups
+  const completedList = report.completedFollowUpsList || [];
+  for (const c of completedList) {
+    const key = resolveStaffKey(c.assigned_staff_email, c.created_by_name);
+    const rec = getStaffRecord(key, c.assigned_staff_email, null);
+    rec.completedFollowUps.push(c);
+    if (c.completed_at || c.updated_at) {
+      rec.timeline.push(c.completed_at || c.updated_at);
+    }
+  }
+
+  // 3. Process Rescheduled / Snoozed Follow-ups
+  const rescheduledList = report.rescheduledFollowUpsList || [];
+  for (const r of rescheduledList) {
+    const key = resolveStaffKey(r.assigned_staff_email, r.created_by_name);
+    const rec = getStaffRecord(key, r.assigned_staff_email, null);
+    rec.rescheduledFollowUps.push(r);
+    if (r.updated_at) rec.timeline.push(r.updated_at);
+  }
+
+  // 4. Process Documents (Invoices, Quotations, Comparison Quotes, Work Orders)
+  const docList = report.documentsList || [];
+  for (const d of docList) {
+    const key = resolveStaffKey(d.created_by_email, d.created_by_name);
+    const rec = getStaffRecord(key, d.created_by_email, null);
+    rec.documents.push(d);
+    if (d.created_at || d.updated_at) rec.timeline.push(d.created_at || d.updated_at);
+  }
+
+  // 5. Process Due Today and Overdue Follow-ups
+  const dueTodayList = report.followUpsDueTodayList || [];
+  for (const u of dueTodayList) {
+    const key = resolveStaffKey(u.assigned_staff_email, null);
+    const rec = getStaffRecord(key, u.assigned_staff_email, null);
+    rec.dueToday.push(u);
+  }
+
+  const overdueList = report.overdueFollowUpsList || [];
+  for (const o of overdueList) {
+    const key = resolveStaffKey(o.assigned_staff_email, null);
+    const rec = getStaffRecord(key, o.assigned_staff_email, null);
+    rec.overdue.push(o);
+  }
+
+  return { staffRecords, otherStaff };
+}
+
+/**
+ * Builds the consolidated breakdown section embedded in the executive message.
+ */
+export function buildStaffDetailedBreakdown(report) {
+  const { staffRecords, otherStaff } = buildStaffRecordsMap(report);
   const allStaff = [...Object.values(staffRecords), ...Object.values(otherStaff)];
+
   const blocks = allStaff.map(s => {
     let b = `👤 *${s.label}* (${s.email || 'Staff'})\n` +
       `Total Calls: ${s.total}\n` +
@@ -262,12 +379,12 @@ export function buildStaffDetailedBreakdown(report) {
       `• No Interest: ${s.noInterest} | Wrong No: ${s.wrongNumber}`;
 
     if (s.unresolved.length > 0) {
-      b += `\n⚠️ *Pending Action (${s.unresolved.length}):*`;
-      s.unresolved.slice(0, 5).forEach((u, i) => {
-        b += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 40) : ''}`;
+      b += `\n⚠️ *Pending Telecalling (${s.unresolved.length}):*`;
+      s.unresolved.slice(0, 4).forEach((u, i) => {
+        b += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 35) : ''}`;
       });
-      if (s.unresolved.length > 5) {
-        b += `\n  ...and ${s.unresolved.length - 5} more pending`;
+      if (s.unresolved.length > 4) {
+        b += `\n  ...and ${s.unresolved.length - 4} more pending`;
       }
     } else if (s.total > 0) {
       b += `\n✓ All calls resolved / follow-ups addressed`;
@@ -275,40 +392,66 @@ export function buildStaffDetailedBreakdown(report) {
       b += `\n(No calls logged today)`;
     }
 
-    const staffDueToday = (report.followUpsDueTodayList || []).filter(item => {
-      const email = (item.assigned_staff_email || '').toLowerCase();
-      return (s.email && email.includes(s.email.toLowerCase())) ||
-             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
-    });
-    const staffOverdue = (report.overdueFollowUpsList || []).filter(item => {
-      const email = (item.assigned_staff_email || '').toLowerCase();
-      return (s.email && email.includes(s.email.toLowerCase())) ||
-             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
-    });
+    if (s.documents.length > 0) {
+      b += `\n📄 *Documents Generated (${s.documents.length}):*`;
+      s.documents.slice(0, 3).forEach((d, i) => {
+        const type = formatDocTypeLabel(d.document_type);
+        const num = d.document_number || 'Draft';
+        const amt = formatAmount(d.total);
+        b += `\n  ${i + 1}. ${type} #${num} (${d.customer_name || 'Client'}) - ${amt}`;
+      });
+      if (s.documents.length > 3) {
+        b += `\n  ...and ${s.documents.length - 3} more documents`;
+      }
+    }
 
-    if (staffDueToday.length > 0) {
-      b += `\n📅 *Follow-ups Due Today (${staffDueToday.length}):*`;
-      staffDueToday.slice(0, 4).forEach((u, i) => {
+    if (s.completedFollowUps.length > 0) {
+      b += `\n✅ *Follow-ups Completed Today (${s.completedFollowUps.length}):*`;
+      s.completedFollowUps.slice(0, 3).forEach((c, i) => {
+        const name = formatFollowUpClientLabel(c);
+        const outcome = c.completion_note ? `: ${c.completion_note.substring(0, 30)}` : '';
+        b += `\n  ${i + 1}. ${name}${outcome}`;
+      });
+      if (s.completedFollowUps.length > 3) {
+        b += `\n  ...and ${s.completedFollowUps.length - 3} more completed`;
+      }
+    }
+
+    if (s.rescheduledFollowUps.length > 0) {
+      b += `\n🔄 *Follow-ups Rescheduled / Snoozed (${s.rescheduledFollowUps.length}):*`;
+      s.rescheduledFollowUps.slice(0, 3).forEach((r, i) => {
+        const name = formatFollowUpClientLabel(r);
+        const due = (r.due_date || r.follow_up_date) ? ` ➔ ${formatDisplayDate(r.due_date || r.follow_up_date)}` : '';
+        b += `\n  ${i + 1}. ${name}${due}`;
+      });
+      if (s.rescheduledFollowUps.length > 3) {
+        b += `\n  ...and ${s.rescheduledFollowUps.length - 3} more rescheduled`;
+      }
+    }
+
+    if (s.dueToday.length > 0) {
+      b += `\n📅 *Follow-ups Due Today (${s.dueToday.length}):*`;
+      s.dueToday.slice(0, 4).forEach((u, i) => {
         const name = formatFollowUpClientLabel(u);
         const phone = u.phone ? ` (${u.phone})` : '';
         const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
         b += `\n  ${i + 1}. ${name}${phone}${reason}`;
       });
-      if (staffDueToday.length > 4) {
-        b += `\n  ...and ${staffDueToday.length - 4} more due today`;
+      if (s.dueToday.length > 4) {
+        b += `\n  ...and ${s.dueToday.length - 4} more due today`;
       }
     }
 
-    if (staffOverdue.length > 0) {
-      b += `\n⚠️ *previouse follow up not done =* ${staffOverdue.length}`;
-      staffOverdue.slice(0, 3).forEach(u => {
+    if (s.overdue.length > 0) {
+      b += `\n⚠️ *previouse follow up not done =* ${s.overdue.length}`;
+      s.overdue.slice(0, 3).forEach(u => {
         const name = formatFollowUpClientLabel(u);
         const phone = u.phone ? ` (${u.phone})` : '';
         const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
         b += `\n  • ${name}${phone}${reason}`;
       });
-      if (staffOverdue.length > 3) {
-        b += `\n  ...and ${staffOverdue.length - 3} more overdue`;
+      if (s.overdue.length > 3) {
+        b += `\n  ...and ${s.overdue.length - 3} more overdue`;
       }
     }
 
@@ -318,8 +461,127 @@ export function buildStaffDetailedBreakdown(report) {
   return blocks.join('\n\n');
 }
 
+/**
+ * Formats a STANDALONE, detailed performance report for a specific staff member.
+ * This is sent as its own independent WhatsApp message directly to the owner.
+ */
+export function formatStaffIndividualReport(staff, companyName, reportDate, isEveningUpdate = false) {
+  const headerCompany = (companyName || 'B2P INTERNATIONAL').toUpperCase();
+  const dateStr = formatDisplayDate(reportDate);
+  const tag = isEveningUpdate
+    ? '🌙 *EVENING STAFF REPORT (Post 6:30 PM Activity Update)*'
+    : '📋 *DAILY STAFF PERFORMANCE REPORT*';
+
+  let msg = `*${headerCompany}*\n${tag}\n\n` +
+    `👤 *Staff:* ${staff.label}\n` +
+    `📧 *Email:* ${staff.email || 'Staff Desk'}\n` +
+    `📅 *Date:* ${dateStr}\n`;
+
+  // 1. Working Time Window
+  if (staff.timeline && staff.timeline.length > 0) {
+    const validTimestamps = staff.timeline
+      .map(t => new Date(t).getTime())
+      .filter(t => !isNaN(t) && t > 0)
+      .sort((a, b) => a - b);
+
+    if (validTimestamps.length > 0) {
+      const first = formatISTTime(new Date(validTimestamps[0]));
+      const last = formatISTTime(new Date(validTimestamps[validTimestamps.length - 1]));
+      msg += `⏱️ *Active Window:* ${first} – ${last} IST\n`;
+    }
+  }
+
+  // 2. Telecalling Performance
+  msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📞 *TELECALLING CALLS (${staff.total}):*\n` +
+    `• Confirmed: ${staff.confirmed} | Interested: ${staff.interested} | Follow-up: ${staff.followUp}\n` +
+    `• Call Back: ${staff.callBack} | No Answer: ${staff.noAnswer} | Switched Off: ${staff.switchedOff}\n` +
+    `• No Interest: ${staff.noInterest} | Wrong Number: ${staff.wrongNumber}`;
+
+  if (staff.unresolved && staff.unresolved.length > 0) {
+    msg += `\n\n⚠️ *Pending Telecalling Actions (${staff.unresolved.length}):*`;
+    staff.unresolved.slice(0, 5).forEach((u, i) => {
+      msg += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 40) : ''}`;
+    });
+    if (staff.unresolved.length > 5) {
+      msg += `\n  ...and ${staff.unresolved.length - 5} more pending`;
+    }
+  } else if (staff.total > 0) {
+    msg += `\n✓ All telecalling calls resolved`;
+  } else {
+    msg += `\n(No direct telecalling dialer calls logged)`;
+  }
+
+  // 3. Documents / Invoices / Quotes Generated Today
+  const docs = staff.documents || [];
+  msg += `\n\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📄 *DOCUMENTS / QUOTES / INVOICES (${docs.length}):*\n`;
+  if (docs.length > 0) {
+    docs.forEach((d, i) => {
+      const typeLabel = formatDocTypeLabel(d.document_type);
+      const num = d.document_number || 'Draft';
+      const cust = d.customer_name || 'Client';
+      const amt = formatAmount(d.total);
+      const st = (d.approval_status || d.status || 'Active').toUpperCase();
+      msg += `  ${i + 1}. *${typeLabel} #${num}* — ${cust}\n` +
+        `     Amount: ${amt} | Status: ${st}\n`;
+      if (d.id) {
+        msg += `     🔗 https://b2pinternational.com/doc/${d.id}\n`;
+      }
+    });
+  } else {
+    msg += `(No documents generated today)\n`;
+  }
+
+  // 4. CRM Follow-ups Completed Today
+  const completed = staff.completedFollowUps || [];
+  msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `✅ *CRM FOLLOW-UPS COMPLETED (${completed.length}):*\n`;
+  if (completed.length > 0) {
+    completed.forEach((c, i) => {
+      const name = formatFollowUpClientLabel(c);
+      const phone = c.phone ? ` (${c.phone})` : '';
+      const timeStr = c.completed_at ? ` [${formatISTTime(c.completed_at)}]` : '';
+      const outcome = c.completion_note ? `\n     Outcome: ${c.completion_note.substring(0, 60)}` : '';
+      msg += `  ${i + 1}. *${name}*${phone}${timeStr}${outcome}\n`;
+    });
+  } else {
+    msg += `(No follow-ups marked completed today)\n`;
+  }
+
+  // 5. CRM Follow-ups Rescheduled / Snoozed Today
+  const rescheduled = staff.rescheduledFollowUps || [];
+  msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `🔄 *FOLLOW-UPS RESCHEDULED / SNOOZED (${rescheduled.length}):*\n`;
+  if (rescheduled.length > 0) {
+    rescheduled.forEach((r, i) => {
+      const name = formatFollowUpClientLabel(r);
+      const phone = r.phone ? ` (${r.phone})` : '';
+      const due = (r.due_date || r.follow_up_date)
+        ? ` ➔ Due: ${formatDisplayDate(r.due_date || r.follow_up_date)} ${r.due_time || ''}`
+        : '';
+      const note = r.notes || r.reason ? `\n     Note: ${(r.notes || r.reason).substring(0, 60)}` : '';
+      msg += `  ${i + 1}. *${name}*${phone}${due}${note}\n`;
+    });
+  } else {
+    msg += `(No follow-ups rescheduled today)\n`;
+  }
+
+  // 6. Remaining Pending & Overdue Tasks
+  const dueToday = staff.dueToday || [];
+  const overdue = staff.overdue || [];
+  if (dueToday.length > 0 || overdue.length > 0) {
+    msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+      `📅 *Pending Tasks Assigned:*\n` +
+      `• Due Today Remaining: ${dueToday.length} | Overdue: ${overdue.length}\n`;
+  }
+
+  msg += `\nGenerated from B2P ONE`;
+  return msg;
+}
+
 // Build executive WhatsApp report text
-export function formatDailyReportMessage(companyName, report) {
+export function formatDailyReportMessage(companyName, report, isNightSlot = false) {
   const headerCompany = (companyName || 'B2P INTERNATIONAL').toUpperCase();
   const dateStr = formatDisplayDate(report.date);
 
@@ -360,6 +622,18 @@ export function formatDailyReportMessage(companyName, report) {
     ? report.overdueFollowUpsCount
     : (report.overdueFollowUpsList?.length ?? 0);
 
+  const completedTodayCount = typeof report.completedFollowUpsCount === 'number'
+    ? report.completedFollowUpsCount
+    : (report.completedFollowUpsList?.length ?? 0);
+
+  const rescheduledTodayCount = typeof report.rescheduledFollowUpsCount === 'number'
+    ? report.rescheduledFollowUpsCount
+    : (report.rescheduledFollowUpsList?.length ?? 0);
+
+  const docsCount = typeof report.documentsCount === 'number'
+    ? report.documentsCount
+    : (report.documentsList?.length ?? 0);
+
   let followUpSection = `*Follow-ups Due Today:* ${dueTodayCount}`;
   if (report.followUpsDueTodayList && report.followUpsDueTodayList.length > 0) {
     report.followUpsDueTodayList.slice(0, 5).forEach((item, idx) => {
@@ -388,11 +662,18 @@ export function formatDailyReportMessage(companyName, report) {
     }
   }
 
+  const reportTitle = isNightSlot
+    ? `*TELECALLING & OPERATIONS NIGHT REPORT (Post 6:30 PM)*`
+    : `*TELECALLING DAILY REPORT*`;
+
   let message =
     `*${headerCompany}*\n` +
-    `*TELECALLING DAILY REPORT*\n\n` +
+    `${reportTitle}\n\n` +
     `Date: ${dateStr}\n\n` +
     `Total Calls: ${report.totalCalls || 0}\n` +
+    `Documents Generated: ${docsCount}\n` +
+    `Follow-ups Completed Today: ${completedTodayCount}\n` +
+    `Follow-ups Rescheduled / Snoozed: ${rescheduledTodayCount}\n` +
     `Unique Companies: ${report.uniqueCompanies || 0}\n` +
     `Unresolved Calls: ${unresolvedCount}\n\n` +
     `*Call Results:*\n` +
@@ -406,7 +687,8 @@ export function formatDailyReportMessage(companyName, report) {
     staffSection +
     `\n━━━━━━━━━━━━━━━━━━━━━\n\n` +
     followUpSection +
-    `\n\nGenerated from B2P ONE`;
+    `\n\n_Detailed individual reports for each staff account are dispatched separately below._\n` +
+    `Generated from B2P ONE`;
 
   return message;
 }
@@ -504,9 +786,11 @@ export default async function handler(req, res) {
     }
   }
 
-  // Target report date
+  // Target report date & slot ('day' = 6:30 PM IST, 'night' = 11:30 PM IST)
   const targetDate = req.body?.date || req.query.date || getKolkataDateString();
   const companyName = req.body?.company_name || 'B2P INTERNATIONAL';
+  const slot = req.query.slot || req.body?.slot || 'day';
+  const isNightSlot = slot === 'night';
 
   let reportData = req.body?.report_data;
 
@@ -517,39 +801,124 @@ export default async function handler(req, res) {
     let overdueCount = snap?.overdueFollowUpsCount ?? 0;
     let dueTodayList = snap?.followUpsDueTodayList || [];
     let overdueList = snap?.overdueFollowUpsList || [];
+    let completedFollowUpsList = [];
+    let rescheduledFollowUpsList = [];
+    let documentsList = [];
 
-    // Also attempt querying Supabase follow_ups table
+    // 1. Query Supabase follow_ups table (all records)
     try {
-      const cloudFollowUps = await supabaseRest(`follow_ups?select=*&status=not.in.(completed,cancelled)`) || [];
+      const cloudFollowUps = await supabaseRest(`follow_ups?select=*&order=updated_at.desc`) || [];
       if (Array.isArray(cloudFollowUps) && cloudFollowUps.length > 0) {
-        const tItems = [];
-        const oItems = [];
+        const tDue = [];
+        const tOverdue = [];
+        const tCompleted = [];
+        const tRescheduled = [];
+
         for (const f of cloudFollowUps) {
           const fDate = f.follow_up_date || f.due_date;
+          const completedAt = f.completed_at;
+          const updatedAt = f.updated_at;
+          const createdAt = f.created_at;
+
           const item = {
             id: f.id,
             customer_name: f.customer_name,
             company_name: f.company_name,
             phone: f.phone,
             reason: f.reason || f.notes,
+            completion_note: f.completion_note || f.remarks,
             assigned_staff_email: f.assigned_staff_email,
             due_date: fDate,
-            due_time: f.follow_up_time || f.due_time
+            due_time: f.follow_up_time || f.due_time,
+            status: f.status,
+            completed_at: completedAt,
+            updated_at: updatedAt,
+            created_at: createdAt
           };
-          if (fDate === targetDate) tItems.push(item);
-          else if (fDate && fDate < targetDate) oItems.push(item);
+
+          if (f.status === 'completed') {
+            const compDate = completedAt ? getKolkataDateString(new Date(completedAt)) : (updatedAt ? getKolkataDateString(new Date(updatedAt)) : null);
+            if (compDate === targetDate) {
+              tCompleted.push(item);
+            }
+          } else if (f.status !== 'cancelled') {
+            const upDate = updatedAt ? getKolkataDateString(new Date(updatedAt)) : null;
+            if (upDate === targetDate && fDate && fDate > targetDate) {
+              tRescheduled.push(item);
+            }
+
+            if (fDate === targetDate) {
+              tDue.push(item);
+            } else if (fDate && fDate < targetDate) {
+              tOverdue.push(item);
+            }
+          }
         }
-        if (tItems.length > 0) {
-          dueTodayCount = tItems.length;
-          dueTodayList = tItems;
+
+        completedFollowUpsList = tCompleted;
+        rescheduledFollowUpsList = tRescheduled;
+        if (tDue.length > 0) {
+          dueTodayCount = tDue.length;
+          dueTodayList = tDue;
         }
-        if (oItems.length > 0) {
-          overdueCount = oItems.length;
-          overdueList = oItems;
+        if (tOverdue.length > 0) {
+          overdueCount = tOverdue.length;
+          overdueList = tOverdue;
         }
       }
     } catch (crmErr) {
       console.warn('[Daily Report API] Error querying cloud follow_ups:', crmErr);
+    }
+
+    // 2. Query documents table for documents created today
+    try {
+      const docs = await supabaseRest(`documents?select=*&order=created_at.desc`) || [];
+      if (Array.isArray(docs)) {
+        for (const d of docs) {
+          const docDate = d.created_at ? getKolkataDateString(new Date(d.created_at)) : (d.date ? d.date.slice(0, 10) : null);
+          if (docDate === targetDate) {
+            documentsList.push({
+              id: d.id,
+              document_type: d.document_type || d.type || 'Document',
+              document_number: d.document_number || d.number,
+              customer_name: d.customer_name || d.client_name,
+              total: d.total || d.grand_total || d.amount || 0,
+              approval_status: d.approval_status || d.status || 'Active',
+              created_by_email: d.created_by_email || d.user_email || d.staff_email,
+              created_by_name: d.created_by_name || d.user_name || d.created_by,
+              created_at: d.created_at
+            });
+          }
+        }
+      }
+    } catch (docErr) {
+      console.warn('[Daily Report API] Error querying documents:', docErr);
+    }
+
+    // 3. Query crm_quotations table for quotes created today
+    try {
+      const quotes = await supabaseRest(`crm_quotations?select=*&order=created_at.desc`) || [];
+      if (Array.isArray(quotes)) {
+        const existingIds = new Set(documentsList.map(d => d.id));
+        for (const q of quotes) {
+          const qDate = q.created_at ? getKolkataDateString(new Date(q.created_at)) : null;
+          if (qDate === targetDate && !existingIds.has(q.id)) {
+            documentsList.push({
+              id: q.id,
+              document_type: 'quotation',
+              document_number: q.quotation_number || q.number,
+              customer_name: q.customer_name || q.client_name,
+              total: q.total_amount || q.total || 0,
+              approval_status: q.status || 'Active',
+              created_by_email: q.created_by_email || q.user_email || q.staff_email,
+              created_by_name: q.created_by_name || q.user_name || q.created_by,
+              created_at: q.created_at
+            });
+          }
+        }
+      }
+    } catch (qErr) {
+      console.warn('[Daily Report API] Error querying crm_quotations:', qErr);
     }
 
     try {
@@ -606,6 +975,12 @@ export default async function handler(req, res) {
         overdueFollowUpsCount: overdueCount,
         followUpsDueTodayList: dueTodayList,
         overdueFollowUpsList: overdueList,
+        completedFollowUpsCount: completedFollowUpsList.length,
+        completedFollowUpsList,
+        rescheduledFollowUpsCount: rescheduledFollowUpsList.length,
+        rescheduledFollowUpsList,
+        documentsCount: documentsList.length,
+        documentsList,
         unresolvedCallsCount: unresolvedEntries.length,
         unresolvedEntries,
         entries
@@ -623,6 +998,12 @@ export default async function handler(req, res) {
         overdueFollowUpsCount: overdueCount,
         followUpsDueTodayList: dueTodayList,
         overdueFollowUpsList: overdueList,
+        completedFollowUpsCount: completedFollowUpsList.length,
+        completedFollowUpsList,
+        rescheduledFollowUpsCount: rescheduledFollowUpsList.length,
+        rescheduledFollowUpsList,
+        documentsCount: documentsList.length,
+        documentsList,
         unresolvedCallsCount: 0
       };
     }
@@ -637,88 +1018,175 @@ export default async function handler(req, res) {
     }
   }
 
-  // Format message
-  const reportMessage = formatDailyReportMessage(companyName, reportData);
+  // Night slot check: If slot is 'night', only send if activity occurred after 6:30 PM IST (13:00 UTC)
+  if (isNightSlot) {
+    const eveningCutoff = new Date(`${targetDate}T13:00:00.000Z`).getTime();
+    let post630Activity = 0;
+
+    if (Array.isArray(reportData.entries)) {
+      for (const e of reportData.entries) {
+        if (e.created_at && new Date(e.created_at).getTime() >= eveningCutoff) {
+          post630Activity++;
+        }
+      }
+    }
+    if (Array.isArray(reportData.documentsList)) {
+      for (const d of reportData.documentsList) {
+        if (d.created_at && new Date(d.created_at).getTime() >= eveningCutoff) {
+          post630Activity++;
+        }
+      }
+    }
+    if (Array.isArray(reportData.completedFollowUpsList)) {
+      for (const c of reportData.completedFollowUpsList) {
+        const time = c.completed_at || c.updated_at;
+        if (time && new Date(time).getTime() >= eveningCutoff) {
+          post630Activity++;
+        }
+      }
+    }
+    if (Array.isArray(reportData.rescheduledFollowUpsList)) {
+      for (const r of reportData.rescheduledFollowUpsList) {
+        if (r.updated_at && new Date(r.updated_at).getTime() >= eveningCutoff) {
+          post630Activity++;
+        }
+      }
+    }
+
+    if (post630Activity === 0) {
+      console.log(`[Daily Report API] Night slot skipped for ${targetDate}: No activity logged after 6:30 PM IST.`);
+      return res.status(200).json({
+        success: true,
+        skipped: true,
+        slot: 'night',
+        date: targetDate,
+        message: 'No activity logged after 6:30 PM IST (13:00 UTC). Evening report skipped.'
+      });
+    }
+  }
+
+  // 1. Executive consolidated report message
+  const executiveMessage = formatDailyReportMessage(companyName, reportData, isNightSlot);
+  const messagesToSend = [
+    { type: 'executive', staff: 'Executive Summary', text: executiveMessage }
+  ];
+
+  // 2. Individual staff performance reports (sent separately)
+  const { staffRecords, otherStaff } = buildStaffRecordsMap(reportData);
+  const allStaff = [...Object.values(staffRecords), ...Object.values(otherStaff)];
+
+  for (const s of allStaff) {
+    const hasActivity = s.total > 0 ||
+      (s.documents && s.documents.length > 0) ||
+      (s.completedFollowUps && s.completedFollowUps.length > 0) ||
+      (s.rescheduledFollowUps && s.rescheduledFollowUps.length > 0) ||
+      (s.unresolved && s.unresolved.length > 0);
+
+    // Send individual report if user has activity, or for primary staff accounts (Shiva, Brutt)
+    if (s.email === 'sivasatheesan33@gmail.com' || s.email === 'brutf5354@gmail.com' || hasActivity) {
+      const indText = formatStaffIndividualReport(s, companyName, targetDate, isNightSlot);
+      messagesToSend.push({
+        type: 'individual',
+        staff: s.label,
+        email: s.email,
+        text: indText
+      });
+    }
+  }
 
   // Dispatch via Bizylead WhatsApp API
   const bizyleadApiKey = process.env.BIZYLEAD_API_KEY || 'c6a02de1ededcd12342b6302ec4b052f76eb83f273994a4606fa070333a0a1ce';
   const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || '992427143955673';
   const bizyleadBaseUrl = process.env.BIZYLEAD_BASE_URL || 'https://app.bizylead.com/api/v2/whatsapp-business';
+  const bizyUrl = `${bizyleadBaseUrl.replace(/\/$/, '')}/messages`;
 
-  const bizyPayload = {
-    to: cleanPhone,
-    phoneNoId: bizyleadPhoneId,
-    type: 'text',
-    text: reportMessage
-  };
+  const sentResults = [];
 
   try {
-    const bizyUrl = `${bizyleadBaseUrl.replace(/\/$/, '')}/messages`;
-    const response = await httpsRequest(bizyUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${bizyleadApiKey}`,
-        'Content-Type': 'application/json'
+    for (let i = 0; i < messagesToSend.length; i++) {
+      const item = messagesToSend[i];
+      if (i > 0) {
+        // 1.2s delay between messages for delivery sequencing and rate limit safety
+        await new Promise(resolve => setTimeout(resolve, 1200));
       }
-    }, JSON.stringify(bizyPayload));
 
-    const resData = response.json();
+      const bizyPayload = {
+        to: cleanPhone,
+        phoneNoId: bizyleadPhoneId,
+        type: 'text',
+        text: item.text
+      };
 
-    if (!response.ok) {
-      console.error('[Daily Report API] Bizylead API error:', resData);
-      return res.status(response.status || 500).json({
-        success: false,
-        error: resData?.error?.message || resData?.message || 'Bizylead API error',
-        details: resData
-      });
-    }
+      const response = await httpsRequest(bizyUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${bizyleadApiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }, JSON.stringify(bizyPayload));
 
-    const waMsgId = resData?.messageId || resData?.messages?.[0]?.id || `bizy_report_${Date.now()}`;
-
-    // Record outbound message in Supabase whatsapp_conversations and whatsapp_messages
-    try {
-      let convs = await supabaseRest(`whatsapp_conversations?phone=eq.${cleanPhone}&select=id`);
-      let convId = convs?.[0]?.id;
-
-      if (!convId) {
-        const newConv = await supabaseRest('whatsapp_conversations', 'POST', {
-          customer_name: 'Company Owner (Reports)',
-          phone: cleanPhone,
-          last_message: reportMessage.substring(0, 200),
-          last_message_at: new Date().toISOString(),
-          unread_count: 0,
-          status: 'open'
-        });
-        convId = newConv?.[0]?.id;
+      const resData = response.json();
+      if (!response.ok) {
+        console.error(`[Daily Report API] Bizylead API error on ${item.type} (${item.staff}):`, resData);
       } else {
-        await supabaseRest(`whatsapp_conversations?id=eq.${convId}`, 'PATCH', {
-          last_message: reportMessage.substring(0, 200),
-          last_message_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+        const waMsgId = resData?.messageId || resData?.messages?.[0]?.id || `bizy_report_${Date.now()}_${i}`;
+        sentResults.push({
+          type: item.type,
+          staff: item.staff,
+          messageId: waMsgId
         });
-      }
 
-      if (convId) {
-        await supabaseRest('whatsapp_messages', 'POST', {
-          conversation_id: convId,
-          wa_message_id: waMsgId,
-          sender_type: 'system',
-          sender_name: 'B2P Automated Reporting',
-          message_type: 'text',
-          text: reportMessage,
-          status: 'sent'
-        });
+        // Record in whatsapp inbox if possible
+        try {
+          let convs = await supabaseRest(`whatsapp_conversations?phone=eq.${cleanPhone}&select=id`);
+          let convId = convs?.[0]?.id;
+
+          if (!convId) {
+            const newConv = await supabaseRest('whatsapp_conversations', 'POST', {
+              customer_name: 'Company Owner (Reports)',
+              phone: cleanPhone,
+              last_message: item.text.substring(0, 200),
+              last_message_at: new Date().toISOString(),
+              unread_count: 0,
+              status: 'open'
+            });
+            convId = newConv?.[0]?.id;
+          } else {
+            await supabaseRest(`whatsapp_conversations?id=eq.${convId}`, 'PATCH', {
+              last_message: item.text.substring(0, 200),
+              last_message_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          }
+
+          if (convId) {
+            await supabaseRest('whatsapp_messages', 'POST', {
+              conversation_id: convId,
+              wa_message_id: waMsgId,
+              sender_type: 'system',
+              sender_name: 'B2P Automated Reporting',
+              message_type: 'text',
+              text: item.text,
+              status: 'sent'
+            });
+          }
+        } catch (convErr) {
+          console.warn('[Daily Report API] Non-fatal error recording message to whatsapp inbox:', convErr);
+        }
       }
-    } catch (convErr) {
-      console.warn('[Daily Report API] Non-fatal error recording to whatsapp inbox:', convErr);
     }
 
     return res.status(200).json({
       success: true,
-      messageId: waMsgId,
+      slot,
       recipient: cleanPhone,
       date: targetDate,
       totalCalls: reportData.totalCalls,
+      documentsCount: reportData.documentsCount || 0,
+      completedFollowUpsCount: reportData.completedFollowUpsCount || 0,
+      rescheduledFollowUpsCount: reportData.rescheduledFollowUpsCount || 0,
+      sentMessagesCount: sentResults.length,
+      sentResults,
       provider: 'bizylead'
     });
   } catch (err) {

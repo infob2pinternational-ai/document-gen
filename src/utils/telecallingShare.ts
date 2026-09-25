@@ -134,28 +134,80 @@ export function formatFollowUpClientLabel(item?: { customer_name?: string; compa
   return cust || comp || 'Client';
 }
 
-/**
- * Builds the detailed breakdown for staff members, specifically
- * highlighting Shiva (sivasatheesan33@gmail.com) and Brutt (brutf5354@gmail.com).
- */
-export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData): string {
-  const entries = report.entries || [];
+export function formatISTTime(date: any): string {
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(d);
+  } catch {
+    return '';
+  }
+}
 
-  const staffRecords: Record<string, {
-    label: string;
-    email: string;
-    total: number;
-    confirmed: number;
-    interested: number;
-    followUp: number;
-    callBack: number;
-    noAnswer: number;
-    switchedOff: number;
-    noInterest: number;
-    wrongNumber: number;
-    other: number;
-    unresolved: Array<{ company: string; phone: string; status: string; remarks: string }>;
-  }> = {
+export function formatDocTypeLabel(type?: string): string {
+  switch (type) {
+    case 'invoice': return 'Tax Invoice';
+    case 'proforma_invoice': return 'Proforma Invoice';
+    case 'quotation': return 'Quotation';
+    case 'work_order': return 'Work Order';
+    case 'non_tax_invoice': return 'Non-Tax Invoice';
+    case 'comparison_quotation': return 'Comparison Quote';
+    case 'comparison_invoice': return 'Comparison Invoice';
+    default: return type ? (type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')) : 'Document';
+  }
+}
+
+export function formatAmount(amount: any): string {
+  const num = typeof amount === 'number' ? amount : parseFloat(amount);
+  if (isNaN(num)) return '₹0';
+  return '₹' + num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+export function resolveStaffKey(email?: string | null, name?: string | null): string {
+  const rawEmail = (email || '').toLowerCase().trim();
+  const rawName = (name || '').toLowerCase().trim();
+
+  if (rawEmail === 'sivasatheesan33@gmail.com' || rawName.includes('shiva') || rawName.includes('siva')) {
+    return 'shiva';
+  }
+  if (rawEmail === 'brutf5354@gmail.com' || rawName.includes('brutt') || rawName.includes('brut')) {
+    return 'brutt';
+  }
+  return email ? email.split('@')[0].toLowerCase() : (name || 'staff').toLowerCase();
+}
+
+export interface StaffRecord {
+  label: string;
+  email: string;
+  total: number;
+  confirmed: number;
+  interested: number;
+  followUp: number;
+  callBack: number;
+  noAnswer: number;
+  switchedOff: number;
+  noInterest: number;
+  wrongNumber: number;
+  other: number;
+  timeline: string[];
+  unresolved: Array<{ company: string; phone: string; status: string; remarks: string }>;
+  documents: any[];
+  completedFollowUps: any[];
+  rescheduledFollowUps: any[];
+  dueToday: any[];
+  overdue: any[];
+}
+
+export function buildStaffRecordsMap(report: TelecallingDailyReportData): {
+  staffRecords: Record<string, StaffRecord>;
+  otherStaff: Record<string, StaffRecord>;
+} {
+  const staffRecords: Record<string, StaffRecord> = {
     'shiva': {
       label: 'SHIVA (Sivasatheesan)',
       email: 'sivasatheesan33@gmail.com',
@@ -169,7 +221,13 @@ export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData):
       noInterest: 0,
       wrongNumber: 0,
       other: 0,
-      unresolved: []
+      timeline: [],
+      unresolved: [],
+      documents: [],
+      completedFollowUps: [],
+      rescheduledFollowUps: [],
+      dueToday: [],
+      overdue: []
     },
     'brutt': {
       label: 'BRUTT (Brutf5354)',
@@ -184,90 +242,140 @@ export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData):
       noInterest: 0,
       wrongNumber: 0,
       other: 0,
-      unresolved: []
+      timeline: [],
+      unresolved: [],
+      documents: [],
+      completedFollowUps: [],
+      rescheduledFollowUps: [],
+      dueToday: [],
+      overdue: []
     }
   };
 
-  const otherStaff: Record<string, typeof staffRecords['shiva']> = {};
+  const otherStaff: Record<string, StaffRecord> = {};
 
-  for (const e of entries) {
-    const rawEmail = (e.created_by_email || '').toLowerCase().trim();
-    const rawName = (e.created_by_name || '').toLowerCase().trim();
-
-    let key = '';
-    if (rawEmail === 'sivasatheesan33@gmail.com' || rawName.includes('shiva') || rawName.includes('siva')) {
-      key = 'shiva';
-    } else if (rawEmail === 'brutf5354@gmail.com' || rawName.includes('brutt') || rawName.includes('brut')) {
-      key = 'brutt';
-    } else {
-      const otherKey = e.created_by_name || (e.created_by_email ? e.created_by_email.split('@')[0] : 'Staff');
-      if (!otherStaff[otherKey]) {
-        otherStaff[otherKey] = {
-          label: otherKey.toUpperCase(),
-          email: e.created_by_email || '',
-          total: 0,
-          confirmed: 0,
-          interested: 0,
-          followUp: 0,
-          callBack: 0,
-          noAnswer: 0,
-          switchedOff: 0,
-          noInterest: 0,
-          wrongNumber: 0,
-          other: 0,
-          unresolved: []
-        };
-      }
-      key = otherKey;
+  const getStaffRecord = (key: string, email?: string | null, name?: string | null): StaffRecord => {
+    if (staffRecords[key]) return staffRecords[key];
+    if (!otherStaff[key]) {
+      const display = name || (email ? email.split('@')[0] : 'Staff');
+      otherStaff[key] = {
+        label: display.toUpperCase(),
+        email: email || '',
+        total: 0,
+        confirmed: 0,
+        interested: 0,
+        followUp: 0,
+        callBack: 0,
+        noAnswer: 0,
+        switchedOff: 0,
+        noInterest: 0,
+        wrongNumber: 0,
+        other: 0,
+        timeline: [],
+        unresolved: [],
+        documents: [],
+        completedFollowUps: [],
+        rescheduledFollowUps: [],
+        dueToday: [],
+        overdue: []
+      };
     }
+    return otherStaff[key];
+  };
 
-    const rec = staffRecords[key] || otherStaff[key];
-    if (rec) {
-      rec.total++;
-      const st = e.call_status;
-      if (st === 'Appointment Confirmed') rec.confirmed++;
-      else if (st === 'Interested / Details Shared') rec.interested++;
-      else if (st === 'Follow-up Required') rec.followUp++;
-      else if (st === 'Call Back') rec.callBack++;
-      else if (st === 'No Answer / No Response') rec.noAnswer++;
-      else if (st === 'Not Reachable / Switched Off') rec.switchedOff++;
-      else if (st === 'No Interest') rec.noInterest++;
-      else if (st === 'Wrong / Invalid Number') rec.wrongNumber++;
-      else rec.other++;
+  // 1. Telecalling entries
+  const entries = report.entries || [];
+  for (const e of entries) {
+    const key = resolveStaffKey(e.created_by_email, e.created_by_name);
+    const rec = getStaffRecord(key, e.created_by_email, e.created_by_name);
 
-      if (isUnresolvedStatus(st)) {
-        rec.unresolved.push({
-          company: e.company_name || 'Contact',
-          phone: e.phone || '',
-          status: st,
-          remarks: (e.feedback || '').trim() || 'Pending follow-up'
-        });
-      }
+    rec.total++;
+    const st = e.call_status;
+    if (st === 'Appointment Confirmed') rec.confirmed++;
+    else if (st === 'Interested / Details Shared') rec.interested++;
+    else if (st === 'Follow-up Required') rec.followUp++;
+    else if (st === 'Call Back') rec.callBack++;
+    else if (st === 'No Answer / No Response') rec.noAnswer++;
+    else if (st === 'Not Reachable / Switched Off') rec.switchedOff++;
+    else if (st === 'No Interest') rec.noInterest++;
+    else if (st === 'Wrong / Invalid Number') rec.wrongNumber++;
+    else rec.other++;
+
+    if (e.created_at) rec.timeline.push(e.created_at);
+
+    if (isUnresolvedStatus(st)) {
+      rec.unresolved.push({
+        company: e.company_name || 'Contact',
+        phone: e.phone || '',
+        status: st,
+        remarks: (e.feedback || '').trim() || 'Pending follow-up'
+      });
     }
   }
 
-  // If entries are not populated but telecallerActivity summary exists
+  // Telecaller summary fallback if entries array was empty
   if (entries.length === 0 && report.telecallerActivity) {
     for (const [caller, count] of Object.entries(report.telecallerActivity)) {
-      const lower = caller.toLowerCase();
-      if (lower.includes('shiva') || lower.includes('siva')) {
-        staffRecords['shiva'].total = count;
-      } else if (lower.includes('brutt') || lower.includes('brut')) {
-        staffRecords['brutt'].total = count;
-      } else {
-        otherStaff[caller] = {
-          label: caller.toUpperCase(),
-          email: '',
-          total: count,
-          confirmed: 0, interested: 0, followUp: 0, callBack: 0,
-          noAnswer: 0, switchedOff: 0, noInterest: 0, wrongNumber: 0, other: 0,
-          unresolved: []
-        };
-      }
+      const key = resolveStaffKey(undefined, caller);
+      const rec = getStaffRecord(key, undefined, caller);
+      rec.total = count;
     }
   }
 
+  // 2. Documents
+  const docsList = report.documentsList || [];
+  for (const doc of docsList) {
+    const key = resolveStaffKey(doc.created_by_email, doc.created_by_name);
+    const rec = getStaffRecord(key, doc.created_by_email, doc.created_by_name);
+    rec.documents.push(doc);
+    if (doc.created_at) rec.timeline.push(doc.created_at);
+  }
+
+  // 3. Completed follow-ups
+  const completedList = report.completedFollowUpsList || [];
+  for (const c of completedList) {
+    const key = resolveStaffKey(c.assigned_staff_email, null);
+    const rec = getStaffRecord(key, c.assigned_staff_email, null);
+    rec.completedFollowUps.push(c);
+    const ts = c.completed_at || c.updated_at;
+    if (ts) rec.timeline.push(ts);
+  }
+
+  // 4. Rescheduled follow-ups
+  const rescheduledList = report.rescheduledFollowUpsList || [];
+  for (const r of rescheduledList) {
+    const key = resolveStaffKey(r.assigned_staff_email, null);
+    const rec = getStaffRecord(key, r.assigned_staff_email, null);
+    rec.rescheduledFollowUps.push(r);
+    const ts = r.updated_at;
+    if (ts) rec.timeline.push(ts);
+  }
+
+  // 5. Due today & overdue follow-ups
+  const dueTodayList = report.followUpsDueTodayList || [];
+  for (const u of dueTodayList) {
+    const key = resolveStaffKey(u.assigned_staff_email, null);
+    const rec = getStaffRecord(key, u.assigned_staff_email, null);
+    rec.dueToday.push(u);
+  }
+
+  const overdueList = report.overdueFollowUpsList || [];
+  for (const o of overdueList) {
+    const key = resolveStaffKey(o.assigned_staff_email, null);
+    const rec = getStaffRecord(key, o.assigned_staff_email, null);
+    rec.overdue.push(o);
+  }
+
+  return { staffRecords, otherStaff };
+}
+
+/**
+ * Builds the consolidated breakdown section embedded in the executive message.
+ */
+export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData): string {
+  const { staffRecords, otherStaff } = buildStaffRecordsMap(report);
   const allStaff = [...Object.values(staffRecords), ...Object.values(otherStaff)];
+
   const blocks = allStaff.map(s => {
     let b = `👤 *${s.label}* (${s.email || 'Staff'})\n` +
       `Total Calls: ${s.total}\n` +
@@ -276,12 +384,12 @@ export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData):
       `• No Interest: ${s.noInterest} | Wrong No: ${s.wrongNumber}`;
 
     if (s.unresolved.length > 0) {
-      b += `\n⚠️ *Pending Action (${s.unresolved.length}):*`;
-      s.unresolved.slice(0, 5).forEach((u, i) => {
-        b += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 40) : ''}`;
+      b += `\n⚠️ *Pending Telecalling (${s.unresolved.length}):*`;
+      s.unresolved.slice(0, 4).forEach((u, i) => {
+        b += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 35) : ''}`;
       });
-      if (s.unresolved.length > 5) {
-        b += `\n  ...and ${s.unresolved.length - 5} more pending`;
+      if (s.unresolved.length > 4) {
+        b += `\n  ...and ${s.unresolved.length - 4} more pending`;
       }
     } else if (s.total > 0) {
       b += `\n✓ All calls resolved / follow-ups addressed`;
@@ -289,40 +397,66 @@ export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData):
       b += `\n(No calls logged today)`;
     }
 
-    const staffDueToday = (report.followUpsDueTodayList || []).filter(item => {
-      const email = (item.assigned_staff_email || '').toLowerCase();
-      return (s.email && email.includes(s.email.toLowerCase())) ||
-             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
-    });
-    const staffOverdue = (report.overdueFollowUpsList || []).filter(item => {
-      const email = (item.assigned_staff_email || '').toLowerCase();
-      return (s.email && email.includes(s.email.toLowerCase())) ||
-             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
-    });
+    if (s.documents.length > 0) {
+      b += `\n📄 *Documents Generated (${s.documents.length}):*`;
+      s.documents.slice(0, 3).forEach((d, i) => {
+        const type = formatDocTypeLabel(d.document_type);
+        const num = d.document_number || 'Draft';
+        const amt = formatAmount(d.total);
+        b += `\n  ${i + 1}. ${type} #${num} (${d.customer_name || 'Client'}) - ${amt}`;
+      });
+      if (s.documents.length > 3) {
+        b += `\n  ...and ${s.documents.length - 3} more documents`;
+      }
+    }
 
-    if (staffDueToday.length > 0) {
-      b += `\n📅 *Follow-ups Due Today (${staffDueToday.length}):*`;
-      staffDueToday.slice(0, 4).forEach((u, i) => {
+    if (s.completedFollowUps.length > 0) {
+      b += `\n✅ *Follow-ups Completed Today (${s.completedFollowUps.length}):*`;
+      s.completedFollowUps.slice(0, 3).forEach((c, i) => {
+        const name = formatFollowUpClientLabel(c);
+        const outcome = c.completion_note ? `: ${c.completion_note.substring(0, 30)}` : '';
+        b += `\n  ${i + 1}. ${name}${outcome}`;
+      });
+      if (s.completedFollowUps.length > 3) {
+        b += `\n  ...and ${s.completedFollowUps.length - 3} more completed`;
+      }
+    }
+
+    if (s.rescheduledFollowUps.length > 0) {
+      b += `\n🔄 *Follow-ups Rescheduled / Snoozed (${s.rescheduledFollowUps.length}):*`;
+      s.rescheduledFollowUps.slice(0, 3).forEach((r, i) => {
+        const name = formatFollowUpClientLabel(r);
+        const due = (r.due_date || r.follow_up_date) ? ` ➔ ${formatKolkataDisplayDate(r.due_date || r.follow_up_date)}` : '';
+        b += `\n  ${i + 1}. ${name}${due}`;
+      });
+      if (s.rescheduledFollowUps.length > 3) {
+        b += `\n  ...and ${s.rescheduledFollowUps.length - 3} more rescheduled`;
+      }
+    }
+
+    if (s.dueToday.length > 0) {
+      b += `\n📅 *Follow-ups Due Today (${s.dueToday.length}):*`;
+      s.dueToday.slice(0, 4).forEach((u, i) => {
         const name = formatFollowUpClientLabel(u);
         const phone = u.phone ? ` (${u.phone})` : '';
         const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
         b += `\n  ${i + 1}. ${name}${phone}${reason}`;
       });
-      if (staffDueToday.length > 4) {
-        b += `\n  ...and ${staffDueToday.length - 4} more due today`;
+      if (s.dueToday.length > 4) {
+        b += `\n  ...and ${s.dueToday.length - 4} more due today`;
       }
     }
 
-    if (staffOverdue.length > 0) {
-      b += `\n⚠️ *previouse follow up not done =* ${staffOverdue.length}`;
-      staffOverdue.slice(0, 3).forEach(u => {
+    if (s.overdue.length > 0) {
+      b += `\n⚠️ *previouse follow up not done =* ${s.overdue.length}`;
+      s.overdue.slice(0, 3).forEach(u => {
         const name = formatFollowUpClientLabel(u);
         const phone = u.phone ? ` (${u.phone})` : '';
         const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
         b += `\n  • ${name}${phone}${reason}`;
       });
-      if (staffOverdue.length > 3) {
-        b += `\n  ...and ${staffOverdue.length - 3} more overdue`;
+      if (s.overdue.length > 3) {
+        b += `\n  ...and ${s.overdue.length - 3} more overdue`;
       }
     }
 
@@ -333,11 +467,135 @@ export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData):
 }
 
 /**
+ * Formats a standalone individual performance report for a staff member.
+ */
+export function formatStaffIndividualReport(
+  staff: StaffRecord,
+  companyName?: string,
+  reportDate?: string,
+  isEveningUpdate: boolean = false
+): string {
+  const headerCompany = (companyName || 'B2P INTERNATIONAL').toUpperCase();
+  const dateStr = formatKolkataDisplayDate(reportDate || '');
+  const tag = isEveningUpdate
+    ? '🌙 *EVENING STAFF REPORT (Post 6:30 PM Activity Update)*'
+    : '📋 *DAILY STAFF PERFORMANCE REPORT*';
+
+  let msg = `*${headerCompany}*\n${tag}\n\n` +
+    `👤 *Staff:* ${staff.label}\n` +
+    `📧 *Email:* ${staff.email || 'Staff Desk'}\n` +
+    `📅 *Date:* ${dateStr}\n`;
+
+  // 1. Working Time Window
+  if (staff.timeline && staff.timeline.length > 0) {
+    const validTimestamps = staff.timeline
+      .map(t => new Date(t).getTime())
+      .filter(t => !isNaN(t) && t > 0)
+      .sort((a, b) => a - b);
+
+    if (validTimestamps.length > 0) {
+      const first = formatISTTime(new Date(validTimestamps[0]));
+      const last = formatISTTime(new Date(validTimestamps[validTimestamps.length - 1]));
+      msg += `⏱️ *Active Window:* ${first} – ${last} IST\n`;
+    }
+  }
+
+  // 2. Telecalling Performance
+  msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📞 *TELECALLING CALLS (${staff.total}):*\n` +
+    `• Confirmed: ${staff.confirmed} | Interested: ${staff.interested} | Follow-up: ${staff.followUp}\n` +
+    `• Call Back: ${staff.callBack} | No Answer: ${staff.noAnswer} | Switched Off: ${staff.switchedOff}\n` +
+    `• No Interest: ${staff.noInterest} | Wrong Number: ${staff.wrongNumber}`;
+
+  if (staff.unresolved && staff.unresolved.length > 0) {
+    msg += `\n\n⚠️ *Pending Telecalling Actions (${staff.unresolved.length}):*`;
+    staff.unresolved.slice(0, 5).forEach((u, i) => {
+      msg += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 40) : ''}`;
+    });
+    if (staff.unresolved.length > 5) {
+      msg += `\n  ...and ${staff.unresolved.length - 5} more pending`;
+    }
+  } else if (staff.total > 0) {
+    msg += `\n✓ All telecalling calls resolved`;
+  } else {
+    msg += `\n(No direct telecalling dialer calls logged)`;
+  }
+
+  // 3. Documents Generated
+  const docs = staff.documents || [];
+  msg += `\n\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📄 *DOCUMENTS / QUOTES / INVOICES (${docs.length}):*\n`;
+  if (docs.length > 0) {
+    docs.forEach((d, i) => {
+      const typeLabel = formatDocTypeLabel(d.document_type);
+      const num = d.document_number || 'Draft';
+      const cust = d.customer_name || 'Client';
+      const amt = formatAmount(d.total);
+      const st = (d.approval_status || d.status || 'Active').toUpperCase();
+      msg += `  ${i + 1}. *${typeLabel} #${num}* — ${cust}\n` +
+        `     Amount: ${amt} | Status: ${st}\n`;
+      if (d.id) {
+        msg += `     🔗 https://b2pinternational.com/doc/${d.id}\n`;
+      }
+    });
+  } else {
+    msg += `(No documents generated today)\n`;
+  }
+
+  // 4. CRM Follow-ups Completed
+  const completed = staff.completedFollowUps || [];
+  msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `✅ *CRM FOLLOW-UPS COMPLETED (${completed.length}):*\n`;
+  if (completed.length > 0) {
+    completed.forEach((c, i) => {
+      const name = formatFollowUpClientLabel(c);
+      const phone = c.phone ? ` (${c.phone})` : '';
+      const timeStr = c.completed_at ? ` [${formatISTTime(c.completed_at)}]` : '';
+      const outcome = c.completion_note ? `\n     Outcome: ${c.completion_note.substring(0, 60)}` : '';
+      msg += `  ${i + 1}. *${name}*${phone}${timeStr}${outcome}\n`;
+    });
+  } else {
+    msg += `(No follow-ups marked completed today)\n`;
+  }
+
+  // 5. CRM Follow-ups Rescheduled / Snoozed
+  const rescheduled = staff.rescheduledFollowUps || [];
+  msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+    `🔄 *FOLLOW-UPS RESCHEDULED / SNOOZED (${rescheduled.length}):*\n`;
+  if (rescheduled.length > 0) {
+    rescheduled.forEach((r, i) => {
+      const name = formatFollowUpClientLabel(r);
+      const phone = r.phone ? ` (${r.phone})` : '';
+      const due = (r.due_date || r.follow_up_date)
+        ? ` ➔ Due: ${formatKolkataDisplayDate(r.due_date || r.follow_up_date)} ${r.due_time || ''}`
+        : '';
+      const note = r.notes || r.reason ? `\n     Note: ${(r.notes || r.reason).substring(0, 60)}` : '';
+      msg += `  ${i + 1}. *${name}*${phone}${due}${note}\n`;
+    });
+  } else {
+    msg += `(No follow-ups rescheduled today)\n`;
+  }
+
+  // 6. Remaining Pending & Overdue Tasks
+  const dueToday = staff.dueToday || [];
+  const overdue = staff.overdue || [];
+  if (dueToday.length > 0 || overdue.length > 0) {
+    msg += `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+      `📅 *Pending Tasks Assigned:*\n` +
+      `• Due Today Remaining: ${dueToday.length} | Overdue: ${overdue.length}\n`;
+  }
+
+  msg += `\nGenerated from B2P ONE`;
+  return msg;
+}
+
+/**
  * Builds the WhatsApp message for Daily Telecalling Report.
  */
 export function buildDailyReportWhatsAppMessage(
   companyName: string,
-  report: TelecallingDailyReportData
+  report: TelecallingDailyReportData,
+  isNightSlot: boolean = false
 ): string {
   const headerCompany = (companyName || 'B2P INTERNATIONAL').toUpperCase();
   const dateStr = formatKolkataDisplayDate(report.date);
@@ -359,10 +617,11 @@ export function buildDailyReportWhatsAppMessage(
     return `${idx + 1}. ${st}: ${cnt}`;
   });
 
-  // Telecaller breakdown lines
-  const telecallerLines = Object.entries(report.telecallerActivity)
-    .map(([name, count]) => `${name || 'Unassigned'}: ${count}`)
-    .join('\n');
+  const telecallerLines = report.telecallerActivity && Object.keys(report.telecallerActivity).length > 0
+    ? Object.entries(report.telecallerActivity)
+        .map(([name, count]) => `${name || 'Unassigned'}: ${count}`)
+        .join('\n')
+    : 'None';
 
   const staffSection = buildStaffDetailedBreakdown(report);
 
@@ -373,6 +632,18 @@ export function buildDailyReportWhatsAppMessage(
   const overdueCount = typeof report.overdueFollowUpsCount === 'number'
     ? report.overdueFollowUpsCount
     : (report.overdueFollowUpsList?.length ?? 0);
+
+  const completedTodayCount = typeof report.completedFollowUpsCount === 'number'
+    ? report.completedFollowUpsCount
+    : (report.completedFollowUpsList?.length ?? 0);
+
+  const rescheduledTodayCount = typeof report.rescheduledFollowUpsCount === 'number'
+    ? report.rescheduledFollowUpsCount
+    : (report.rescheduledFollowUpsList?.length ?? 0);
+
+  const docsCount = typeof report.documentsCount === 'number'
+    ? report.documentsCount
+    : (report.documentsList?.length ?? 0);
 
   let followUpSection = `*Follow-ups Due Today:* ${dueTodayCount}`;
   if (report.followUpsDueTodayList && report.followUpsDueTodayList.length > 0) {
@@ -402,11 +673,18 @@ export function buildDailyReportWhatsAppMessage(
     }
   }
 
+  const reportTitle = isNightSlot
+    ? `*TELECALLING & OPERATIONS NIGHT REPORT (Post 6:30 PM)*`
+    : `*TELECALLING DAILY REPORT*`;
+
   return (
     `*${headerCompany}*\n` +
-    `*TELECALLING DAILY REPORT*\n\n` +
+    `${reportTitle}\n\n` +
     `Date: ${dateStr}\n\n` +
     `Total Calls: ${report.totalCalls}\n` +
+    `Documents Generated: ${docsCount}\n` +
+    `Follow-ups Completed Today: ${completedTodayCount}\n` +
+    `Follow-ups Rescheduled / Snoozed: ${rescheduledTodayCount}\n` +
     `Unique Companies: ${report.uniqueCompanies}\n` +
     `Unresolved Calls: ${report.unresolvedCallsCount ?? report.unresolvedEntries?.length ?? 0}\n\n` +
     `*Call Results:*\n` +
@@ -420,7 +698,8 @@ export function buildDailyReportWhatsAppMessage(
     staffSection +
     `\n━━━━━━━━━━━━━━━━━━━━━\n\n` +
     followUpSection +
-    `\n\nGenerated from B2P ONE`
+    `\n\n_Detailed individual reports for each staff account are dispatched separately below._\n` +
+    `Generated from B2P ONE`
   );
 }
 

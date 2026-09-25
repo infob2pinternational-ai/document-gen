@@ -1350,6 +1350,13 @@ export interface TelecallingDailyReportData {
   overdueFollowUpsCount?: number;
   followUpsDueTodayList?: TelecallingFollowUpSummaryItem[];
   overdueFollowUpsList?: TelecallingFollowUpSummaryItem[];
+  completedFollowUpsCount?: number;
+  completedFollowUpsList?: any[];
+  rescheduledFollowUpsCount?: number;
+  rescheduledFollowUpsList?: any[];
+  documentsCount?: number;
+  documentsList?: any[];
+  staffIndividualReports?: any[];
 }
 
 export interface TelecallingWeeklyReportData {

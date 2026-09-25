@@ -2,7 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import dailyReportHandler, { formatDailyReportMessage } from '../api/daily-report.js';
+import dailyReportHandler, {
+  formatDailyReportMessage,
+  formatStaffIndividualReport,
+  buildStaffRecordsMap,
+  formatDocTypeLabel,
+  formatAmount,
+  formatISTTime
+} from '../api/daily-report.js';
 
 function loadTsModule(relativePath, stubs = {}) {
   const code = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -236,3 +243,217 @@ test('formatDailyReportMessage includes detailed breakdown for both staff Shiva 
   assert.ok(message.includes('Synrah Study Abroad'));
   assert.ok(message.includes('*previouse follow up not done =* 8'));
 });
+
+test('formatStaffIndividualReport formats standalone report with active window, telecalling, documents with URLs, completed/rescheduled follow-ups', () => {
+  const staffData = {
+    label: 'BRUTT (Brutf5354)',
+    email: 'brutf5354@gmail.com',
+    total: 10,
+    confirmed: 2,
+    interested: 3,
+    followUp: 2,
+    callBack: 1,
+    noAnswer: 1,
+    switchedOff: 1,
+    noInterest: 0,
+    wrongNumber: 0,
+    timeline: ['2026-09-25T05:30:00.000Z', '2026-09-25T14:45:00.000Z'],
+    unresolved: [
+      { company: 'Acme Traders', phone: '9847111222', status: 'Call Back', remarks: 'Busy in meeting' }
+    ],
+    documents: [
+      {
+        id: 'doc-uuid-1234',
+        document_type: 'quotation',
+        document_number: 'QT-2026-0901',
+        customer_name: 'Kerala Spices Ltd',
+        total: 45000,
+        approval_status: 'Approved'
+      },
+      {
+        id: 'doc-uuid-5678',
+        document_type: 'invoice',
+        document_number: 'INV-2026-0042',
+        customer_name: 'Thrissur Logistics',
+        total: 120000,
+        approval_status: 'Sent'
+      }
+    ],
+    completedFollowUps: [
+      {
+        customer_name: 'SYNERGY',
+        phone: '9847001122',
+        completed_at: '2026-09-25T07:15:00.000Z',
+        completion_note: 'Discussed campaign; sending proposal tomorrow'
+      }
+    ],
+    rescheduledFollowUps: [
+      {
+        customer_name: 'Oro Gold',
+        phone: '9847003344',
+        due_date: '2026-09-28',
+        notes: 'Requested call after weekend'
+      }
+    ],
+    dueToday: [],
+    overdue: []
+  };
+
+  const reportText = formatStaffIndividualReport(staffData, 'B2P INTERNATIONAL', '2026-09-25', false);
+
+  assert.ok(reportText.includes('DAILY STAFF PERFORMANCE REPORT'));
+  assert.ok(reportText.includes('BRUTT (Brutf5354)'));
+  assert.ok(reportText.includes('brutf5354@gmail.com'));
+  assert.ok(reportText.includes('⏱️ *Active Window:*'));
+  assert.ok(reportText.includes('TELECALLING CALLS (10)'));
+  assert.ok(reportText.includes('• Confirmed: 2 | Interested: 3'));
+  assert.ok(reportText.includes('DOCUMENTS / QUOTES / INVOICES (2)'));
+  assert.ok(reportText.includes('Quotation #QT-2026-0901'));
+  assert.ok(reportText.includes('https://b2pinternational.com/doc/doc-uuid-1234'));
+  assert.ok(reportText.includes('Tax Invoice #INV-2026-0042'));
+  assert.ok(reportText.includes('₹1,20,000'));
+  assert.ok(reportText.includes('CRM FOLLOW-UPS COMPLETED (1)'));
+  assert.ok(reportText.includes('SYNERGY'));
+  assert.ok(reportText.includes('Discussed campaign; sending proposal tomorrow'));
+  assert.ok(reportText.includes('FOLLOW-UPS RESCHEDULED / SNOOZED (1)'));
+  assert.ok(reportText.includes('Oro Gold'));
+  assert.ok(reportText.includes('28 Sep 2026'));
+  assert.ok(reportText.includes('Generated from B2P ONE'));
+});
+
+test('formatDailyReportMessage formats evening/night report header and documents count', () => {
+  const dummyReport = {
+    date: '2026-09-25',
+    totalCalls: 15,
+    uniqueCompanies: 12,
+    statusCounts: { 'Appointment Confirmed': 3 },
+    telecallerActivity: { 'Shiva': 10, 'Brutt': 5 },
+    followUpsCount: 2,
+    followUpsDueToday: 2,
+    overdueFollowUpsCount: 3,
+    completedFollowUpsCount: 4,
+    rescheduledFollowUpsCount: 2,
+    documentsCount: 3,
+    entries: []
+  };
+
+  const nightMessage = formatDailyReportMessage('B2P INTERNATIONAL', dummyReport, true);
+
+  assert.ok(nightMessage.includes('TELECALLING & OPERATIONS NIGHT REPORT (Post 6:30 PM)'));
+  assert.ok(nightMessage.includes('Documents Generated: 3'));
+  assert.ok(nightMessage.includes('Follow-ups Completed Today: 4'));
+  assert.ok(nightMessage.includes('Follow-ups Rescheduled / Snoozed: 2'));
+  assert.ok(nightMessage.includes('Detailed individual reports for each staff account are dispatched separately below.'));
+});
+
+test('buildStaffRecordsMap attributes documents and CRM follow-ups to correct staff', () => {
+  const mockReport = {
+    date: '2026-09-25',
+    totalCalls: 2,
+    uniqueCompanies: 2,
+    statusCounts: {},
+    telecallerActivity: {},
+    entries: [
+      {
+        created_by_email: 'sivasatheesan33@gmail.com',
+        call_status: 'Appointment Confirmed',
+        company_name: 'Alpha Ltd'
+      },
+      {
+        created_by_email: 'brutf5354@gmail.com',
+        call_status: 'Interested / Details Shared',
+        company_name: 'Beta LLC'
+      }
+    ],
+    documentsList: [
+      {
+        id: 'doc-1',
+        document_type: 'invoice',
+        document_number: 'INV-1',
+        created_by_email: 'sivasatheesan33@gmail.com',
+        total: 50000
+      },
+      {
+        id: 'doc-2',
+        document_type: 'quotation',
+        document_number: 'QT-2',
+        created_by_email: 'brutf5354@gmail.com',
+        total: 75000
+      }
+    ],
+    completedFollowUpsList: [
+      {
+        customer_name: 'Gamma Stores',
+        assigned_staff_email: 'brutf5354@gmail.com',
+        completion_note: 'Order finalized'
+      }
+    ],
+    rescheduledFollowUpsList: [
+      {
+        customer_name: 'Delta Mart',
+        assigned_staff_email: 'sivasatheesan33@gmail.com',
+        due_date: '2026-09-27'
+      }
+    ]
+  };
+
+  const { staffRecords } = buildStaffRecordsMap(mockReport);
+
+  assert.equal(staffRecords['shiva'].total, 1);
+  assert.equal(staffRecords['shiva'].documents.length, 1);
+  assert.equal(staffRecords['shiva'].documents[0].document_number, 'INV-1');
+  assert.equal(staffRecords['shiva'].rescheduledFollowUps.length, 1);
+
+  assert.equal(staffRecords['brutt'].total, 1);
+  assert.equal(staffRecords['brutt'].documents.length, 1);
+  assert.equal(staffRecords['brutt'].documents[0].document_number, 'QT-2');
+  assert.equal(staffRecords['brutt'].completedFollowUps.length, 1);
+  assert.equal(staffRecords['brutt'].completedFollowUps[0].customer_name, 'Gamma Stores');
+});
+
+test('Night slot cron skips dispatching when no activity exists after 6:30 PM IST (13:00 UTC)', async () => {
+  let statusCode = 0;
+  let jsonResult = null;
+
+  const req = {
+    method: 'GET',
+    query: { action: 'cron', slot: 'night', date: '2026-09-25' },
+    headers: { 'x-vercel-cron': '1' }
+  };
+  const res = {
+    setHeader: () => {},
+    status: (c) => {
+      statusCode = c;
+      return { json: (d) => { jsonResult = d; } };
+    }
+  };
+
+  // Pre-feed report_data with activity strictly before 13:00 UTC
+  req.body = {
+    report_data: {
+      date: '2026-09-25',
+      totalCalls: 5,
+      uniqueCompanies: 5,
+      statusCounts: {},
+      telecallerActivity: {},
+      entries: [
+        { created_at: '2026-09-25T08:00:00.000Z', call_status: 'Appointment Confirmed' }
+      ],
+      documentsList: [
+        { created_at: '2026-09-25T10:00:00.000Z', document_type: 'invoice', total: 1000 }
+      ],
+      completedFollowUpsList: [
+        { completed_at: '2026-09-25T11:00:00.000Z', customer_name: 'Early Client' }
+      ],
+      rescheduledFollowUpsList: []
+    }
+  };
+
+  await dailyReportHandler(req, res);
+
+  assert.equal(statusCode, 200);
+  assert.equal(jsonResult.success, true);
+  assert.equal(jsonResult.skipped, true);
+  assert.match(jsonResult.message, /No activity logged after 6:30 PM IST/);
+});
+

@@ -51,8 +51,12 @@
   },
   "crons": [
     {
-      "path": "/api/daily-report?action=cron",
+      "path": "/api/daily-report?action=cron&slot=day",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/daily-report?action=cron&slot=night",
+      "schedule": "0 18 * * *"
     }
   ]
 }
