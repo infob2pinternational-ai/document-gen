@@ -426,6 +426,47 @@ class WhatsAppService {
   }
 
   /**
+   * Creates or retrieves a conversation by phone number.
+   */
+  async getOrCreateConversationByPhone(
+    phone: string,
+    customerName?: string,
+    companyName?: string,
+    companyId?: string
+  ): Promise<WhatsAppConversation> {
+    const cleanPhone = normalizeIndianPhone(phone);
+    const convs = await this.getConversations(companyId);
+    const existing = convs.find(c => normalizeIndianPhone(c.phone) === cleanPhone);
+    if (existing) return existing;
+
+    const newConv: WhatsAppConversation = {
+      id: crypto.randomUUID(),
+      company_id: companyId,
+      customer_name: customerName || 'WhatsApp Contact',
+      company_name: companyName || undefined,
+      phone: cleanPhone,
+      last_message: 'Conversation started',
+      last_message_at: new Date().toISOString(),
+      unread_count: 0,
+      status: 'open',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (isCloudActive() && supabase) {
+      try {
+        await supabase.from('whatsapp_conversations').upsert(newConv);
+      } catch (err) {
+        console.error('[whatsappService] Failed to upsert conversation to Supabase:', err);
+      }
+    }
+
+    const updated = [newConv, ...convs];
+    setLocal(CONVERSATIONS_KEY, updated);
+    return newConv;
+  }
+
+  /**
    * Marks a conversation as read.
    */
   async markAsRead(conversationId: string): Promise<void> {

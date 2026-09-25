@@ -55,10 +55,13 @@ function httpsRequest(url, options, bodyContent) {
   });
 }
 
+const DEFAULT_SUPABASE_URL = 'https://rqovkmjsdwzggebvwvdk.supabase.co';
+const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxb3ZrbWpzZHd6Z2dlYnZ3dmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxNDQ0MzMsImV4cCI6MjA5ODcyMDQzM30.A_4pG8rG4KDTxa85DSjJ1Y6wGwqMwXPL9DrlzoYjZ9M';
+
 // Helper to query Supabase REST API securely from serverless function
 async function supabaseRest(endpoint, method = 'GET', body = null) {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
     return null;
@@ -195,8 +198,8 @@ export default async function handler(req, res) {
       });
     }
 
-    const bizyleadApiKey = process.env.BIZYLEAD_API_KEY;
-    let bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || (bizyleadApiKey ? '992427143955673' : undefined);
+    const bizyleadApiKey = process.env.BIZYLEAD_API_KEY || 'c6a02de1ededcd12342b6302ec4b052f76eb83f273994a4606fa070333a0a1ce';
+    let bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || '992427143955673';
     // Auto-correct old typo (9824 -> 9924)
     if (bizyleadPhoneId === '982427143955673') {
       bizyleadPhoneId = '992427143955673';
