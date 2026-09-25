@@ -188,7 +188,7 @@ test('cloud hydration preserves sub_district when cloud table lacks column', asy
   assert.equal(leadService.getSubDistrict('lead-test-456'), 'Chalakudy');
 });
 
-test('lead numbers are sorted in strictly ascending numerical order without shuffling', async () => {
+test('lead numbers are sorted in strictly descending numerical order without shuffling', async () => {
   const store = new Map();
   globalThis.localStorage = {
     getItem(key) { return store.get(key) ?? null; },
@@ -222,13 +222,13 @@ test('lead numbers are sorted in strictly ascending numerical order without shuf
   await leadService.saveLead({ id: 'id-1012', lead_number: 'B2P-LD-1012', customer_name: 'Client 12', phone: '123' });
   await leadService.saveLead({ id: 'id-1003', lead_number: 'B2P-LD-1003', customer_name: 'Client 3', phone: '123' });
 
-  // Verify getLeads() returns them strictly in ascending order: 1001, 1003, 1005, 1012
+  // Verify getLeads() returns them strictly in descending order: 1012, 1005, 1003, 1001
   const leads = leadService.getLeads();
   assert.equal(leads.length, 4);
-  assert.equal(leads[0].lead_number, 'B2P-LD-1001');
-  assert.equal(leads[1].lead_number, 'B2P-LD-1003');
-  assert.equal(leads[2].lead_number, 'B2P-LD-1005');
-  assert.equal(leads[3].lead_number, 'B2P-LD-1012');
+  assert.equal(leads[0].lead_number, 'B2P-LD-1012');
+  assert.equal(leads[1].lead_number, 'B2P-LD-1005');
+  assert.equal(leads[2].lead_number, 'B2P-LD-1003');
+  assert.equal(leads[3].lead_number, 'B2P-LD-1001');
 });
 
 test('out-of-Kerala location and sub-district/state can be saved and retrieved cleanly', async () => {

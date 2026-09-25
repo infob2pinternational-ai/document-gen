@@ -313,7 +313,11 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
         };
       });
 
-      merged.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
+      merged.sort((a, b) => {
+        const cmp = compareLeadNumbers(b.lead_number || b.id, a.lead_number || a.id);
+        if (cmp !== 0) return cmp;
+        return (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0);
+      });
       replaceCompanyScopedCache(LEADS_KEY, localLeads, merged, companyId);
     }
 
@@ -421,7 +425,11 @@ export const leadService = {
     const scoped = scopeId
       ? leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === scopeId)
       : leads;
-    return scoped.sort((a, b) => compareLeadNumbers(a.lead_number || a.id, b.lead_number || b.id));
+    return scoped.sort((a, b) => {
+      const cmp = compareLeadNumbers(b.lead_number || b.id, a.lead_number || a.id);
+      if (cmp !== 0) return cmp;
+      return (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0);
+    });
   },
 
   getLeadById(id: string): Lead | null {

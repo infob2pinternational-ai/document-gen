@@ -140,7 +140,7 @@ export const Leads: React.FC<LeadsProps> = ({
     return matchSearch && matchStatus && matchPriority && matchSource && matchTelecaller;
   });
 
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const sortedLeads = useMemo(() => {
     return [...filteredLeads].sort((a, b) => {
@@ -169,8 +169,13 @@ export const Leads: React.FC<LeadsProps> = ({
         const matchB = (b.lead_number || b.id || '').match(/(\d+)$/);
         const numA = matchA ? parseInt(matchA[1], 10) : NaN;
         const numB = matchB ? parseInt(matchB[1], 10) : NaN;
-        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-        return (a.lead_number || a.id || '').localeCompare(b.lead_number || b.id || '', undefined, { numeric: true });
+        let diff = 0;
+        if (!isNaN(numA) && !isNaN(numB)) diff = numB - numA;
+        else diff = (b.lead_number || b.id || '').localeCompare(a.lead_number || a.id || '', undefined, { numeric: true });
+        if (diff === 0) {
+          diff = (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0);
+        }
+        return diff;
       });
   }, [leads]);
 
