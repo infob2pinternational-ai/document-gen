@@ -131,3 +131,77 @@ test('OPTIONS /api/bizylead-webhook responds with CORS headers', async () => {
   assert.equal(ended, true);
   assert.equal(headers['Access-Control-Allow-Origin'], '*');
 });
+
+test('POST /api/bizylead-webhook parses real Bizylead event: message with senderPhoneNumber and content.text', async () => {
+  let statusCode = 0;
+  let jsonResult = null;
+
+  const req = {
+    method: 'POST',
+    body: {
+      event: 'message',
+      data: {
+        senderName: 'franson',
+        senderPhoneNumber: '918891074715',
+        recipientPhoneNumberId: '992427143955673',
+        messageId: 'wamid.HBgMOTE4ODkxMDc0NzE1FQIAEhggQTVGMjQ4REE2MjA5NzY1REUxQkUwODM1RjM0Qzc2RTcA',
+        messageTimestamp: '1790335622',
+        messageType: 'text',
+        content: {
+          text: 'Hiii'
+        }
+      }
+    }
+  };
+
+  const res = {
+    setHeader: () => {},
+    status: (code) => {
+      statusCode = code;
+      return {
+        json: (data) => { jsonResult = data; },
+        end: () => {}
+      };
+    }
+  };
+
+  await bizyleadWebhookHandler(req, res);
+  assert.equal(statusCode, 200);
+  assert.equal(jsonResult.success, true);
+  assert.equal(jsonResult.processedMessages, 1);
+});
+
+test('POST /api/bizylead-webhook parses real Bizylead event: status format', async () => {
+  let statusCode = 0;
+  let jsonResult = null;
+
+  const req = {
+    method: 'POST',
+    body: {
+      event: 'status',
+      data: {
+        messageId: 'wamid.HBgTSU4uMTEyOTAxNTk0Mjc5NTY4NRUUABEYIEE1M0NCMjgwMzEwRkE5QUE4RDA1M0NDN0ZCNjBEMEZCAA==',
+        recipientPhoneNumber: '919447047833',
+        status: 'read',
+        timestamp: '1790335172'
+      }
+    }
+  };
+
+  const res = {
+    setHeader: () => {},
+    status: (code) => {
+      statusCode = code;
+      return {
+        json: (data) => { jsonResult = data; },
+        end: () => {}
+      };
+    }
+  };
+
+  await bizyleadWebhookHandler(req, res);
+  assert.equal(statusCode, 200);
+  assert.equal(jsonResult.success, true);
+  assert.equal(jsonResult.processedStatuses, 1);
+});
+

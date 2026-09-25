@@ -194,15 +194,29 @@ export default async function handler(req, res) {
       }
     }
 
-    // Parse Format C: Single message payload
+    // Parse Format C: Single message payload (Bizylead event: "message", or raw data)
     const singleData = payload.data || payload;
-    if (singleData.message && typeof singleData.message === 'string' && (singleData.phone || singleData.from)) {
+    const phone = singleData.senderPhoneNumber || singleData.phone || singleData.from || singleData.sender || singleData.wa_id;
+    const text = singleData.content?.text || singleData.content?.body || (typeof singleData.content === 'string' ? singleData.content : null) ||
+                 singleData.text?.body || singleData.text || singleData.message?.text || (typeof singleData.message === 'string' ? singleData.message : null) || singleData.body || '';
+
+    if (phone && text) {
+      const rawTs = singleData.messageTimestamp || singleData.timestamp;
+      let isoTs = new Date().toISOString();
+      if (rawTs) {
+        const numTs = Number(rawTs);
+        if (!isNaN(numTs)) {
+          isoTs = String(rawTs).length <= 10 ? new Date(numTs * 1000).toISOString() : new Date(numTs).toISOString();
+        } else {
+          isoTs = new Date(rawTs).toISOString();
+        }
+      }
       incomingMessages.push({
-        from: singleData.phone || singleData.from,
-        text: singleData.message,
-        id: singleData.id || singleData.messageId || singleData.message_id || `bizy_${Date.now()}`,
-        name: singleData.name || singleData.contact_name || 'WhatsApp Customer',
-        timestamp: singleData.timestamp || new Date().toISOString()
+        from: phone,
+        text: text,
+        id: singleData.messageId || singleData.id || singleData.message_id || `bizy_${Date.now()}`,
+        name: singleData.senderName || singleData.name || singleData.contact_name || 'WhatsApp Customer',
+        timestamp: isoTs
       });
     }
 
@@ -215,6 +229,12 @@ export default async function handler(req, res) {
           error: s.error || null
         });
       }
+    } else if (payload.event === 'status' && payload.data) {
+      statusUpdates.push({
+        id: payload.data.messageId || payload.data.id || payload.data.message_id,
+        status: payload.data.status,
+        error: payload.data.error || null
+      });
     } else if (payload.status && (payload.messageId || payload.message_id || payload.id)) {
       statusUpdates.push({
         id: payload.messageId || payload.message_id || payload.id,
