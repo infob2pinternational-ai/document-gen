@@ -29,7 +29,7 @@ export const OwnerWhatsAppModal: React.FC<OwnerWhatsAppModalProps> = ({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [autoReport, setAutoReport] = useState(true);
-  const [reportTime, setReportTime] = useState('20:00');
+  const [reportTime, setReportTime] = useState('18:30');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
@@ -325,7 +325,7 @@ export const OwnerWhatsAppModal: React.FC<OwnerWhatsAppModalProps> = ({
             </div>
 
             <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', lineHeight: 1.4 }}>
-              The cloud system automatically compiles today's telecalling &amp; business metrics and sends an executive report to the owner WhatsApp every evening at <strong>8:00 PM IST (20:00)</strong>.
+              The cloud system automatically compiles today's telecalling &amp; operational metrics and sends a detailed report for staff <strong>Shiva</strong> and <strong>Brutt</strong> to the owner WhatsApp every evening by <strong>6:30 PM IST (18:30)</strong>.
             </p>
           </div>
 

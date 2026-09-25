@@ -99,6 +99,150 @@ function isUnresolvedStatus(status) {
   return UNRESOLVED.includes(status);
 }
 
+// Builds detailed breakdown for staff members (Shiva, Brutt, etc.)
+export function buildStaffDetailedBreakdown(report) {
+  const entries = report.entries || [];
+
+  const staffRecords = {
+    'shiva': {
+      label: 'SHIVA (Sivasatheesan)',
+      email: 'sivasatheesan33@gmail.com',
+      total: 0,
+      confirmed: 0,
+      interested: 0,
+      followUp: 0,
+      callBack: 0,
+      noAnswer: 0,
+      switchedOff: 0,
+      noInterest: 0,
+      wrongNumber: 0,
+      other: 0,
+      unresolved: []
+    },
+    'brutt': {
+      label: 'BRUTT (Brutf5354)',
+      email: 'brutf5354@gmail.com',
+      total: 0,
+      confirmed: 0,
+      interested: 0,
+      followUp: 0,
+      callBack: 0,
+      noAnswer: 0,
+      switchedOff: 0,
+      noInterest: 0,
+      wrongNumber: 0,
+      other: 0,
+      unresolved: []
+    }
+  };
+
+  const otherStaff = {};
+
+  for (const e of entries) {
+    const rawEmail = (e.created_by_email || '').toLowerCase().trim();
+    const rawName = (e.created_by_name || '').toLowerCase().trim();
+
+    let key = '';
+    if (rawEmail === 'sivasatheesan33@gmail.com' || rawName.includes('shiva') || rawName.includes('siva')) {
+      key = 'shiva';
+    } else if (rawEmail === 'brutf5354@gmail.com' || rawName.includes('brutt') || rawName.includes('brut')) {
+      key = 'brutt';
+    } else {
+      const otherKey = e.created_by_name || (e.created_by_email ? e.created_by_email.split('@')[0] : 'Staff');
+      if (!otherStaff[otherKey]) {
+        otherStaff[otherKey] = {
+          label: otherKey.toUpperCase(),
+          email: e.created_by_email || '',
+          total: 0,
+          confirmed: 0,
+          interested: 0,
+          followUp: 0,
+          callBack: 0,
+          noAnswer: 0,
+          switchedOff: 0,
+          noInterest: 0,
+          wrongNumber: 0,
+          other: 0,
+          unresolved: []
+        };
+      }
+      key = otherKey;
+    }
+
+    const rec = staffRecords[key] || otherStaff[key];
+    if (rec) {
+      rec.total++;
+      const st = e.call_status;
+      if (st === 'Appointment Confirmed') rec.confirmed++;
+      else if (st === 'Interested / Details Shared') rec.interested++;
+      else if (st === 'Follow-up Required') rec.followUp++;
+      else if (st === 'Call Back') rec.callBack++;
+      else if (st === 'No Answer / No Response') rec.noAnswer++;
+      else if (st === 'Not Reachable / Switched Off') rec.switchedOff++;
+      else if (st === 'No Interest') rec.noInterest++;
+      else if (st === 'Wrong / Invalid Number') rec.wrongNumber++;
+      else rec.other++;
+
+      if (isUnresolvedStatus(st)) {
+        rec.unresolved.push({
+          company: e.company_name || 'Contact',
+          phone: e.phone || '',
+          status: st,
+          remarks: (e.feedback || '').trim() || 'Pending follow-up'
+        });
+      }
+    }
+  }
+
+  // If entries array is empty but telecallerActivity summary exists
+  if (entries.length === 0 && report.telecallerActivity) {
+    for (const [caller, count] of Object.entries(report.telecallerActivity)) {
+      const lower = caller.toLowerCase();
+      if (lower.includes('shiva') || lower.includes('siva')) {
+        staffRecords['shiva'].total = count;
+      } else if (lower.includes('brutt') || lower.includes('brut')) {
+        staffRecords['brutt'].total = count;
+      } else {
+        otherStaff[caller] = {
+          label: caller.toUpperCase(),
+          email: '',
+          total: count,
+          confirmed: 0, interested: 0, followUp: 0, callBack: 0,
+          noAnswer: 0, switchedOff: 0, noInterest: 0, wrongNumber: 0, other: 0,
+          unresolved: []
+        };
+      }
+    }
+  }
+
+  const allStaff = [...Object.values(staffRecords), ...Object.values(otherStaff)];
+  const blocks = allStaff.map(s => {
+    let b = `👤 *${s.label}* (${s.email || 'Staff'})\n` +
+      `Total Calls: ${s.total}\n` +
+      `• Confirmed: ${s.confirmed} | Interested: ${s.interested} | Follow-up: ${s.followUp}\n` +
+      `• Call Back: ${s.callBack} | No Answer: ${s.noAnswer} | Switched Off: ${s.switchedOff}\n` +
+      `• No Interest: ${s.noInterest} | Wrong No: ${s.wrongNumber}`;
+
+    if (s.unresolved.length > 0) {
+      b += `\n⚠️ *Pending Action (${s.unresolved.length}):*`;
+      s.unresolved.slice(0, 5).forEach((u, i) => {
+        b += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 40) : ''}`;
+      });
+      if (s.unresolved.length > 5) {
+        b += `\n  ...and ${s.unresolved.length - 5} more pending`;
+      }
+    } else if (s.total > 0) {
+      b += `\n✓ All calls resolved / follow-ups addressed`;
+    } else {
+      b += `\n(No calls logged today)`;
+    }
+
+    return b;
+  });
+
+  return blocks.join('\n\n');
+}
+
 // Build executive WhatsApp report text
 export function formatDailyReportMessage(companyName, report) {
   const headerCompany = (companyName || 'B2P INTERNATIONAL').toUpperCase();
@@ -131,6 +275,8 @@ export function formatDailyReportMessage(companyName, report) {
     ? report.unresolvedCallsCount
     : (report.unresolvedEntries ? report.unresolvedEntries.length : 0);
 
+  const staffSection = buildStaffDetailedBreakdown(report);
+
   let message =
     `*${headerCompany}*\n` +
     `*TELECALLING DAILY REPORT*\n\n` +
@@ -144,6 +290,10 @@ export function formatDailyReportMessage(companyName, report) {
     `*Telecaller Activity:*\n` +
     (telecallerLines || 'None') +
     `\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `👥 *STAFF DETAILED BREAKDOWN*\n\n` +
+    staffSection +
+    `\n━━━━━━━━━━━━━━━━━━━━━\n\n` +
     `*Follow-ups Required:* ${report.followUpsCount || 0}\n\n` +
     `Generated from B2P ONE`;
 
@@ -285,7 +435,8 @@ export default async function handler(req, res) {
         telecallerActivity,
         followUpsCount: followUps,
         unresolvedCallsCount: unresolvedEntries.length,
-        unresolvedEntries
+        unresolvedEntries,
+        entries
       };
     } catch (dbErr) {
       console.error('[Daily Report API] Error loading entries from Supabase:', dbErr);

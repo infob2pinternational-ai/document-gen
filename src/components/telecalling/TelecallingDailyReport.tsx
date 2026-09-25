@@ -332,7 +332,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                 }}
               >
                 <Clock size={12} color="#16a34a" />
-                <span>Auto-Report: Daily {getOwnerAutoReportTime()} IST to +{getOwnerWhatsAppNumber()}</span>
+                <span>Auto-Report: Daily 6:30 PM IST ({getOwnerAutoReportTime()}) to +{getOwnerWhatsAppNumber()}</span>
               </span>
             )}
           </div>

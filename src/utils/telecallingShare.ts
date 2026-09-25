@@ -51,13 +51,13 @@ export function setOwnerAutoReportEnabled(enabled: boolean): void {
 }
 
 /**
- * Gets the configured daily auto-report send time (default: 20:00 / 8:00 PM IST).
+ * Gets the configured daily auto-report send time (default: 18:30 / 6:30 PM IST).
  */
 export function getOwnerAutoReportTime(): string {
   try {
-    return localStorage.getItem(OWNER_AUTO_REPORT_TIME_KEY) || '20:00';
+    return localStorage.getItem(OWNER_AUTO_REPORT_TIME_KEY) || '18:30';
   } catch {
-    return '20:00';
+    return '18:30';
   }
 }
 
@@ -66,7 +66,7 @@ export function getOwnerAutoReportTime(): string {
  */
 export function setOwnerAutoReportTime(time: string): void {
   try {
-    localStorage.setItem(OWNER_AUTO_REPORT_TIME_KEY, time.trim() || '20:00');
+    localStorage.setItem(OWNER_AUTO_REPORT_TIME_KEY, time.trim() || '18:30');
   } catch (err) {
     console.error('Failed to store owner_auto_report_time:', err);
   }
@@ -118,6 +118,167 @@ export function setOwnerReportEmail(email: string): void {
 }
 
 /**
+ * Builds the detailed breakdown for staff members, specifically
+ * highlighting Shiva (sivasatheesan33@gmail.com) and Brutt (brutf5354@gmail.com).
+ */
+export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData): string {
+  const entries = report.entries || [];
+
+  const staffRecords: Record<string, {
+    label: string;
+    email: string;
+    total: number;
+    confirmed: number;
+    interested: number;
+    followUp: number;
+    callBack: number;
+    noAnswer: number;
+    switchedOff: number;
+    noInterest: number;
+    wrongNumber: number;
+    other: number;
+    unresolved: Array<{ company: string; phone: string; status: string; remarks: string }>;
+  }> = {
+    'shiva': {
+      label: 'SHIVA (Sivasatheesan)',
+      email: 'sivasatheesan33@gmail.com',
+      total: 0,
+      confirmed: 0,
+      interested: 0,
+      followUp: 0,
+      callBack: 0,
+      noAnswer: 0,
+      switchedOff: 0,
+      noInterest: 0,
+      wrongNumber: 0,
+      other: 0,
+      unresolved: []
+    },
+    'brutt': {
+      label: 'BRUTT (Brutf5354)',
+      email: 'brutf5354@gmail.com',
+      total: 0,
+      confirmed: 0,
+      interested: 0,
+      followUp: 0,
+      callBack: 0,
+      noAnswer: 0,
+      switchedOff: 0,
+      noInterest: 0,
+      wrongNumber: 0,
+      other: 0,
+      unresolved: []
+    }
+  };
+
+  const otherStaff: Record<string, typeof staffRecords['shiva']> = {};
+
+  for (const e of entries) {
+    const rawEmail = (e.created_by_email || '').toLowerCase().trim();
+    const rawName = (e.created_by_name || '').toLowerCase().trim();
+
+    let key = '';
+    if (rawEmail === 'sivasatheesan33@gmail.com' || rawName.includes('shiva') || rawName.includes('siva')) {
+      key = 'shiva';
+    } else if (rawEmail === 'brutf5354@gmail.com' || rawName.includes('brutt') || rawName.includes('brut')) {
+      key = 'brutt';
+    } else {
+      const otherKey = e.created_by_name || (e.created_by_email ? e.created_by_email.split('@')[0] : 'Staff');
+      if (!otherStaff[otherKey]) {
+        otherStaff[otherKey] = {
+          label: otherKey.toUpperCase(),
+          email: e.created_by_email || '',
+          total: 0,
+          confirmed: 0,
+          interested: 0,
+          followUp: 0,
+          callBack: 0,
+          noAnswer: 0,
+          switchedOff: 0,
+          noInterest: 0,
+          wrongNumber: 0,
+          other: 0,
+          unresolved: []
+        };
+      }
+      key = otherKey;
+    }
+
+    const rec = staffRecords[key] || otherStaff[key];
+    if (rec) {
+      rec.total++;
+      const st = e.call_status;
+      if (st === 'Appointment Confirmed') rec.confirmed++;
+      else if (st === 'Interested / Details Shared') rec.interested++;
+      else if (st === 'Follow-up Required') rec.followUp++;
+      else if (st === 'Call Back') rec.callBack++;
+      else if (st === 'No Answer / No Response') rec.noAnswer++;
+      else if (st === 'Not Reachable / Switched Off') rec.switchedOff++;
+      else if (st === 'No Interest') rec.noInterest++;
+      else if (st === 'Wrong / Invalid Number') rec.wrongNumber++;
+      else rec.other++;
+
+      if (isUnresolvedStatus(st)) {
+        rec.unresolved.push({
+          company: e.company_name || 'Contact',
+          phone: e.phone || '',
+          status: st,
+          remarks: (e.feedback || '').trim() || 'Pending follow-up'
+        });
+      }
+    }
+  }
+
+  // If entries are not populated but telecallerActivity summary exists
+  if (entries.length === 0 && report.telecallerActivity) {
+    for (const [caller, count] of Object.entries(report.telecallerActivity)) {
+      const lower = caller.toLowerCase();
+      if (lower.includes('shiva') || lower.includes('siva')) {
+        staffRecords['shiva'].total = count;
+      } else if (lower.includes('brutt') || lower.includes('brut')) {
+        staffRecords['brutt'].total = count;
+      } else {
+        otherStaff[caller] = {
+          label: caller.toUpperCase(),
+          email: '',
+          total: count,
+          confirmed: 0, interested: 0, followUp: 0, callBack: 0,
+          noAnswer: 0, switchedOff: 0, noInterest: 0, wrongNumber: 0, other: 0,
+          unresolved: []
+        };
+      }
+    }
+  }
+
+  const allStaff = [...Object.values(staffRecords), ...Object.values(otherStaff)];
+  const blocks = allStaff.map(s => {
+    let b = `👤 *${s.label}* (${s.email || 'Staff'})\n` +
+      `Total Calls: ${s.total}\n` +
+      `• Confirmed: ${s.confirmed} | Interested: ${s.interested} | Follow-up: ${s.followUp}\n` +
+      `• Call Back: ${s.callBack} | No Answer: ${s.noAnswer} | Switched Off: ${s.switchedOff}\n` +
+      `• No Interest: ${s.noInterest} | Wrong No: ${s.wrongNumber}`;
+
+    if (s.unresolved.length > 0) {
+      b += `\n⚠️ *Pending Action (${s.unresolved.length}):*`;
+      s.unresolved.slice(0, 5).forEach((u, i) => {
+        b += `\n  ${i + 1}. ${u.company} (${u.phone}) - ${u.status}${u.remarks ? ': ' + u.remarks.substring(0, 40) : ''}`;
+      });
+      if (s.unresolved.length > 5) {
+        b += `\n  ...and ${s.unresolved.length - 5} more pending`;
+      }
+    } else if (s.total > 0) {
+      b += `\n✓ All calls resolved / follow-ups addressed`;
+    } else {
+      b += `\n(No calls logged today)`;
+    }
+
+    return b;
+  });
+
+  return blocks.join('\n\n');
+}
+
+/**
  * Builds the WhatsApp message for Daily Telecalling Report.
  */
 export function buildDailyReportWhatsAppMessage(
@@ -149,6 +310,8 @@ export function buildDailyReportWhatsAppMessage(
     .map(([name, count]) => `${name || 'Unassigned'}: ${count}`)
     .join('\n');
 
+  const staffSection = buildStaffDetailedBreakdown(report);
+
   return (
     `*${headerCompany}*\n` +
     `*TELECALLING DAILY REPORT*\n\n` +
@@ -162,6 +325,10 @@ export function buildDailyReportWhatsAppMessage(
     `*Telecaller Activity:*\n` +
     (telecallerLines || 'None') +
     `\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `👥 *STAFF DETAILED BREAKDOWN*\n\n` +
+    staffSection +
+    `\n━━━━━━━━━━━━━━━━━━━━━\n\n` +
     `*Follow-ups Required:* ${report.followUpsCount}\n\n` +
     `Generated from B2P ONE`
   );

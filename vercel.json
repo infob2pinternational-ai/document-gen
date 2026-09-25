@@ -52,7 +52,7 @@
   "crons": [
     {
       "path": "/api/daily-report?action=cron",
-      "schedule": "30 14 * * *"
+      "schedule": "0 13 * * *"
     }
   ]
 }

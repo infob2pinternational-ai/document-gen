@@ -152,6 +152,73 @@ test('Owner Auto-Report schedule preferences toggle and persist correctly', () =
   assert.equal(getOwnerAutoReportTime(), '19:30');
 
   setOwnerAutoReportEnabled(true);
-  setOwnerAutoReportTime('20:00');
-  assert.equal(getOwnerAutoReportTime(), '20:00');
+  setOwnerAutoReportTime('18:30');
+  assert.equal(getOwnerAutoReportTime(), '18:30');
+});
+
+test('formatDailyReportMessage includes detailed breakdown for both staff Shiva and Brutt', () => {
+  const dummyReportWithStaff = {
+    date: '2026-09-25',
+    totalCalls: 30,
+    uniqueCompanies: 25,
+    statusCounts: {
+      'Appointment Confirmed': 4,
+      'Interested / Details Shared': 8,
+      'Follow-up Required': 6,
+      'Call Back': 2,
+      'No Answer / No Response': 5,
+      'No Interest': 4,
+      'Not Reachable / Switched Off': 1,
+      'Wrong / Invalid Number': 0,
+      'Other': 0
+    },
+    telecallerActivity: {
+      'Shiva': 18,
+      'Brutt': 12
+    },
+    followUpsCount: 8,
+    unresolvedCallsCount: 14,
+    entries: [
+      {
+        created_by_name: 'Shiva',
+        created_by_email: 'sivasatheesan33@gmail.com',
+        call_status: 'Appointment Confirmed',
+        company_name: 'Cochin Spices',
+        phone: '9847011111'
+      },
+      {
+        created_by_name: 'Shiva',
+        created_by_email: 'sivasatheesan33@gmail.com',
+        call_status: 'Follow-up Required',
+        company_name: 'Malabar Logistics',
+        phone: '9847022222',
+        feedback: 'Wants 5 vans in Thrissur'
+      },
+      {
+        created_by_name: 'Brutt',
+        created_by_email: 'brutf5354@gmail.com',
+        call_status: 'Interested / Details Shared',
+        company_name: 'Skyline Homes',
+        phone: '9847033333'
+      },
+      {
+        created_by_name: 'Brutt',
+        created_by_email: 'brutf5354@gmail.com',
+        call_status: 'Call Back',
+        company_name: 'Royal Jewellers',
+        phone: '9847044444',
+        feedback: 'Call back Monday 10am'
+      }
+    ]
+  };
+
+  const message = formatDailyReportMessage('B2P INTERNATIONAL', dummyReportWithStaff);
+
+  assert.ok(message.includes('STAFF DETAILED BREAKDOWN'));
+  assert.ok(message.includes('SHIVA'));
+  assert.ok(message.includes('sivasatheesan33@gmail.com'));
+  assert.ok(message.includes('BRUTT'));
+  assert.ok(message.includes('brutf5354@gmail.com'));
+  assert.ok(message.includes('Malabar Logistics'));
+  assert.ok(message.includes('Royal Jewellers'));
 });
