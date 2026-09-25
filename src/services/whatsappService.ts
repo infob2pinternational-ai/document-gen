@@ -34,9 +34,11 @@ function setLocal<T>(key: string, val: T): void {
 
 class WhatsAppService {
   /**
-   * Fetches all conversations (cloud-first with local fallback).
+   * Fetches all conversations (cloud-first with local fallback), merged with CRM leads.
    */
   async getConversations(companyId?: string | null): Promise<WhatsAppConversation[]> {
+    let baseList: WhatsAppConversation[] = [];
+
     if (isCloudActive() && supabase) {
       try {
         let query = supabase
@@ -51,19 +53,60 @@ class WhatsAppService {
         const { data, error } = await query;
         if (!error && data) {
           setLocal(CONVERSATIONS_KEY, data);
-          return data as WhatsAppConversation[];
+          baseList = data as WhatsAppConversation[];
         }
       } catch (err) {
         console.warn('[whatsappService] Failed to load conversations from cloud, falling back to local cache:', err);
       }
     }
-    return getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, []);
+
+    if (baseList.length === 0) {
+      baseList = getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, []);
+    }
+
+    // Merge CRM leads with phone numbers so staff can view and chat with all active leads
+    try {
+      if (typeof leadService?.getLeads === 'function') {
+        const leads = leadService.getLeads(companyId || undefined);
+        const existingPhones = new Set(baseList.map(c => normalizeIndianPhone(c.phone)));
+        const existingLeadIds = new Set(baseList.map(c => c.lead_id).filter(Boolean));
+
+        for (const lead of leads) {
+          const phone = normalizeIndianPhone(lead.whatsapp_number || lead.phone || '');
+          if (!phone || existingPhones.has(phone) || existingLeadIds.has(lead.id)) continue;
+
+          baseList.push({
+            id: `conv_lead_${lead.id}`,
+            company_id: lead.company_id,
+            customer_id: lead.customer_id,
+            customer_name: lead.customer_name || 'Customer',
+            company_name: lead.company_name,
+            phone,
+            lead_id: lead.id,
+            lead_number: lead.lead_number,
+            last_message: lead.notes || 'Inquiry active in CRM',
+            last_message_at: lead.updated_at || lead.created_at || new Date().toISOString(),
+            unread_count: 0,
+            assigned_staff_email: lead.assigned_telecaller_email,
+            status: 'open',
+            created_at: lead.created_at
+          });
+          existingPhones.add(phone);
+        }
+      }
+    } catch (e) {
+      console.warn('[whatsappService] Error syncing CRM leads to conversations:', e);
+    }
+
+    return baseList;
   }
 
   /**
-   * Fetches messages for a specific conversation.
+   * Fetches messages for a specific conversation, merging local history and CRM activities.
    */
   async getMessages(conversationId: string): Promise<WhatsAppMessage[]> {
+    let cloudMsgs: WhatsAppMessage[] = [];
+
     if (isCloudActive() && supabase) {
       try {
         const { data, error } = await supabase
@@ -76,14 +119,58 @@ class WhatsAppService {
           const allLocal = getLocal<Record<string, WhatsAppMessage[]>>(MESSAGES_KEY, {});
           allLocal[conversationId] = data as WhatsAppMessage[];
           setLocal(MESSAGES_KEY, allLocal);
-          return data as WhatsAppMessage[];
+          cloudMsgs = data as WhatsAppMessage[];
         }
       } catch (err) {
         console.warn('[whatsappService] Failed to load messages from cloud, falling back to local cache:', err);
       }
     }
+
     const all = getLocal<Record<string, WhatsAppMessage[]>>(MESSAGES_KEY, {});
-    return all[conversationId] || [];
+    const msgs = cloudMsgs.length > 0 ? [...cloudMsgs] : [...(all[conversationId] || [])];
+
+    // Merge lead activities (WhatsApp inbound replies / sent messages)
+    try {
+      let leadId = conversationId.startsWith('conv_lead_') ? conversationId.replace('conv_lead_', '') : null;
+      if (!leadId) {
+        const convs = getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, []);
+        const found = convs.find(c => c.id === conversationId);
+        if (found?.lead_id) leadId = found.lead_id;
+      }
+
+      if (leadId && typeof leadService?.getLeadActivities === 'function') {
+        const activities = leadService.getLeadActivities(leadId);
+        for (const act of activities) {
+          const noteText = act.note || '';
+          const actionText = act.action || '';
+          const isWhatsAppMsg = actionText.includes('WhatsApp') || noteText.includes('WhatsApp');
+          if (isWhatsAppMsg) {
+            const isCustomer = actionText.includes('Inbound') || act.user_email === 'bizylead-bot';
+            const syntheticMsgId = `act_${act.id}`;
+            const cleanText = noteText.replace(/^Customer replied on WhatsApp \(\+91 \d+\):\s*"?|"?$/g, '');
+            if (!msgs.some(m => m.id === syntheticMsgId || m.text === cleanText)) {
+              msgs.push({
+                id: syntheticMsgId,
+                conversation_id: conversationId,
+                company_id: act.company_id,
+                sender_type: isCustomer ? 'customer' : 'staff',
+                sender_name: isCustomer ? 'Customer' : (act.user_email?.split('@')[0] || 'Staff'),
+                sender_email: act.user_email,
+                text: cleanText,
+                timestamp: act.created_at,
+                status: 'delivered',
+                created_at: act.created_at
+              });
+            }
+          }
+        }
+        msgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      }
+    } catch (e) {
+      console.warn('[whatsappService] Error merging lead activities to messages:', e);
+    }
+
+    return msgs;
   }
 
   /**
