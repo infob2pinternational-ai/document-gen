@@ -4,6 +4,7 @@ import { whatsappService } from '../services/whatsappService';
 import { leadService } from '../services/leadService';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { FollowUpModal } from './FollowUpModal';
+import { SaveAsLeadModal } from './SaveAsLeadModal';
 import { 
   Search, 
   Send, 
@@ -16,7 +17,9 @@ import {
   CheckCheck,
   AlertCircle,
   ExternalLink,
-  RotateCw
+  RotateCw,
+  UserPlus,
+  CheckCircle2
 } from 'lucide-react';
 
 interface WhatsAppInboxProps {
@@ -62,6 +65,8 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
 
   // Modals
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
+  const [saveLeadModalOpen, setSaveLeadModalOpen] = useState(false);
+  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
 
   const refreshConversations = useCallback(async () => {
     setIsRefreshing(true);
@@ -257,6 +262,23 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         </button>
       </div>
 
+      {statusFeedback && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          background: '#f0fdf4',
+          border: '1px solid #bbf7d0',
+          borderRadius: 'var(--radius-sm)',
+          padding: '0.6rem 1rem',
+          color: '#15803d',
+          fontSize: '0.8125rem'
+        }}>
+          <CheckCircle2 size={16} />
+          <span>{statusFeedback}</span>
+        </div>
+      )}
+
       {/* 3-Column Enterprise Workspace */}
       <div style={{
         display: 'grid',
@@ -380,7 +402,41 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {activeConv.lead_id ? (
+                  <span
+                    className="badge badge-info"
+                    style={{
+                      fontSize: '0.7rem',
+                      padding: '0.25rem 0.5rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                    title="Linked to CRM Lead"
+                  >
+                    <span>Lead: {activeConv.lead_number || (linkedLead?.lead_number ?? 'Linked')}</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSaveLeadModalOpen(true)}
+                    className="btn-primary"
+                    style={{
+                      fontSize: '0.72rem',
+                      padding: '0.3rem 0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      background: '#2563eb',
+                      borderColor: '#2563eb'
+                    }}
+                    title="Save this WhatsApp contact as a CRM lead"
+                  >
+                    <UserPlus size={12} />
+                    <span>Save as Lead</span>
+                  </button>
+                )}
                 <a
                   href={`https://wa.me/${normalizeIndianPhone(activeConv.phone)}`}
                   target="_blank"
@@ -570,34 +626,67 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 </div>
               </div>
 
-              {linkedLead && (
+              {activeConv.lead_id ? (
                 <div className="card" style={{ padding: '0.75rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
                     <span className="mono" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--brand-navy)' }}>
-                      {linkedLead.lead_number}
+                      {linkedLead?.lead_number || activeConv.lead_number}
                     </span>
                     <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>
-                      {linkedLead.status}
+                      {linkedLead?.status || 'Lead'}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>
-                    {linkedLead.service_required}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-                    {linkedLead.campaign_location || linkedLead.location}
-                  </div>
+                  {linkedLead?.service_required && (
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                      {linkedLead.service_required}
+                    </div>
+                  )}
+                  {(linkedLead?.campaign_location || linkedLead?.location) && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                      {linkedLead.campaign_location || linkedLead.location}
+                    </div>
+                  )}
 
                   {onOpenLead && (
                     <button
                       type="button"
-                      onClick={() => onOpenLead(linkedLead.id)}
+                      onClick={() => onOpenLead(activeConv.lead_id!)}
                       className="btn-secondary"
-                      style={{ width: '100%', marginTop: '0.65rem', fontSize: '0.72rem', padding: '0.3rem' }}
+                      style={{ width: '100%', marginTop: '0.65rem', fontSize: '0.72rem', padding: '0.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}
                     >
                       <Eye size={12} />
                       <span>View Lead Drawer</span>
                     </button>
                   )}
+                </div>
+              ) : (
+                <div className="card" style={{ padding: '0.75rem', background: '#f8fafc', border: '1px dashed var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
+                    <UserPlus size={13} color="var(--brand-navy)" />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>Not in CRM Leads</span>
+                  </div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 0.65rem 0', lineHeight: 1.4 }}>
+                    This WhatsApp contact is not connected to any CRM lead. You decide if and when to register them.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSaveLeadModalOpen(true)}
+                    className="btn-primary"
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      fontSize: '0.75rem',
+                      padding: '0.45rem',
+                      background: '#2563eb',
+                      borderColor: '#2563eb'
+                    }}
+                  >
+                    <UserPlus size={13} />
+                    <span>Save as CRM Lead</span>
+                  </button>
                 </div>
               )}
             </>
@@ -607,6 +696,26 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         </div>
 
       </div>
+
+      {/* Save as Lead Modal */}
+      {saveLeadModalOpen && activeConv && (
+        <SaveAsLeadModal
+          isOpen={saveLeadModalOpen}
+          onClose={() => setSaveLeadModalOpen(false)}
+          conversation={activeConv}
+          userEmail={userEmail}
+          companyId={companyId}
+          onSaved={(savedLead) => {
+            setConversations(prev => prev.map(c => 
+              c.id === activeConv.id 
+                ? { ...c, lead_id: savedLead.id, lead_number: savedLead.lead_number, company_name: savedLead.company_name || c.company_name }
+                : c
+            ));
+            setStatusFeedback(`Saved as Lead ${savedLead.lead_number}!`);
+            setTimeout(() => setStatusFeedback(null), 4000);
+          }}
+        />
+      )}
 
       {/* Follow-up modal from chat */}
       {followUpModalOpen && activeConv && (

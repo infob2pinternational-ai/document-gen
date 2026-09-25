@@ -302,56 +302,6 @@ export default async function handler(req, res) {
           created_at: new Date().toISOString()
         }).catch(() => {});
       }
-
-      // C. Update or Create CRM Lead
-      try {
-        const existingLeads = await supabaseRest(`leads?or=(phone.eq.${phone10},whatsapp_number.eq.${phone91},phone.eq.${phone91})&select=id,customer_name,company_id`);
-        if (existingLeads && existingLeads.length > 0) {
-          const lead = existingLeads[0];
-          // Log activity on the existing lead
-          await supabaseRest('lead_activities', 'POST', {
-            lead_id: lead.id,
-            company_id: lead.company_id || defaultCompanyId,
-            type: 'Inbound WhatsApp Reply',
-            notes: `Customer replied on WhatsApp (+91 81390 09034): "${textContent}"`,
-            performed_by: 'bizylead-bot',
-            created_at: new Date().toISOString()
-          });
-        } else {
-          // Auto-create new inbound lead
-          await supabaseRest('leads', 'POST', {
-            company_id: defaultCompanyId,
-            customer_name: customerName,
-            phone: phone10,
-            whatsapp_number: phone91,
-            lead_source: 'whatsapp_bulk',
-            source_details: 'Inbound WhatsApp (+91 81390 09034)',
-            status: 'new',
-            priority: 'warm',
-            notes: `Initial WhatsApp message: "${textContent.substring(0, 300)}"`,
-            created_at: new Date().toISOString()
-          });
-        }
-      } catch (leadErr) {
-        console.warn('[Bizylead Webhook] Note on leads sync:', leadErr);
-      }
-
-      // D. Update Telecalling record if active contact exists
-      try {
-        const teleRecords = await supabaseRest(`telecalling_entries?or=(phone.eq.${phone10},phone.eq.${phone91},other_phone.eq.${phone10})&order=created_at.desc&limit=1&select=id,feedback`);
-        if (teleRecords && teleRecords.length > 0) {
-          const tele = teleRecords[0];
-          const updatedFeedback = tele.feedback 
-            ? `${tele.feedback} | [WhatsApp Reply]: ${textContent}`
-            : `[WhatsApp Reply]: ${textContent}`;
-          
-          await supabaseRest(`telecalling_entries?id=eq.${tele.id}`, 'PATCH', {
-            feedback: updatedFeedback.substring(0, 500)
-          });
-        }
-      } catch (teleErr) {
-        console.warn('[Bizylead Webhook] Note on telecalling sync:', teleErr);
-      }
     }
 
     return res.status(200).json({
