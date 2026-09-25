@@ -7,7 +7,7 @@ import type {
 import { formatKolkataDisplayDate } from './dateUtils';
 import { isUnresolvedStatus } from '../types';
 
-export const DEFAULT_OWNER_WHATSAPP_NUMBER = '918891074715';
+export const DEFAULT_OWNER_WHATSAPP_NUMBER = '918589909034';
 const OWNER_WHATSAPP_KEY = 'b2p_owner_whatsapp_number';
 const OWNER_REPORT_EMAIL_KEY = 'b2p_owner_report_email';
 const OWNER_AUTO_REPORT_ENABLED_KEY = 'b2p_owner_auto_report_enabled';
@@ -15,12 +15,19 @@ const OWNER_AUTO_REPORT_TIME_KEY = 'b2p_owner_auto_report_time';
 
 /**
  * Gets the configured Owner WhatsApp phone number.
- * Defaults to verified company owner mobile (+91 88910 74715).
+ * Defaults to verified company owner mobile (+91 85899 09034).
  */
 export function getOwnerWhatsAppNumber(): string {
   try {
     const stored = localStorage.getItem(OWNER_WHATSAPP_KEY);
-    if (stored && stored.trim()) return stored.trim();
+    if (stored && stored.trim()) {
+      const clean = stored.replace(/\D/g, '');
+      if (clean === '918891074715' || clean === '8891074715') {
+        localStorage.setItem(OWNER_WHATSAPP_KEY, DEFAULT_OWNER_WHATSAPP_NUMBER);
+        return DEFAULT_OWNER_WHATSAPP_NUMBER;
+      }
+      return stored.trim();
+    }
     return DEFAULT_OWNER_WHATSAPP_NUMBER;
   } catch {
     return DEFAULT_OWNER_WHATSAPP_NUMBER;
@@ -115,6 +122,16 @@ export function setOwnerReportEmail(email: string): void {
   } catch (err) {
     console.error('Failed to store owner_report_email:', err);
   }
+}
+
+export function formatFollowUpClientLabel(item?: { customer_name?: string; company_name?: string }): string {
+  if (!item) return 'Client';
+  const cust = (item.customer_name || '').trim();
+  const comp = (item.company_name || '').trim();
+  if (cust && comp && cust.toLowerCase() !== comp.toLowerCase()) {
+    return `${cust} / ${comp}`;
+  }
+  return cust || comp || 'Client';
 }
 
 /**
@@ -272,6 +289,43 @@ export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData):
       b += `\n(No calls logged today)`;
     }
 
+    const staffDueToday = (report.followUpsDueTodayList || []).filter(item => {
+      const email = (item.assigned_staff_email || '').toLowerCase();
+      return (s.email && email.includes(s.email.toLowerCase())) ||
+             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
+    });
+    const staffOverdue = (report.overdueFollowUpsList || []).filter(item => {
+      const email = (item.assigned_staff_email || '').toLowerCase();
+      return (s.email && email.includes(s.email.toLowerCase())) ||
+             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
+    });
+
+    if (staffDueToday.length > 0) {
+      b += `\n📅 *Follow-ups Due Today (${staffDueToday.length}):*`;
+      staffDueToday.slice(0, 4).forEach((u, i) => {
+        const name = formatFollowUpClientLabel(u);
+        const phone = u.phone ? ` (${u.phone})` : '';
+        const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
+        b += `\n  ${i + 1}. ${name}${phone}${reason}`;
+      });
+      if (staffDueToday.length > 4) {
+        b += `\n  ...and ${staffDueToday.length - 4} more due today`;
+      }
+    }
+
+    if (staffOverdue.length > 0) {
+      b += `\n⚠️ *previouse follow up not done =* ${staffOverdue.length}`;
+      staffOverdue.slice(0, 3).forEach(u => {
+        const name = formatFollowUpClientLabel(u);
+        const phone = u.phone ? ` (${u.phone})` : '';
+        const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
+        b += `\n  • ${name}${phone}${reason}`;
+      });
+      if (staffOverdue.length > 3) {
+        b += `\n  ...and ${staffOverdue.length - 3} more overdue`;
+      }
+    }
+
     return b;
   });
 
@@ -312,6 +366,42 @@ export function buildDailyReportWhatsAppMessage(
 
   const staffSection = buildStaffDetailedBreakdown(report);
 
+  const dueTodayCount = typeof report.followUpsDueToday === 'number'
+    ? report.followUpsDueToday
+    : (report.followUpsDueTodayList?.length ?? report.followUpsCount ?? 0);
+
+  const overdueCount = typeof report.overdueFollowUpsCount === 'number'
+    ? report.overdueFollowUpsCount
+    : (report.overdueFollowUpsList?.length ?? 0);
+
+  let followUpSection = `*Follow-ups Due Today:* ${dueTodayCount}`;
+  if (report.followUpsDueTodayList && report.followUpsDueTodayList.length > 0) {
+    report.followUpsDueTodayList.slice(0, 5).forEach((item, idx) => {
+      const name = formatFollowUpClientLabel(item);
+      const phoneStr = item.phone ? ` (${item.phone})` : '';
+      const staff = item.assigned_staff_email ? ` [${item.assigned_staff_email.split('@')[0]}]` : '';
+      const reason = item.reason ? `: ${item.reason.substring(0, 40)}` : '';
+      followUpSection += `\n  ${idx + 1}. ${name}${phoneStr}${staff}${reason}`;
+    });
+    if (report.followUpsDueTodayList.length > 5) {
+      followUpSection += `\n  ...and ${report.followUpsDueTodayList.length - 5} more due today`;
+    }
+  }
+
+  followUpSection += `\n\n*previouse follow up not done =* ${overdueCount}`;
+  if (report.overdueFollowUpsList && report.overdueFollowUpsList.length > 0) {
+    report.overdueFollowUpsList.slice(0, 5).forEach((item, idx) => {
+      const name = formatFollowUpClientLabel(item);
+      const phoneStr = item.phone ? ` (${item.phone})` : '';
+      const staff = item.assigned_staff_email ? ` [${item.assigned_staff_email.split('@')[0]}]` : '';
+      const reason = item.reason ? `: ${item.reason.substring(0, 40)}` : '';
+      followUpSection += `\n  ${idx + 1}. ${name}${phoneStr}${staff}${reason}`;
+    });
+    if (report.overdueFollowUpsList.length > 5) {
+      followUpSection += `\n  ...and ${report.overdueFollowUpsList.length - 5} more overdue`;
+    }
+  }
+
   return (
     `*${headerCompany}*\n` +
     `*TELECALLING DAILY REPORT*\n\n` +
@@ -329,8 +419,8 @@ export function buildDailyReportWhatsAppMessage(
     `👥 *STAFF DETAILED BREAKDOWN*\n\n` +
     staffSection +
     `\n━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `*Follow-ups Required:* ${report.followUpsCount}\n\n` +
-    `Generated from B2P ONE`
+    followUpSection +
+    `\n\nGenerated from B2P ONE`
   );
 }
 

@@ -79,7 +79,7 @@ test('formatDailyReportMessage formats valid B2P WhatsApp text with status count
   assert.ok(message.includes('1. Appointment Confirmed: 5'));
   assert.ok(message.includes('2. Interested / Details Shared: 7'));
   assert.ok(message.includes('Franson: 18'));
-  assert.ok(message.includes('*Follow-ups Required:* 6'));
+  assert.ok(message.includes('*Follow-ups Due Today:* 6'));
   assert.ok(message.includes('Generated from B2P ONE'));
 });
 
@@ -129,10 +129,10 @@ test('POST /api/daily-report rejects sending to business own sender number (+91 
   assert.match(jsonResult.error, /Cannot send WhatsApp report to the business's own sender number/);
 });
 
-test('Owner WhatsApp settings defaults to 918891074715 and persists in localStorage', () => {
+test('Owner WhatsApp settings defaults to 918589909034 and persists in localStorage', () => {
   setOwnerWhatsAppNumber('');
   assert.equal(getOwnerWhatsAppNumber(), DEFAULT_OWNER_WHATSAPP_NUMBER);
-  assert.equal(DEFAULT_OWNER_WHATSAPP_NUMBER, '918891074715');
+  assert.equal(DEFAULT_OWNER_WHATSAPP_NUMBER, '918589909034');
 
   setOwnerWhatsAppNumber('9847099999');
   assert.equal(getOwnerWhatsAppNumber(), '9847099999');
@@ -156,7 +156,7 @@ test('Owner Auto-Report schedule preferences toggle and persist correctly', () =
   assert.equal(getOwnerAutoReportTime(), '18:30');
 });
 
-test('formatDailyReportMessage includes detailed breakdown for both staff Shiva and Brutt', () => {
+test('formatDailyReportMessage includes detailed breakdown for both staff Shiva and Brutt and CRM follow-ups', () => {
   const dummyReportWithStaff = {
     date: '2026-09-25',
     totalCalls: 30,
@@ -176,7 +176,18 @@ test('formatDailyReportMessage includes detailed breakdown for both staff Shiva 
       'Shiva': 18,
       'Brutt': 12
     },
-    followUpsCount: 8,
+    followUpsCount: 4,
+    followUpsDueToday: 4,
+    overdueFollowUpsCount: 8,
+    followUpsDueTodayList: [
+      { customer_name: 'manu', company_name: 'Synrah Study Abroad', phone: '7907778028', reason: 'Follow up on Other Advertising', assigned_staff_email: 'brutf5354@gmail.com' },
+      { customer_name: 'jineesh', company_name: 'Lakshya', phone: '7994505554', reason: 'sent our marketing services details', assigned_staff_email: 'brutf5354@gmail.com' },
+      { customer_name: 'noushad -', company_name: 'Rajakumari', phone: '9349950349', reason: 'sent details our marketting services', assigned_staff_email: 'brutf5354@gmail.com' },
+      { customer_name: 'muhammed shahin', company_name: 'pavan masala', phone: '9446488600', reason: 'marketing head not sent a updation', assigned_staff_email: 'brutf5354@gmail.com' }
+    ],
+    overdueFollowUpsList: [
+      { customer_name: 'Overdue Client 1', company_name: 'Past Tech', phone: '9847000001', reason: 'Quotation discussion', assigned_staff_email: 'brutf5354@gmail.com' }
+    ],
     unresolvedCallsCount: 14,
     entries: [
       {
@@ -221,4 +232,7 @@ test('formatDailyReportMessage includes detailed breakdown for both staff Shiva 
   assert.ok(message.includes('brutf5354@gmail.com'));
   assert.ok(message.includes('Malabar Logistics'));
   assert.ok(message.includes('Royal Jewellers'));
+  assert.ok(message.includes('*Follow-ups Due Today:* 4'));
+  assert.ok(message.includes('Synrah Study Abroad'));
+  assert.ok(message.includes('*previouse follow up not done =* 8'));
 });

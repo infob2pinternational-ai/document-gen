@@ -26,6 +26,8 @@ import {
 import type { CompanyProfile, TelecallingEntry, TelecallingStatus, TelecallingDailyReportData } from '../../types';
 import { TELECALLING_STATUSES, isUnresolvedStatus } from '../../types';
 import { telecallingService } from '../../services/telecallingService';
+import { officeService } from '../../services/officeService';
+import { metricsService } from '../../services/metricsService';
 import { getKolkataToday, formatKolkataDisplayDate } from '../../utils/dateUtils';
 import { 
   buildDailyReportWhatsAppMessage, 
@@ -93,7 +95,62 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
       const data = await telecallingService.getEntriesForDate(companyId, selectedDate);
       setEntries(data);
       const computed = telecallingService.computeDailyReport(data, selectedDate);
-      setReportData(computed);
+
+      // Enrich with real CRM Follow-ups from app
+      const crmDueToday = officeService.getFollowUps('today', companyId);
+      const crmOverdue = officeService.getFollowUps('overdue', companyId);
+      const crmCounts = metricsService.getFollowUpCounts();
+
+      const followUpsDueTodayList = crmDueToday.map(f => ({
+        id: f.id,
+        customer_name: f.customer_name,
+        company_name: f.company_name,
+        phone: f.phone,
+        reason: f.reason,
+        assigned_staff_email: f.assigned_staff_email,
+        due_date: f.due_date,
+        due_time: f.due_time,
+        status: f.status
+      }));
+
+      const overdueFollowUpsList = crmOverdue.map(f => ({
+        id: f.id,
+        customer_name: f.customer_name,
+        company_name: f.company_name,
+        phone: f.phone,
+        reason: f.reason,
+        assigned_staff_email: f.assigned_staff_email,
+        due_date: f.due_date,
+        due_time: f.due_time,
+        status: f.status
+      }));
+
+      const dueTodayCount = crmDueToday.length > 0 ? crmDueToday.length : crmCounts.today;
+      const overdueCount = crmOverdue.length > 0 ? crmOverdue.length : crmCounts.overdue;
+
+      const enriched: TelecallingDailyReportData = {
+        ...computed,
+        followUpsCount: dueTodayCount,
+        followUpsDueToday: dueTodayCount,
+        overdueFollowUpsCount: overdueCount,
+        followUpsDueTodayList,
+        overdueFollowUpsList
+      };
+
+      setReportData(enriched);
+
+      // Background sync snapshot to serverless API so unattended cron has the exact state
+      fetch('/api/daily-report?action=sync-follow-ups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: selectedDate,
+          followUpsDueToday: dueTodayCount,
+          overdueFollowUpsCount: overdueCount,
+          followUpsDueTodayList,
+          overdueFollowUpsList
+        })
+      }).catch(() => {});
     } catch (err) {
       console.error('Failed to load daily telecalling report:', err);
     } finally {

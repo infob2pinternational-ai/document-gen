@@ -1,5 +1,33 @@
 import https from 'https';
+import fs from 'fs';
 import { requireUser } from '../server/auth.js';
+
+const SNAPSHOT_FILE = '/tmp/b2p_followups_snapshot.json';
+let memorySnapshot = null;
+
+function saveFollowUpsSnapshot(snap) {
+  memorySnapshot = snap;
+  try {
+    fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify(snap));
+  } catch (e) {}
+}
+
+function loadFollowUpsSnapshot(targetDate) {
+  if (memorySnapshot && (!targetDate || memorySnapshot.date === targetDate)) {
+    return memorySnapshot;
+  }
+  try {
+    if (fs.existsSync(SNAPSHOT_FILE)) {
+      const raw = fs.readFileSync(SNAPSHOT_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (!targetDate || parsed.date === targetDate) {
+        memorySnapshot = parsed;
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return memorySnapshot;
+}
 
 // Helper to make HTTPS requests using Node's native module
 function httpsRequest(url, options, bodyContent) {
@@ -97,6 +125,16 @@ function isUnresolvedStatus(status) {
     'Not Reachable / Switched Off'
   ];
   return UNRESOLVED.includes(status);
+}
+
+export function formatFollowUpClientLabel(item) {
+  if (!item) return 'Client';
+  const cust = (item.customer_name || '').trim();
+  const comp = (item.company_name || '').trim();
+  if (cust && comp && cust.toLowerCase() !== comp.toLowerCase()) {
+    return `${cust} / ${comp}`;
+  }
+  return cust || comp || 'Client';
 }
 
 // Builds detailed breakdown for staff members (Shiva, Brutt, etc.)
@@ -237,6 +275,43 @@ export function buildStaffDetailedBreakdown(report) {
       b += `\n(No calls logged today)`;
     }
 
+    const staffDueToday = (report.followUpsDueTodayList || []).filter(item => {
+      const email = (item.assigned_staff_email || '').toLowerCase();
+      return (s.email && email.includes(s.email.toLowerCase())) ||
+             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
+    });
+    const staffOverdue = (report.overdueFollowUpsList || []).filter(item => {
+      const email = (item.assigned_staff_email || '').toLowerCase();
+      return (s.email && email.includes(s.email.toLowerCase())) ||
+             (s.label && email.includes(s.label.toLowerCase().slice(0, 4)));
+    });
+
+    if (staffDueToday.length > 0) {
+      b += `\n📅 *Follow-ups Due Today (${staffDueToday.length}):*`;
+      staffDueToday.slice(0, 4).forEach((u, i) => {
+        const name = formatFollowUpClientLabel(u);
+        const phone = u.phone ? ` (${u.phone})` : '';
+        const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
+        b += `\n  ${i + 1}. ${name}${phone}${reason}`;
+      });
+      if (staffDueToday.length > 4) {
+        b += `\n  ...and ${staffDueToday.length - 4} more due today`;
+      }
+    }
+
+    if (staffOverdue.length > 0) {
+      b += `\n⚠️ *previouse follow up not done =* ${staffOverdue.length}`;
+      staffOverdue.slice(0, 3).forEach(u => {
+        const name = formatFollowUpClientLabel(u);
+        const phone = u.phone ? ` (${u.phone})` : '';
+        const reason = u.reason ? `: ${u.reason.substring(0, 35)}` : '';
+        b += `\n  • ${name}${phone}${reason}`;
+      });
+      if (staffOverdue.length > 3) {
+        b += `\n  ...and ${staffOverdue.length - 3} more overdue`;
+      }
+    }
+
     return b;
   });
 
@@ -277,6 +352,42 @@ export function formatDailyReportMessage(companyName, report) {
 
   const staffSection = buildStaffDetailedBreakdown(report);
 
+  const dueTodayCount = typeof report.followUpsDueToday === 'number'
+    ? report.followUpsDueToday
+    : (report.followUpsDueTodayList?.length ?? report.followUpsCount ?? 0);
+
+  const overdueCount = typeof report.overdueFollowUpsCount === 'number'
+    ? report.overdueFollowUpsCount
+    : (report.overdueFollowUpsList?.length ?? 0);
+
+  let followUpSection = `*Follow-ups Due Today:* ${dueTodayCount}`;
+  if (report.followUpsDueTodayList && report.followUpsDueTodayList.length > 0) {
+    report.followUpsDueTodayList.slice(0, 5).forEach((item, idx) => {
+      const name = formatFollowUpClientLabel(item);
+      const phoneStr = item.phone ? ` (${item.phone})` : '';
+      const staff = item.assigned_staff_email ? ` [${item.assigned_staff_email.split('@')[0]}]` : '';
+      const reason = item.reason ? `: ${item.reason.substring(0, 40)}` : '';
+      followUpSection += `\n  ${idx + 1}. ${name}${phoneStr}${staff}${reason}`;
+    });
+    if (report.followUpsDueTodayList.length > 5) {
+      followUpSection += `\n  ...and ${report.followUpsDueTodayList.length - 5} more due today`;
+    }
+  }
+
+  followUpSection += `\n\n*previouse follow up not done =* ${overdueCount}`;
+  if (report.overdueFollowUpsList && report.overdueFollowUpsList.length > 0) {
+    report.overdueFollowUpsList.slice(0, 5).forEach((item, idx) => {
+      const name = formatFollowUpClientLabel(item);
+      const phoneStr = item.phone ? ` (${item.phone})` : '';
+      const staff = item.assigned_staff_email ? ` [${item.assigned_staff_email.split('@')[0]}]` : '';
+      const reason = item.reason ? `: ${item.reason.substring(0, 40)}` : '';
+      followUpSection += `\n  ${idx + 1}. ${name}${phoneStr}${staff}${reason}`;
+    });
+    if (report.overdueFollowUpsList.length > 5) {
+      followUpSection += `\n  ...and ${report.overdueFollowUpsList.length - 5} more overdue`;
+    }
+  }
+
   let message =
     `*${headerCompany}*\n` +
     `*TELECALLING DAILY REPORT*\n\n` +
@@ -294,8 +405,8 @@ export function formatDailyReportMessage(companyName, report) {
     `👥 *STAFF DETAILED BREAKDOWN*\n\n` +
     staffSection +
     `\n━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `*Follow-ups Required:* ${report.followUpsCount || 0}\n\n` +
-    `Generated from B2P ONE`;
+    followUpSection +
+    `\n\nGenerated from B2P ONE`;
 
   return message;
 }
@@ -313,6 +424,20 @@ export default async function handler(req, res) {
 
   const action = req.query.action || (req.method === 'GET' ? 'cron' : 'send-report');
 
+  // Handle follow-ups snapshot sync from CRM client
+  if (action === 'sync-follow-ups' || action === 'sync-snapshot') {
+    const snap = {
+      date: req.body?.date || getKolkataDateString(),
+      followUpsDueToday: Number(req.body?.followUpsDueToday ?? 0),
+      overdueFollowUpsCount: Number(req.body?.overdueFollowUpsCount ?? 0),
+      followUpsDueTodayList: Array.isArray(req.body?.followUpsDueTodayList) ? req.body.followUpsDueTodayList : [],
+      overdueFollowUpsList: Array.isArray(req.body?.overdueFollowUpsList) ? req.body.overdueFollowUpsList : [],
+      updatedAt: new Date().toISOString()
+    };
+    saveFollowUpsSnapshot(snap);
+    return res.status(200).json({ success: true, message: 'Follow-ups snapshot synced successfully', snapshot: snap });
+  }
+
   // Verify authentication if triggered from frontend
   let authUser = null;
   const isCron = action === 'cron' || Boolean(req.headers['x-vercel-cron']);
@@ -321,9 +446,12 @@ export default async function handler(req, res) {
     if (!authUser) return; // Response sent by requireUser
   }
 
-  // Determine target recipient phone
-  let targetPhone = req.body?.phone || req.query.phone || process.env.OWNER_WHATSAPP_NUMBER || '918891074715';
+  // Determine target recipient phone (defaults to owner number 918589909034)
+  let targetPhone = req.body?.phone || req.query.phone || process.env.OWNER_WHATSAPP_NUMBER || '918589909034';
   let cleanPhone = String(targetPhone).replace(/\D/g, '');
+  if (cleanPhone === '918891074715' || cleanPhone === '8891074715') {
+    cleanPhone = '918589909034';
+  }
   if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
   // Prevent sending to B2P's own business number
@@ -382,8 +510,48 @@ export default async function handler(req, res) {
 
   let reportData = req.body?.report_data;
 
-  // If report_data is not provided (e.g. Cron unattended execution), compute from database
+  // If report_data is not provided (e.g. Cron unattended execution), compute from database & snapshot
   if (!reportData) {
+    const snap = loadFollowUpsSnapshot(targetDate);
+    let dueTodayCount = snap?.followUpsDueToday ?? 0;
+    let overdueCount = snap?.overdueFollowUpsCount ?? 0;
+    let dueTodayList = snap?.followUpsDueTodayList || [];
+    let overdueList = snap?.overdueFollowUpsList || [];
+
+    // Also attempt querying Supabase follow_ups table
+    try {
+      const cloudFollowUps = await supabaseRest(`follow_ups?select=*&status=not.in.(completed,cancelled)`) || [];
+      if (Array.isArray(cloudFollowUps) && cloudFollowUps.length > 0) {
+        const tItems = [];
+        const oItems = [];
+        for (const f of cloudFollowUps) {
+          const fDate = f.follow_up_date || f.due_date;
+          const item = {
+            id: f.id,
+            customer_name: f.customer_name,
+            company_name: f.company_name,
+            phone: f.phone,
+            reason: f.reason || f.notes,
+            assigned_staff_email: f.assigned_staff_email,
+            due_date: fDate,
+            due_time: f.follow_up_time || f.due_time
+          };
+          if (fDate === targetDate) tItems.push(item);
+          else if (fDate && fDate < targetDate) oItems.push(item);
+        }
+        if (tItems.length > 0) {
+          dueTodayCount = tItems.length;
+          dueTodayList = tItems;
+        }
+        if (oItems.length > 0) {
+          overdueCount = oItems.length;
+          overdueList = oItems;
+        }
+      }
+    } catch (crmErr) {
+      console.warn('[Daily Report API] Error querying cloud follow_ups:', crmErr);
+    }
+
     try {
       const entries = await supabaseRest(`telecalling_entries?entry_date=eq.${targetDate}&order=created_at.asc`) || [];
       
@@ -433,7 +601,11 @@ export default async function handler(req, res) {
         uniqueCompanies: uniqueCompanySet.size,
         statusCounts,
         telecallerActivity,
-        followUpsCount: followUps,
+        followUpsCount: dueTodayCount > 0 ? dueTodayCount : followUps,
+        followUpsDueToday: dueTodayCount,
+        overdueFollowUpsCount: overdueCount,
+        followUpsDueTodayList: dueTodayList,
+        overdueFollowUpsList: overdueList,
         unresolvedCallsCount: unresolvedEntries.length,
         unresolvedEntries,
         entries
@@ -446,9 +618,22 @@ export default async function handler(req, res) {
         uniqueCompanies: 0,
         statusCounts: {},
         telecallerActivity: {},
-        followUpsCount: 0,
+        followUpsCount: dueTodayCount,
+        followUpsDueToday: dueTodayCount,
+        overdueFollowUpsCount: overdueCount,
+        followUpsDueTodayList: dueTodayList,
+        overdueFollowUpsList: overdueList,
         unresolvedCallsCount: 0
       };
+    }
+  } else {
+    // If client supplied reportData, merge any missing snapshot follow-ups
+    const snap = loadFollowUpsSnapshot(targetDate);
+    if (reportData.followUpsDueToday === undefined && snap) {
+      reportData.followUpsDueToday = snap.followUpsDueToday;
+      reportData.overdueFollowUpsCount = snap.overdueFollowUpsCount;
+      reportData.followUpsDueTodayList = snap.followUpsDueTodayList;
+      reportData.overdueFollowUpsList = snap.overdueFollowUpsList;
     }
   }
 

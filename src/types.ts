@@ -1324,6 +1324,18 @@ export interface TelecallingEntry {
   google_sync_error?: string | null;
 }
 
+export interface TelecallingFollowUpSummaryItem {
+  id?: string;
+  customer_name?: string;
+  company_name?: string;
+  phone?: string;
+  reason?: string;
+  assigned_staff_email?: string;
+  due_date?: string;
+  due_time?: string;
+  status?: string;
+}
+
 export interface TelecallingDailyReportData {
   date: string; // YYYY-MM-DD
   totalCalls: number;
@@ -1334,6 +1346,10 @@ export interface TelecallingDailyReportData {
   unresolvedCallsCount: number;
   unresolvedEntries: TelecallingEntry[];
   entries: TelecallingEntry[];
+  followUpsDueToday?: number;
+  overdueFollowUpsCount?: number;
+  followUpsDueTodayList?: TelecallingFollowUpSummaryItem[];
+  overdueFollowUpsList?: TelecallingFollowUpSummaryItem[];
 }
 
 export interface TelecallingWeeklyReportData {
