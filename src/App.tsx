@@ -45,7 +45,8 @@ import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { financeService } from './services/financeService';
 import { leadService } from './services/leadService';
 import { hydrateCrmFromCloud, officeService } from './services/officeService';
-import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, CheckCircle, X, Zap, Coffee, Sparkles } from 'lucide-react';
+import { whatsappService } from './services/whatsappService';
+import { Building, Menu, Moon, Sun, Download, Cloud, Search, Bell, CheckCircle, X, Zap, Coffee, Sparkles, MessageCircle } from 'lucide-react';
 import { getRecoverableDrafts, deleteDraft, type DraftSummary } from './utils/drafts';
 
 const playNotificationSound = () => {
@@ -129,7 +130,8 @@ function App() {
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success'; title?: string; actionTab?: string } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'whatsapp'; title?: string; actionTab?: string; targetId?: string } | null>(null);
+  const [selectedWhatsAppConvId, setSelectedWhatsAppConvId] = useState<string | null>(null);
 
   // Public View States
   const [publicViewDocId, setPublicViewDocId] = useState<string | null>(null);
@@ -646,6 +648,96 @@ function App() {
     const timer = window.setInterval(checkFollowUpReminders, 60000);
     return () => window.clearInterval(timer);
   }, [user, activeProfile?.id, currentUserEmail, simulatedRole, isOwner, isItAdmin, publicViewDocId]);
+
+  // Global Realtime & Polling listener for incoming customer WhatsApp messages -> Trigger In-App Pop-up Toast & Browser Notification
+  const lastProcessedWaMsgIdRef = React.useRef<string>('');
+  const appMountTimeRef = React.useRef<number>(Date.now());
+
+  useEffect(() => {
+    if (!user || publicViewDocId) return;
+
+    // Request browser notification permission once politely on login
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    const handleNewWhatsAppMessage = (msg: any) => {
+      if (!msg || msg.sender_type !== 'customer') return;
+      if (msg.id === lastProcessedWaMsgIdRef.current) return;
+      lastProcessedWaMsgIdRef.current = msg.id;
+
+      // Play audio chime alert
+      playNotificationSound();
+
+      const senderDisplayName = msg.sender_name || 'WhatsApp Customer';
+      const previewText = msg.text ? (msg.text.length > 80 ? msg.text.slice(0, 80) + '...' : msg.text) : 'New message received';
+
+      // 1. In-app floating popup toast
+      setToast({
+        type: 'whatsapp',
+        title: `WhatsApp: ${senderDisplayName}`,
+        message: previewText,
+        actionTab: 'whatsapp',
+        targetId: msg.conversation_id
+      });
+
+      // 2. Native browser desktop pop-up notification
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          const notif = new Notification(`WhatsApp: ${senderDisplayName}`, {
+            body: previewText,
+            icon: '/billing/logo_b2p.png'
+          });
+          notif.onclick = () => {
+            window.focus();
+            setCurrentTab('whatsapp');
+            if (msg.conversation_id) {
+              setSelectedWhatsAppConvId(msg.conversation_id);
+            }
+          };
+        } catch (e) {
+          console.warn('Native notification failed:', e);
+        }
+      }
+    };
+
+    // Realtime Supabase subscription
+    const unsubscribe = whatsappService.subscribeToLiveInbox(handleNewWhatsAppMessage);
+
+    // Reliable fallback poller (checks every 5 seconds for new customer messages)
+    let isPolling = false;
+    const interval = window.setInterval(async () => {
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        if (supabase) {
+          const { data } = await supabase
+            .from('whatsapp_messages')
+            .select('*')
+            .eq('sender_type', 'customer')
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (data && data.length > 0) {
+            const latest = data[0];
+            const msgTime = new Date(latest.created_at).getTime();
+            if (msgTime > appMountTimeRef.current && latest.id !== lastProcessedWaMsgIdRef.current) {
+              handleNewWhatsAppMessage(latest);
+            }
+          }
+        }
+      } catch (err) {
+        // silent fallback
+      } finally {
+        isPolling = false;
+      }
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      window.clearInterval(interval);
+    };
+  }, [user, supabase, publicViewDocId]);
 
   // Auto-clear toast alert after 10 seconds
   useEffect(() => {
@@ -1267,18 +1359,32 @@ function App() {
         onClick={() => {
           if (toast.actionTab) {
             setCurrentTab(toast.actionTab);
+            if (toast.targetId) {
+              setSelectedWhatsAppConvId(toast.targetId);
+            }
             setToast(null);
           }
         }}
       >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {toast.type === 'success' ? <CheckCircle size={20} color="#10b981" /> : <Bell size={20} color="#f59e0b" />}
+            {toast.type === 'success' ? <CheckCircle size={22} color="#10b981" /> :
+             toast.type === 'whatsapp' ? <div style={{ background: '#dcfce7', padding: '6px', borderRadius: '50%', display: 'flex' }}><MessageCircle size={20} color="#16a34a" /></div> :
+             <Bell size={22} color="#f59e0b" />}
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-              {toast.title || (toast.type === 'success' ? 'Document Approved' : 'Awaiting Approval')}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.875rem', color: toast.type === 'whatsapp' ? '#16a34a' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {toast.title || (toast.type === 'success' ? 'Document Approved' : 'Awaiting Approval')}
+              </span>
+              {toast.actionTab && (
+                <span style={{ fontSize: '0.65rem', background: toast.type === 'whatsapp' ? '#22c55e' : 'var(--accent-primary)', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                  {toast.type === 'whatsapp' ? 'Open Chat' : 'View'}
+                </span>
+              )}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem', lineHeight: '1.3' }}>{toast.message}</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.2rem', lineHeight: '1.35', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {toast.message}
+            </div>
           </div>
           <button
             onClick={(event) => {
@@ -1294,7 +1400,7 @@ function App() {
               padding: '0.2rem'
             }}
           >
-            <X size={14} />
+            <X size={15} />
           </button>
         </div>
       )}
@@ -2026,6 +2132,7 @@ function App() {
                 userRole={simulatedRole}
                 userEmail={currentUserEmail}
                 companyId={activeProfile?.id}
+                initialConversationId={selectedWhatsAppConvId}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
               />
             )}

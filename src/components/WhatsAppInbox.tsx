@@ -26,6 +26,7 @@ interface WhatsAppInboxProps {
   userRole?: string;
   userEmail?: string;
   companyId?: string;
+  initialConversationId?: string | null;
   onOpenLead?: (leadId: string) => void;
 }
 
@@ -52,16 +53,24 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   userRole: _userRole,
   userEmail = '',
   companyId,
+  initialConversationId,
   onOpenLead
 }) => {
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [activeConvId, setActiveConvId] = useState<string | null>(initialConversationId || null);
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync initial conversation ID when opened from notification
+  useEffect(() => {
+    if (initialConversationId) {
+      setActiveConvId(initialConversationId);
+    }
+  }, [initialConversationId]);
 
   // Modals
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
@@ -73,13 +82,13 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
     try {
       const list = await whatsappService.getConversations(companyId);
       setConversations(list);
-      if (!activeConvId && list.length > 0) {
+      if (!activeConvId && !initialConversationId && list.length > 0) {
         setActiveConvId(list[0].id);
       }
     } finally {
       setIsRefreshing(false);
     }
-  }, [activeConvId, companyId]);
+  }, [activeConvId, companyId, initialConversationId]);
 
   useEffect(() => {
     refreshConversations();
