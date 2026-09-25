@@ -68,6 +68,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageFeedRef = useRef<HTMLDivElement>(null);
 
   // Responsive state
   const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -177,9 +178,11 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
     };
   }, [activeConvId, refreshConversations]);
 
-  // Scroll to bottom when messages change
+  // Scroll internal message feed to bottom when messages change without moving outer parent containers
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messageFeedRef.current) {
+      messageFeedRef.current.scrollTop = messageFeedRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const activeConv = conversations.find(c => c.id === activeConvId);
@@ -407,7 +410,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             height: '100%'
           }}>
             {/* Search Box */}
-            <div style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+            <div style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
               <div style={{ position: 'relative', width: '100%' }}>
                 <Search size={14} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
@@ -540,7 +543,8 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 alignItems: 'center',
                 flexWrap: 'wrap',
                 gap: '0.5rem',
-                minWidth: 0
+                minWidth: 0,
+                flexShrink: 0
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flex: '1 1 200px' }}>
                   {isMobile && (
@@ -669,14 +673,17 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
               </div>
 
               {/* Message Feed */}
-              <div style={{
-                flex: 1,
-                padding: '0.85rem 1rem',
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.65rem'
-              }}>
+              <div
+                ref={messageFeedRef}
+                style={{
+                  flex: 1,
+                  padding: '0.85rem 1rem',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.65rem'
+                }}
+              >
                 {messages.length === 0 ? (
                   <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', margin: 'auto' }}>
                     No messages yet in this conversation.
@@ -764,7 +771,8 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 display: 'flex',
                 gap: '0.35rem',
                 overflowX: 'auto',
-                alignItems: 'center'
+                alignItems: 'center',
+                flexShrink: 0
               }}>
                 <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontWeight: 600, flexShrink: 0 }}>
                   Templates:
@@ -789,7 +797,8 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                background: '#ffffff'
+                background: '#ffffff',
+                flexShrink: 0
               }}>
                 <button
                   type="button"
@@ -851,7 +860,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         )}
 
         {/* Right Column: Customer Context & Lead Summary (Toggleable) */}
-        {showClientContext && (!isMobile || mobileView === 'chat') && (
+        {showClientContext && (!isMobile || mobileView === 'chat') && activeConv && (
           <div style={{
             background: '#ffffff',
             borderLeft: '1px solid var(--border-color)',
@@ -863,7 +872,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             minWidth: 0,
             height: '100%'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                 Client Context
               </span>

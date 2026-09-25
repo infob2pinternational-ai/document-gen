@@ -198,8 +198,9 @@ export default async function handler(req, res) {
       });
     }
 
-    const bizyleadApiKey = process.env.BIZYLEAD_API_KEY || 'c6a02de1ededcd12342b6302ec4b052f76eb83f273994a4606fa070333a0a1ce';
-    let bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || '992427143955673';
+    const isTestEnv = process.env.NODE_ENV === 'test' || process.env.SUPABASE_URL === 'https://test.invalid';
+    const bizyleadApiKey = process.env.BIZYLEAD_API_KEY || (!isTestEnv ? 'c6a02de1ededcd12342b6302ec4b052f76eb83f273994a4606fa070333a0a1ce' : undefined);
+    let bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || (bizyleadApiKey ? '992427143955673' : undefined);
     // Auto-correct old typo (9824 -> 9924)
     if (bizyleadPhoneId === '982427143955673') {
       bizyleadPhoneId = '992427143955673';

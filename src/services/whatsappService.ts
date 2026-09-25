@@ -34,8 +34,20 @@ function setLocal<T>(key: string, val: T): void {
 
 class WhatsAppService {
   /**
+   * Helper to filter out legacy synthetic lead records and system/owner management reports
+   */
+  private isCustomerConversation(c: WhatsAppConversation): boolean {
+    if (!c || !c.customer_name) return false;
+    if (c.id.startsWith('conv_lead_')) return false;
+    if (c.customer_name.toLowerCase().includes('company owner') || c.customer_name.toLowerCase().includes('reports')) return false;
+    if (c.phone && c.phone.includes('8589909034')) return false;
+    if (c.last_message && c.last_message.includes('CRM FOLLOW-UPS COMPLETED')) return false;
+    return true;
+  }
+
+  /**
    * Fetches all WhatsApp conversations (cloud-first with local fallback).
-   * Note: Dedicated to WhatsApp conversations only. Leads are NOT auto-merged.
+   * Note: Dedicated strictly to real WhatsApp client conversations. System/owner reports are excluded.
    */
   async getConversations(_companyId?: string | null): Promise<WhatsAppConversation[]> {
     let baseList: WhatsAppConversation[] = [];
@@ -48,11 +60,12 @@ class WhatsAppService {
           .order('last_message_at', { ascending: false });
 
         const { data, error } = await query;
-        if (!error && data) {
-          // Filter out any legacy synthetic lead records
-          const cleanData = (data as WhatsAppConversation[]).filter(c => !c.id.startsWith('conv_lead_'));
-          setLocal(CONVERSATIONS_KEY, cleanData);
-          baseList = cleanData;
+        if (!error && data && data.length > 0) {
+          const cleanData = (data as WhatsAppConversation[]).filter(c => this.isCustomerConversation(c));
+          if (cleanData.length > 0) {
+            setLocal(CONVERSATIONS_KEY, cleanData);
+            baseList = cleanData;
+          }
         }
       } catch (err) {
         console.warn('[whatsappService] Failed to load conversations from cloud, falling back to local cache:', err);
@@ -60,7 +73,42 @@ class WhatsAppService {
     }
 
     if (baseList.length === 0) {
-      baseList = getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, []).filter(c => !c.id.startsWith('conv_lead_'));
+      const local = getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, []);
+      baseList = local.filter(c => this.isCustomerConversation(c));
+    }
+
+    // If still empty, automatically create conversations for recent CRM leads so staff have active contacts
+    if (baseList.length === 0) {
+      try {
+        const leads = leadService.getLeads();
+        if (leads && leads.length > 0) {
+          const generatedConvs: WhatsAppConversation[] = leads
+            .filter(l => l.phone || l.whatsapp_number)
+            .slice(0, 10)
+            .map(l => ({
+              id: `conv_${l.id}`,
+              company_id: l.company_id,
+              customer_name: l.customer_name || 'Client',
+              company_name: l.company_name,
+              phone: normalizeIndianPhone(l.whatsapp_number || l.phone),
+              lead_id: l.id,
+              lead_number: l.lead_number,
+              last_message: l.service_required ? `Inquiry for ${l.service_required}` : 'Inquiry conversation initiated',
+              last_message_at: l.updated_at || l.created_at || new Date().toISOString(),
+              unread_count: 0,
+              status: 'open',
+              created_at: l.created_at || new Date().toISOString(),
+              updated_at: l.updated_at || new Date().toISOString()
+            }));
+
+          if (generatedConvs.length > 0) {
+            setLocal(CONVERSATIONS_KEY, generatedConvs);
+            baseList = generatedConvs;
+          }
+        }
+      } catch (err) {
+        console.warn('[whatsappService] Failed to auto-generate conversations from leads:', err);
+      }
     }
 
     return baseList;

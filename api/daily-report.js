@@ -1218,43 +1218,8 @@ export default async function handler(req, res) {
           messageId: waMsgId
         });
 
-        // Record in whatsapp inbox if possible
-        try {
-          let convs = await supabaseRest(`whatsapp_conversations?phone=eq.${cleanPhone}&select=id`);
-          let convId = convs?.[0]?.id;
-
-          if (!convId) {
-            const newConv = await supabaseRest('whatsapp_conversations', 'POST', {
-              customer_name: 'Company Owner (Reports)',
-              phone: cleanPhone,
-              last_message: item.text.substring(0, 200),
-              last_message_at: new Date().toISOString(),
-              unread_count: 0,
-              status: 'open'
-            });
-            convId = newConv?.[0]?.id;
-          } else {
-            await supabaseRest(`whatsapp_conversations?id=eq.${convId}`, 'PATCH', {
-              last_message: item.text.substring(0, 200),
-              last_message_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            });
-          }
-
-          if (convId) {
-            await supabaseRest('whatsapp_messages', 'POST', {
-              conversation_id: convId,
-              wa_message_id: waMsgId,
-              sender_type: 'system',
-              sender_name: 'B2P Automated Reporting',
-              message_type: 'text',
-              text: item.text,
-              status: 'sent'
-            });
-          }
-        } catch (convErr) {
-          console.warn('[Daily Report API] Non-fatal error recording message to whatsapp inbox:', convErr);
-        }
+        // Note: Automated owner management reports are dispatched directly to WhatsApp
+        // and are deliberately NOT saved into customer WhatsApp inbox conversations.
       }
     }
 

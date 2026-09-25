@@ -86,7 +86,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const leads = metricsService.getLeadCounts(undefined, activeProfile?.id);
     const followUps = metricsService.getFollowUpCounts();
     const quotes = metricsService.getQuotationCounts();
-    const convs = officeService.getConversations();
+    const convs = officeService.getConversations().filter(c => 
+      c.customer_name !== 'Company Owner (Reports)' && 
+      !c.phone?.includes('8589909034')
+    );
     const unreadWA = convs.reduce((sum, c) => sum + (c.unread_count || 0), 0);
 
     setLeadCount(leads.total || 0);

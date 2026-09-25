@@ -992,7 +992,14 @@ export const officeService = {
 
   // ─── WhatsApp Inbox Prototype (Phase 6) ────────────────────────────
   getConversations(): WhatsAppConversation[] {
-    return getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, SEED_CONVERSATIONS);
+    return getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, SEED_CONVERSATIONS)
+      .filter(c => 
+        !c.id.startsWith('conv_lead_') && 
+        !c.customer_name?.toLowerCase().includes('company owner') &&
+        !c.customer_name?.toLowerCase().includes('reports') &&
+        !c.phone?.includes('8589909034') &&
+        !(c.last_message && c.last_message.includes('CRM FOLLOW-UPS COMPLETED'))
+      );
   },
 
   getMessages(conversationId: string): WhatsAppMessage[] {
