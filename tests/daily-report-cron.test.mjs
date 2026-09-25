@@ -417,7 +417,7 @@ test('Night slot cron skips dispatching when no activity exists after 6:30 PM IS
 
   const req = {
     method: 'GET',
-    query: { action: 'cron', slot: 'night', date: '2026-09-25' },
+    query: { action: 'cron', slot: 'night', date: '2026-09-24' },
     headers: { 'x-vercel-cron': '1' }
   };
   const res = {
@@ -431,19 +431,19 @@ test('Night slot cron skips dispatching when no activity exists after 6:30 PM IS
   // Pre-feed report_data with activity strictly before 13:00 UTC
   req.body = {
     report_data: {
-      date: '2026-09-25',
+      date: '2026-09-24',
       totalCalls: 5,
       uniqueCompanies: 5,
       statusCounts: {},
       telecallerActivity: {},
       entries: [
-        { created_at: '2026-09-25T08:00:00.000Z', call_status: 'Appointment Confirmed' }
+        { created_at: '2026-09-24T08:00:00.000Z', call_status: 'Appointment Confirmed' }
       ],
       documentsList: [
-        { created_at: '2026-09-25T10:00:00.000Z', document_type: 'invoice', total: 1000 }
+        { created_at: '2026-09-24T10:00:00.000Z', document_type: 'invoice', total: 1000 }
       ],
       completedFollowUpsList: [
-        { completed_at: '2026-09-25T11:00:00.000Z', customer_name: 'Early Client' }
+        { completed_at: '2026-09-24T11:00:00.000Z', customer_name: 'Early Client' }
       ],
       rescheduledFollowUpsList: []
     }

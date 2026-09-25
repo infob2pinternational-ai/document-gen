@@ -325,10 +325,17 @@ export function buildStaffRecordsMap(report: TelecallingDailyReportData): {
   // 2. Documents
   const docsList = report.documentsList || [];
   for (const doc of docsList) {
-    const key = resolveStaffKey(doc.created_by_email, doc.created_by_name);
-    const rec = getStaffRecord(key, doc.created_by_email, doc.created_by_name);
+    const senderKey = doc.whatsapp_sent_by_email ? resolveStaffKey(doc.whatsapp_sent_by_email, undefined) : null;
+    const creatorKey = resolveStaffKey(doc.created_by_email, doc.created_by_name);
+    let targetKey = creatorKey;
+    let targetEmail = doc.created_by_email;
+    if (senderKey && senderKey !== 'franson' && senderKey !== 'staff') {
+      targetKey = senderKey;
+      targetEmail = doc.whatsapp_sent_by_email;
+    }
+    const rec = getStaffRecord(targetKey, targetEmail, doc.created_by_name);
     rec.documents.push(doc);
-    if (doc.created_at) rec.timeline.push(doc.created_at);
+    if (doc.created_at || doc.updated_at) rec.timeline.push(doc.created_at || doc.updated_at);
   }
 
   // 3. Completed follow-ups
@@ -399,38 +406,39 @@ export function buildStaffDetailedBreakdown(report: TelecallingDailyReportData):
 
     if (s.documents.length > 0) {
       b += `\n📄 *Documents Generated (${s.documents.length}):*`;
-      s.documents.slice(0, 3).forEach((d, i) => {
+      s.documents.slice(0, 10).forEach((d, i) => {
         const type = formatDocTypeLabel(d.document_type);
         const num = d.document_number || 'Draft';
         const amt = formatAmount(d.total);
-        b += `\n  ${i + 1}. ${type} #${num} (${d.customer_name || 'Client'}) - ${amt}`;
+        const profileTag = d.company_name ? ` [${d.company_name.replace('B2P ', '')}]` : '';
+        b += `\n  ${i + 1}. ${type} #${num}${profileTag} (${d.customer_name || 'Client'}) - ${amt}`;
       });
-      if (s.documents.length > 3) {
-        b += `\n  ...and ${s.documents.length - 3} more documents`;
+      if (s.documents.length > 10) {
+        b += `\n  ...and ${s.documents.length - 10} more documents`;
       }
     }
 
     if (s.completedFollowUps.length > 0) {
       b += `\n✅ *Follow-ups Completed Today (${s.completedFollowUps.length}):*`;
-      s.completedFollowUps.slice(0, 3).forEach((c, i) => {
+      s.completedFollowUps.slice(0, 10).forEach((c, i) => {
         const name = formatFollowUpClientLabel(c);
         const outcome = c.completion_note ? `: ${c.completion_note.substring(0, 30)}` : '';
         b += `\n  ${i + 1}. ${name}${outcome}`;
       });
-      if (s.completedFollowUps.length > 3) {
-        b += `\n  ...and ${s.completedFollowUps.length - 3} more completed`;
+      if (s.completedFollowUps.length > 10) {
+        b += `\n  ...and ${s.completedFollowUps.length - 10} more completed`;
       }
     }
 
     if (s.rescheduledFollowUps.length > 0) {
       b += `\n🔄 *Follow-ups Rescheduled / Snoozed (${s.rescheduledFollowUps.length}):*`;
-      s.rescheduledFollowUps.slice(0, 3).forEach((r, i) => {
+      s.rescheduledFollowUps.slice(0, 10).forEach((r, i) => {
         const name = formatFollowUpClientLabel(r);
         const due = (r.due_date || r.follow_up_date) ? ` ➔ ${formatKolkataDisplayDate(r.due_date || r.follow_up_date)}` : '';
         b += `\n  ${i + 1}. ${name}${due}`;
       });
-      if (s.rescheduledFollowUps.length > 3) {
-        b += `\n  ...and ${s.rescheduledFollowUps.length - 3} more rescheduled`;
+      if (s.rescheduledFollowUps.length > 10) {
+        b += `\n  ...and ${s.rescheduledFollowUps.length - 10} more rescheduled`;
       }
     }
 
@@ -531,8 +539,9 @@ export function formatStaffIndividualReport(
       const num = d.document_number || 'Draft';
       const cust = d.customer_name || 'Client';
       const amt = formatAmount(d.total);
+      const profileTag = d.company_name ? ` [${d.company_name.replace('B2P ', '')}]` : '';
       const st = (d.approval_status || d.status || 'Active').toUpperCase();
-      msg += `  ${i + 1}. *${typeLabel} #${num}* — ${cust}\n` +
+      msg += `  ${i + 1}. *${typeLabel} #${num}*${profileTag} — ${cust}\n` +
         `     Amount: ${amt} | Status: ${st}\n`;
       if (d.id) {
         msg += `     🔗 https://b2pinternational.com/doc/${d.id}\n`;

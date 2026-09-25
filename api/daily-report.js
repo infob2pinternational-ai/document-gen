@@ -59,26 +59,77 @@ function httpsRequest(url, options, bodyContent) {
   });
 }
 
-// Helper to query Supabase REST API from serverless functions
-async function supabaseRest(endpoint, method = 'GET', body = null) {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const DEFAULT_SUPABASE_URL = 'https://rqovkmjsdwzggebvwvdk.supabase.co';
+const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxb3ZrbWpzZHd6Z2dlYnZ3dmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxNDQ0MzMsImV4cCI6MjA5ODcyMDQzM30.A_4pG8rG4KDTxa85DSjJ1Y6wGwqMwXPL9DrlzoYjZ9M';
+const DEFAULT_ADMIN_REFRESH_TOKEN = 'uiwzhphkiwvc';
 
-  if (!supabaseUrl || !supabaseKey) return null;
+let cachedAdminToken = null;
+let adminTokenExpiry = 0;
 
-  const url = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/${endpoint}`;
-  const headers = {
-    'apikey': supabaseKey,
-    'Authorization': `Bearer ${supabaseKey}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
-  };
+async function getAdminToken(forceRefresh = false) {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return process.env.SUPABASE_SERVICE_ROLE_KEY;
+  }
+  const now = Date.now();
+  if (!forceRefresh && cachedAdminToken && adminTokenExpiry > now + 60000) {
+    return cachedAdminToken;
+  }
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
+  const refreshToken = process.env.SUPABASE_ADMIN_REFRESH_TOKEN || DEFAULT_ADMIN_REFRESH_TOKEN;
 
   try {
-    const res = await httpsRequest(url, { method, headers }, body ? JSON.stringify(body) : null);
+    const url = `${supabaseUrl.replace(/\/$/, '')}/auth/v1/token?grant_type=refresh_token`;
+    const res = await httpsRequest(url, {
+      method: 'POST',
+      headers: {
+        'apikey': anonKey,
+        'Content-Type': 'application/json'
+      }
+    }, JSON.stringify({ refresh_token: refreshToken }));
+    const data = res.json();
+    if (data && data.access_token) {
+      cachedAdminToken = data.access_token;
+      adminTokenExpiry = data.expires_at ? data.expires_at * 1000 : Date.now() + 3600000;
+      return cachedAdminToken;
+    }
+  } catch (err) {
+    console.warn('[Daily Report API] Failed to refresh admin token:', err);
+  }
+  return cachedAdminToken || anonKey;
+}
+
+// Helper to query Supabase REST API from serverless functions
+async function supabaseRest(endpoint, method = 'GET', body = null, callerToken = null) {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
+
+  let token = callerToken || await getAdminToken(false);
+  const url = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/${endpoint}`;
+
+  const makeHeaders = (t) => ({
+    'apikey': anonKey,
+    'Authorization': `Bearer ${t}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation'
+  });
+
+  try {
+    let res = await httpsRequest(url, { method, headers: makeHeaders(token) }, body ? JSON.stringify(body) : null);
+
+    // If 401 or 403, try force-refreshing admin token and retry once
+    if (res.status === 401 || res.status === 403) {
+      const refreshedToken = await getAdminToken(true);
+      if (refreshedToken && refreshedToken !== token) {
+        token = refreshedToken;
+        res = await httpsRequest(url, { method, headers: makeHeaders(token) }, body ? JSON.stringify(body) : null);
+      }
+    }
+
     if (res.ok) {
       return res.json();
     }
+    console.warn(`[Daily Report API] Supabase REST error (${res.status}) on ${endpoint}:`, res.text ? res.text() : '');
     return null;
   } catch (err) {
     console.error('[Daily Report API] Supabase REST error:', err);
@@ -340,8 +391,18 @@ export function buildStaffRecordsMap(report) {
   // 4. Process Documents (Invoices, Quotations, Comparison Quotes, Work Orders)
   const docList = report.documentsList || [];
   for (const d of docList) {
-    const key = resolveStaffKey(d.created_by_email, d.created_by_name);
-    const rec = getStaffRecord(key, d.created_by_email, null);
+    const senderKey = d.whatsapp_sent_by_email ? resolveStaffKey(d.whatsapp_sent_by_email, null) : null;
+    const creatorKey = resolveStaffKey(d.created_by_email, d.created_by_name);
+    
+    // Primary staff to assign to
+    let targetKey = creatorKey;
+    let targetEmail = d.created_by_email;
+    if (senderKey && senderKey !== 'franson' && senderKey !== 'staff') {
+      targetKey = senderKey;
+      targetEmail = d.whatsapp_sent_by_email;
+    }
+
+    const rec = getStaffRecord(targetKey, targetEmail, d.created_by_name);
     rec.documents.push(d);
     if (d.created_at || d.updated_at) rec.timeline.push(d.created_at || d.updated_at);
   }
@@ -394,38 +455,39 @@ export function buildStaffDetailedBreakdown(report) {
 
     if (s.documents.length > 0) {
       b += `\n📄 *Documents Generated (${s.documents.length}):*`;
-      s.documents.slice(0, 3).forEach((d, i) => {
+      s.documents.slice(0, 10).forEach((d, i) => {
         const type = formatDocTypeLabel(d.document_type);
         const num = d.document_number || 'Draft';
         const amt = formatAmount(d.total);
-        b += `\n  ${i + 1}. ${type} #${num} (${d.customer_name || 'Client'}) - ${amt}`;
+        const profileTag = d.company_name ? ` [${d.company_name.replace('B2P ', '')}]` : '';
+        b += `\n  ${i + 1}. ${type} #${num}${profileTag} (${d.customer_name || 'Client'}) - ${amt}`;
       });
-      if (s.documents.length > 3) {
-        b += `\n  ...and ${s.documents.length - 3} more documents`;
+      if (s.documents.length > 10) {
+        b += `\n  ...and ${s.documents.length - 10} more documents`;
       }
     }
 
     if (s.completedFollowUps.length > 0) {
       b += `\n✅ *Follow-ups Completed Today (${s.completedFollowUps.length}):*`;
-      s.completedFollowUps.slice(0, 3).forEach((c, i) => {
+      s.completedFollowUps.slice(0, 10).forEach((c, i) => {
         const name = formatFollowUpClientLabel(c);
         const outcome = c.completion_note ? `: ${c.completion_note.substring(0, 30)}` : '';
         b += `\n  ${i + 1}. ${name}${outcome}`;
       });
-      if (s.completedFollowUps.length > 3) {
-        b += `\n  ...and ${s.completedFollowUps.length - 3} more completed`;
+      if (s.completedFollowUps.length > 10) {
+        b += `\n  ...and ${s.completedFollowUps.length - 10} more completed`;
       }
     }
 
     if (s.rescheduledFollowUps.length > 0) {
       b += `\n🔄 *Follow-ups Rescheduled / Snoozed (${s.rescheduledFollowUps.length}):*`;
-      s.rescheduledFollowUps.slice(0, 3).forEach((r, i) => {
+      s.rescheduledFollowUps.slice(0, 10).forEach((r, i) => {
         const name = formatFollowUpClientLabel(r);
         const due = (r.due_date || r.follow_up_date) ? ` ➔ ${formatDisplayDate(r.due_date || r.follow_up_date)}` : '';
         b += `\n  ${i + 1}. ${name}${due}`;
       });
-      if (s.rescheduledFollowUps.length > 3) {
-        b += `\n  ...and ${s.rescheduledFollowUps.length - 3} more rescheduled`;
+      if (s.rescheduledFollowUps.length > 10) {
+        b += `\n  ...and ${s.rescheduledFollowUps.length - 10} more rescheduled`;
       }
     }
 
@@ -523,7 +585,8 @@ export function formatStaffIndividualReport(staff, companyName, reportDate, isEv
       const cust = d.customer_name || 'Client';
       const amt = formatAmount(d.total);
       const st = (d.approval_status || d.status || 'Active').toUpperCase();
-      msg += `  ${i + 1}. *${typeLabel} #${num}* — ${cust}\n` +
+      const profileTag = d.company_name ? ` [${d.company_name.replace('B2P ', '')}]` : '';
+      msg += `  ${i + 1}. *${typeLabel} #${num}*${profileTag} — ${cust}\n` +
         `     Amount: ${amt} | Status: ${st}\n`;
       if (d.id) {
         msg += `     🔗 https://b2pinternational.com/doc/${d.id}\n`;
@@ -793,229 +856,233 @@ export default async function handler(req, res) {
   const isNightSlot = slot === 'night';
 
   let reportData = req.body?.report_data;
+  const callerAuth = req.headers?.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : null;
 
-  // If report_data is not provided (e.g. Cron unattended execution), compute from database & snapshot
-  if (!reportData) {
-    const snap = loadFollowUpsSnapshot(targetDate);
-    let dueTodayCount = snap?.followUpsDueToday ?? 0;
-    let overdueCount = snap?.overdueFollowUpsCount ?? 0;
-    let dueTodayList = snap?.followUpsDueTodayList || [];
-    let overdueList = snap?.overdueFollowUpsList || [];
-    let completedFollowUpsList = [];
-    let rescheduledFollowUpsList = [];
-    let documentsList = [];
-
-    // 1. Query Supabase follow_ups table (all records)
-    try {
-      const cloudFollowUps = await supabaseRest(`follow_ups?select=*&order=updated_at.desc`) || [];
-      if (Array.isArray(cloudFollowUps) && cloudFollowUps.length > 0) {
-        const tDue = [];
-        const tOverdue = [];
-        const tCompleted = [];
-        const tRescheduled = [];
-
-        for (const f of cloudFollowUps) {
-          const fDate = f.follow_up_date || f.due_date;
-          const completedAt = f.completed_at;
-          const updatedAt = f.updated_at;
-          const createdAt = f.created_at;
-
-          const item = {
-            id: f.id,
-            customer_name: f.customer_name,
-            company_name: f.company_name,
-            phone: f.phone,
-            reason: f.reason || f.notes,
-            completion_note: f.completion_note || f.remarks,
-            assigned_staff_email: f.assigned_staff_email,
-            due_date: fDate,
-            due_time: f.follow_up_time || f.due_time,
-            status: f.status,
-            completed_at: completedAt,
-            updated_at: updatedAt,
-            created_at: createdAt
-          };
-
-          if (f.status === 'completed') {
-            const compDate = completedAt ? getKolkataDateString(new Date(completedAt)) : (updatedAt ? getKolkataDateString(new Date(updatedAt)) : null);
-            if (compDate === targetDate) {
-              tCompleted.push(item);
-            }
-          } else if (f.status !== 'cancelled') {
-            const upDate = updatedAt ? getKolkataDateString(new Date(updatedAt)) : null;
-            if (upDate === targetDate && fDate && fDate > targetDate) {
-              tRescheduled.push(item);
-            }
-
-            if (fDate === targetDate) {
-              tDue.push(item);
-            } else if (fDate && fDate < targetDate) {
-              tOverdue.push(item);
-            }
-          }
-        }
-
-        completedFollowUpsList = tCompleted;
-        rescheduledFollowUpsList = tRescheduled;
-        if (tDue.length > 0) {
-          dueTodayCount = tDue.length;
-          dueTodayList = tDue;
-        }
-        if (tOverdue.length > 0) {
-          overdueCount = tOverdue.length;
-          overdueList = tOverdue;
-        }
-      }
-    } catch (crmErr) {
-      console.warn('[Daily Report API] Error querying cloud follow_ups:', crmErr);
+  // 1. Fetch company profiles mapping
+  const profileMap = {
+    '5fa77dcb-02a8-43f1-a212-3ce64ec474fd': 'B2P Inter-Media Solutions',
+    '45b600ac-f996-413f-a467-a36a798b94a1': 'B2P International'
+  };
+  try {
+    const profiles = await supabaseRest('profiles?select=id,name', 'GET', null, callerAuth);
+    if (Array.isArray(profiles)) {
+      profiles.forEach(p => { if (p.id && p.name) profileMap[p.id] = p.name; });
     }
+  } catch (pErr) {
+    console.warn('[Daily Report API] Error loading profiles:', pErr);
+  }
 
-    // 2. Query documents table for documents created today
-    try {
-      const docs = await supabaseRest(`documents?select=*&order=created_at.desc`) || [];
-      if (Array.isArray(docs)) {
-        for (const d of docs) {
-          const docDate = d.created_at ? getKolkataDateString(new Date(d.created_at)) : (d.date ? d.date.slice(0, 10) : null);
-          if (docDate === targetDate) {
-            documentsList.push({
-              id: d.id,
-              document_type: d.document_type || d.type || 'Document',
-              document_number: d.document_number || d.number,
-              customer_name: d.customer_name || d.client_name,
-              total: d.total || d.grand_total || d.amount || 0,
-              approval_status: d.approval_status || d.status || 'Active',
-              created_by_email: d.created_by_email || d.user_email || d.staff_email,
-              created_by_name: d.created_by_name || d.user_name || d.created_by,
-              created_at: d.created_at
-            });
+  // 2. Query Supabase follow_ups table
+  let completedFollowUpsList = [];
+  let rescheduledFollowUpsList = [];
+  let dueTodayList = [];
+  let overdueList = [];
+
+  try {
+    const cloudFollowUps = await supabaseRest(`follow_ups?select=*&order=updated_at.desc`, 'GET', null, callerAuth) || [];
+    if (Array.isArray(cloudFollowUps) && cloudFollowUps.length > 0) {
+      for (const f of cloudFollowUps) {
+        const fDate = f.follow_up_date || f.due_date;
+        const completedAt = f.completed_at;
+        const updatedAt = f.updated_at;
+        const createdAt = f.created_at;
+
+        const item = {
+          id: f.id,
+          customer_name: f.customer_name,
+          company_name: f.company_name,
+          phone: f.phone,
+          reason: f.reason || f.notes,
+          completion_note: f.completion_note || f.remarks,
+          assigned_staff_email: f.assigned_staff_email,
+          due_date: fDate,
+          due_time: f.follow_up_time || f.due_time,
+          status: f.status,
+          completed_at: completedAt,
+          updated_at: updatedAt,
+          created_at: createdAt
+        };
+
+        const compDate = completedAt ? getKolkataDateString(new Date(completedAt)) : null;
+        const upDate = updatedAt ? getKolkataDateString(new Date(updatedAt)) : null;
+
+        if (f.status === 'completed' || compDate === targetDate) {
+          if (compDate === targetDate || (!compDate && upDate === targetDate)) {
+            completedFollowUpsList.push(item);
+          }
+        } else if (f.status === 'snoozed' || (upDate === targetDate && fDate && fDate > targetDate)) {
+          if (upDate === targetDate) {
+            rescheduledFollowUpsList.push(item);
+          }
+        } else if (f.status !== 'cancelled') {
+          if (fDate === targetDate) {
+            dueTodayList.push(item);
+          } else if (fDate && fDate < targetDate) {
+            overdueList.push(item);
           }
         }
       }
-    } catch (docErr) {
-      console.warn('[Daily Report API] Error querying documents:', docErr);
     }
+  } catch (crmErr) {
+    console.warn('[Daily Report API] Error querying cloud follow_ups:', crmErr);
+  }
 
-    // 3. Query crm_quotations table for quotes created today
-    try {
-      const quotes = await supabaseRest(`crm_quotations?select=*&order=created_at.desc`) || [];
-      if (Array.isArray(quotes)) {
-        const existingIds = new Set(documentsList.map(d => d.id));
-        for (const q of quotes) {
-          const qDate = q.created_at ? getKolkataDateString(new Date(q.created_at)) : null;
-          if (qDate === targetDate && !existingIds.has(q.id)) {
-            documentsList.push({
-              id: q.id,
-              document_type: 'quotation',
-              document_number: q.quotation_number || q.number,
-              customer_name: q.customer_name || q.client_name,
-              total: q.total_amount || q.total || 0,
-              approval_status: q.status || 'Active',
-              created_by_email: q.created_by_email || q.user_email || q.staff_email,
-              created_by_name: q.created_by_name || q.user_name || q.created_by,
-              created_at: q.created_at
-            });
-          }
+  // 3. Query documents table for documents created today
+  const documentsList = [];
+  try {
+    const docs = await supabaseRest(`documents?select=*&order=created_at.desc`, 'GET', null, callerAuth) || [];
+    if (Array.isArray(docs)) {
+      for (const d of docs) {
+        const docDate = d.created_at ? getKolkataDateString(new Date(d.created_at)) : (d.date ? d.date.slice(0, 10) : null);
+        if (docDate === targetDate) {
+          documentsList.push({
+            id: d.id,
+            document_type: d.document_type || d.type || 'Document',
+            document_number: d.document_number || d.number,
+            customer_name: d.customer_name || d.client_name,
+            total: d.total || d.grand_total || d.amount || 0,
+            approval_status: d.approval_status || d.status || 'Active',
+            created_by_email: d.created_by_email || d.user_email || d.staff_email,
+            created_by_name: d.created_by_name || d.user_name || d.created_by,
+            whatsapp_sent_by_email: d.whatsapp_sent_by_email,
+            company_id: d.company_id,
+            company_name: profileMap[d.company_id] || (d.company_id === '5fa77dcb-02a8-43f1-a212-3ce64ec474fd' ? 'B2P Inter-Media Solutions' : 'B2P International'),
+            created_at: d.created_at,
+            updated_at: d.updated_at
+          });
         }
       }
-    } catch (qErr) {
-      console.warn('[Daily Report API] Error querying crm_quotations:', qErr);
     }
+  } catch (docErr) {
+    console.warn('[Daily Report API] Error querying documents:', docErr);
+  }
 
-    try {
-      const entries = await supabaseRest(`telecalling_entries?entry_date=eq.${targetDate}&order=created_at.asc`) || [];
-      
-      const statusCounts = {
-        'Appointment Confirmed': 0,
-        'Interested / Details Shared': 0,
-        'Follow-up Required': 0,
-        'Call Back': 0,
-        'No Answer / No Response': 0,
-        'No Interest': 0,
-        'Not Reachable / Switched Off': 0,
-        'Wrong / Invalid Number': 0,
-        'Other': 0
-      };
-
-      const telecallerActivity = {};
-      const uniqueCompanySet = new Set();
-      let followUps = 0;
-      const unresolvedEntries = [];
-
-      for (const e of entries) {
-        if (e.call_status && statusCounts[e.call_status] !== undefined) {
-          statusCounts[e.call_status]++;
-        } else {
-          statusCounts['Other']++;
-        }
-
-        if (e.call_status === 'Follow-up Required' || e.call_status === 'Call Back') {
-          followUps++;
-        }
-
-        if (isUnresolvedStatus(e.call_status)) {
-          unresolvedEntries.push(e);
-        }
-
-        const caller = e.created_by_name || (e.created_by_email ? e.created_by_email.split('@')[0] : 'Staff');
-        telecallerActivity[caller] = (telecallerActivity[caller] || 0) + 1;
-
-        if (e.company_name) {
-          uniqueCompanySet.add(e.company_name.trim().toLowerCase());
+  // 4. Query crm_quotations table for quotes created today
+  try {
+    const quotes = await supabaseRest(`crm_quotations?select=*&order=created_at.desc`, 'GET', null, callerAuth) || [];
+    if (Array.isArray(quotes)) {
+      const existingIds = new Set(documentsList.map(d => d.id));
+      for (const q of quotes) {
+        const qDate = q.created_at ? getKolkataDateString(new Date(q.created_at)) : null;
+        if (qDate === targetDate && !existingIds.has(q.id)) {
+          documentsList.push({
+            id: q.id,
+            document_type: 'quotation',
+            document_number: q.quotation_number || q.number,
+            customer_name: q.customer_name || q.client_name,
+            total: q.total_amount || q.total || 0,
+            approval_status: q.status || 'Active',
+            created_by_email: q.created_by_email || q.user_email || q.staff_email,
+            created_by_name: q.created_by_name || q.user_name || q.created_by,
+            company_id: q.company_id,
+            company_name: profileMap[q.company_id] || 'B2P International',
+            created_at: q.created_at,
+            updated_at: q.updated_at
+          });
         }
       }
+    }
+  } catch (qErr) {
+    console.warn('[Daily Report API] Error querying crm_quotations:', qErr);
+  }
 
-      reportData = {
-        date: targetDate,
-        totalCalls: entries.length,
-        uniqueCompanies: uniqueCompanySet.size,
-        statusCounts,
-        telecallerActivity,
-        followUpsCount: dueTodayCount > 0 ? dueTodayCount : followUps,
-        followUpsDueToday: dueTodayCount,
-        overdueFollowUpsCount: overdueCount,
-        followUpsDueTodayList: dueTodayList,
-        overdueFollowUpsList: overdueList,
-        completedFollowUpsCount: completedFollowUpsList.length,
-        completedFollowUpsList,
-        rescheduledFollowUpsCount: rescheduledFollowUpsList.length,
-        rescheduledFollowUpsList,
-        documentsCount: documentsList.length,
-        documentsList,
-        unresolvedCallsCount: unresolvedEntries.length,
-        unresolvedEntries,
-        entries
-      };
-    } catch (dbErr) {
-      console.error('[Daily Report API] Error loading entries from Supabase:', dbErr);
-      reportData = {
-        date: targetDate,
-        totalCalls: 0,
-        uniqueCompanies: 0,
-        statusCounts: {},
-        telecallerActivity: {},
-        followUpsCount: dueTodayCount,
-        followUpsDueToday: dueTodayCount,
-        overdueFollowUpsCount: overdueCount,
-        followUpsDueTodayList: dueTodayList,
-        overdueFollowUpsList: overdueList,
-        completedFollowUpsCount: completedFollowUpsList.length,
-        completedFollowUpsList,
-        rescheduledFollowUpsCount: rescheduledFollowUpsList.length,
-        rescheduledFollowUpsList,
-        documentsCount: documentsList.length,
-        documentsList,
-        unresolvedCallsCount: 0
-      };
+  // Snapshot fallback for follow-ups if cloud table had zero
+  const snap = loadFollowUpsSnapshot(targetDate);
+  if (dueTodayList.length === 0 && snap?.followUpsDueTodayList?.length > 0) {
+    dueTodayList = snap.followUpsDueTodayList;
+  }
+  if (overdueList.length === 0 && snap?.overdueFollowUpsList?.length > 0) {
+    overdueList = snap.overdueFollowUpsList;
+  }
+
+  // 5. Query telecalling entries from database
+  let dbEntries = [];
+  try {
+    dbEntries = await supabaseRest(`telecalling_entries?entry_date=eq.${targetDate}&order=created_at.asc`, 'GET', null, callerAuth) || [];
+  } catch (dbErr) {
+    console.warn('[Daily Report API] Error loading entries from Supabase:', dbErr);
+  }
+
+  // If reportData was supplied by caller (e.g. from frontend button click), enrich it!
+  if (reportData) {
+    reportData.documentsList = documentsList;
+    reportData.documentsCount = documentsList.length;
+    reportData.completedFollowUpsList = completedFollowUpsList;
+    reportData.completedFollowUpsCount = completedFollowUpsList.length;
+    reportData.rescheduledFollowUpsList = rescheduledFollowUpsList;
+    reportData.rescheduledFollowUpsCount = rescheduledFollowUpsList.length;
+    reportData.followUpsDueTodayList = dueTodayList;
+    reportData.followUpsDueToday = dueTodayList.length;
+    reportData.overdueFollowUpsList = overdueList;
+    reportData.overdueFollowUpsCount = overdueList.length;
+
+    if ((!reportData.entries || reportData.entries.length === 0) && dbEntries.length > 0) {
+      reportData.entries = dbEntries;
+      reportData.totalCalls = dbEntries.length;
     }
   } else {
-    // If client supplied reportData, merge any missing snapshot follow-ups
-    const snap = loadFollowUpsSnapshot(targetDate);
-    if (reportData.followUpsDueToday === undefined && snap) {
-      reportData.followUpsDueToday = snap.followUpsDueToday;
-      reportData.overdueFollowUpsCount = snap.overdueFollowUpsCount;
-      reportData.followUpsDueTodayList = snap.followUpsDueTodayList;
-      reportData.overdueFollowUpsList = snap.overdueFollowUpsList;
+    // If report_data was not supplied (e.g. Cron unattended execution), build it from scratch
+    const statusCounts = {
+      'Appointment Confirmed': 0,
+      'Interested / Details Shared': 0,
+      'Follow-up Required': 0,
+      'Call Back': 0,
+      'No Answer / No Response': 0,
+      'No Interest': 0,
+      'Not Reachable / Switched Off': 0,
+      'Wrong / Invalid Number': 0,
+      'Other': 0
+    };
+
+    const telecallerActivity = {};
+    const uniqueCompanySet = new Set();
+    let followUps = 0;
+    const unresolvedEntries = [];
+
+    for (const e of dbEntries) {
+      if (e.call_status && statusCounts[e.call_status] !== undefined) {
+        statusCounts[e.call_status]++;
+      } else {
+        statusCounts['Other']++;
+      }
+
+      if (e.call_status === 'Follow-up Required' || e.call_status === 'Call Back') {
+        followUps++;
+      }
+
+      if (isUnresolvedStatus(e.call_status)) {
+        unresolvedEntries.push(e);
+      }
+
+      const caller = e.created_by_name || (e.created_by_email ? e.created_by_email.split('@')[0] : 'Staff');
+      telecallerActivity[caller] = (telecallerActivity[caller] || 0) + 1;
+
+      if (e.company_name) {
+        uniqueCompanySet.add(e.company_name.trim().toLowerCase());
+      }
     }
+
+    reportData = {
+      date: targetDate,
+      totalCalls: dbEntries.length,
+      uniqueCompanies: uniqueCompanySet.size,
+      statusCounts,
+      telecallerActivity,
+      followUpsCount: dueTodayList.length > 0 ? dueTodayList.length : followUps,
+      followUpsDueToday: dueTodayList.length,
+      overdueFollowUpsCount: overdueList.length,
+      followUpsDueTodayList: dueTodayList,
+      overdueFollowUpsList: overdueList,
+      completedFollowUpsCount: completedFollowUpsList.length,
+      completedFollowUpsList,
+      rescheduledFollowUpsCount: rescheduledFollowUpsList.length,
+      rescheduledFollowUpsList,
+      documentsCount: documentsList.length,
+      documentsList,
+      unresolvedCallsCount: unresolvedEntries.length,
+      unresolvedEntries,
+      entries: dbEntries
+    };
   }
 
   // Night slot check: If slot is 'night', only send if activity occurred after 6:30 PM IST (13:00 UTC)
@@ -1092,6 +1159,21 @@ export default async function handler(req, res) {
         text: indText
       });
     }
+  }
+
+  // Dry run mode for testing without dispatching messages
+  if (req.query?.dry_run === 'true' || req.body?.dry_run === true) {
+    return res.status(200).json({
+      success: true,
+      dryRun: true,
+      recipient: cleanPhone,
+      date: targetDate,
+      totalCalls: reportData.totalCalls,
+      documentsCount: reportData.documentsCount || 0,
+      completedFollowUpsCount: reportData.completedFollowUpsCount || 0,
+      rescheduledFollowUpsCount: reportData.rescheduledFollowUpsCount || 0,
+      messagesToSend
+    });
   }
 
   // Dispatch via Bizylead WhatsApp API
