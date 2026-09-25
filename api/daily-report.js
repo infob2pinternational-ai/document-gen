@@ -340,7 +340,7 @@ export default async function handler(req, res) {
     const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || '992427143955673';
     const bizyleadBaseUrl = process.env.BIZYLEAD_BASE_URL || 'https://app.bizylead.com/api/v2/whatsapp-business';
 
-    const testText = `✅ *B2P ONE - System Verification Ping*\n\nThis is a test notification confirming that your Owner WhatsApp number (*+${cleanPhone}*) is connected to the B2P WhatsApp System.\n\nDaily automated operational reports will be dispatched here at 8:00 PM IST.\n\n_B2P International Pvt Ltd_`;
+    const testText = `✅ *B2P ONE - System Verification Ping*\n\nThis is a test notification confirming that your Owner WhatsApp number (*+${cleanPhone}*) is connected to the B2P WhatsApp System.\n\nDaily automated operational reports will be dispatched here at 6:30 PM IST.\n\n_B2P International Pvt Ltd_`;
 
     try {
       const bizyUrl = `${bizyleadBaseUrl.replace(/\/$/, '')}/messages`;
