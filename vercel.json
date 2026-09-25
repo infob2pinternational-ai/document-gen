@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/api/whatsapp", "destination": "/api/whatsapp" },
+    { "source": "/api/bizylead-webhook", "destination": "/api/bizylead-webhook" },
     { "source": "/doc/:id/send-push", "destination": "/api/doc?id=:id&action=send-push" },
     { "source": "/doc/:id", "destination": "/api/doc?id=:id" },
     { "source": "/doc/:id/:path*", "destination": "/api/doc?id=:id" },

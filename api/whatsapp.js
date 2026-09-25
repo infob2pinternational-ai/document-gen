@@ -171,7 +171,54 @@ export default async function handler(req, res) {
     let cleanPhone = String(phone).replace(/\D/g, '');
     if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
-    // Check if Meta API credentials are configured
+    const bizyleadApiKey = process.env.BIZYLEAD_API_KEY;
+    const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID;
+    const bizyleadBaseUrl = process.env.BIZYLEAD_BASE_URL || 'https://app.bizylead.com/api/v2/whatsapp-business';
+
+    // 1. Primary Outbound Provider: Bizylead Official WhatsApp Business API
+    if (bizyleadApiKey && bizyleadPhoneId) {
+      const messageContent = text || (media_url ? `${text ? text + '\n' : ''}${media_url}` : '');
+      const bizyPayload = {
+        to: cleanPhone,
+        phoneNoId: bizyleadPhoneId,
+        type: 'text',
+        text: messageContent
+      };
+
+      try {
+        const bizyUrl = `${bizyleadBaseUrl.replace(/\/$/, '')}/messages`;
+        const response = await httpsRequest(bizyUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${bizyleadApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        }, JSON.stringify(bizyPayload));
+
+        const resData = response.json();
+
+        if (!response.ok) {
+          console.error('[WhatsApp API] Bizylead API returned error:', resData);
+          return res.status(response.status || 500).json({
+            success: false,
+            error: resData?.error?.message || resData?.message || resData?.error || 'Bizylead API error',
+            details: resData
+          });
+        }
+
+        const waMsgId = resData?.messageId || resData?.messages?.[0]?.id || resData?.id || resData?.data?.id || `bizy_${Date.now()}`;
+        return res.status(200).json({
+          success: true,
+          messageId: waMsgId,
+          provider: 'bizylead'
+        });
+      } catch (err) {
+        console.error('[WhatsApp API] Exception sending via Bizylead:', err);
+        return res.status(500).json({ error: 'Internal server error with Bizylead', details: String(err) });
+      }
+    }
+
+    // 2. Secondary Fallback: Meta Cloud API directly
     if (!phoneNumberId || !accessToken) {
       return res.status(503).json({ success: false, error: 'WhatsApp API credentials are not configured.' });
     }
@@ -232,7 +279,8 @@ export default async function handler(req, res) {
       // The authenticated client persists the message once, with its local ID.
       return res.status(200).json({
         success: true,
-        messageId: waMsgId
+        messageId: waMsgId,
+        provider: 'meta'
       });
     } catch (err) {
       console.error('[WhatsApp API] Error sending WhatsApp message:', err);

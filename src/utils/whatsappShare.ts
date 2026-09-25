@@ -1,6 +1,7 @@
 import type { Document } from '../types';
 import { dbService } from '../services/db';
 import { normalizeAdvance, calculateBalanceDue } from './calculations';
+import { authenticatedHeaders } from '../services/apiAuth';
 
 /**
  * Normalizes a stored phone number into wa.me's expected format
@@ -143,9 +144,14 @@ export async function sendDocumentViaWhatsAppApi(
   }
 
   try {
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      headers = await authenticatedHeaders();
+    } catch {}
+
     const res = await fetch('/api/whatsapp?action=send-message', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         phone: cleanPhone,
         type: 'text',
