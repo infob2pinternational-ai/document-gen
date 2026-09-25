@@ -448,8 +448,16 @@ class WhatsAppService {
     }
   }
 
+  private liveSubscribers = new Set<{
+    onMessage: (msg: WhatsAppMessage) => void;
+    onStatusUpdate?: (update: { id: string; status: WhatsAppMessage['status']; error_message?: string }) => void;
+  }>();
+  private liveChannel: any = null;
+
   /**
    * Subscribes to real-time incoming messages via Supabase Realtime channel.
+   * Uses a safe singleton subscriber registry so multiple components can subscribe
+   * without creating conflicting duplicate channels or throwing post-subscribe errors.
    */
   subscribeToLiveInbox(
     onMessage: (msg: WhatsAppMessage) => void,
@@ -459,35 +467,57 @@ class WhatsAppService {
       return () => {};
     }
 
-    const client = supabase;
-    const channel = client
-      .channel('whatsapp_live_inbox')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
-        (payload) => {
-          if (payload.new) {
-            onMessage(payload.new as WhatsAppMessage);
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'whatsapp_messages' },
-        (payload) => {
-          if (payload.new && onStatusUpdate) {
-            onStatusUpdate({
-              id: payload.new.id,
-              status: payload.new.status,
-              error_message: payload.new.error_message
-            });
-          }
-        }
-      )
-      .subscribe();
+    const sub = { onMessage, onStatusUpdate };
+    this.liveSubscribers.add(sub);
+
+    if (!this.liveChannel) {
+      try {
+        const client = supabase;
+        const channelName = `whatsapp_live_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        this.liveChannel = client
+          .channel(channelName)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
+            (payload) => {
+              if (payload.new) {
+                const msg = payload.new as WhatsAppMessage;
+                this.liveSubscribers.forEach(s => {
+                  try { s.onMessage(msg); } catch (e) { console.warn(e); }
+                });
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'whatsapp_messages' },
+            (payload) => {
+              if (payload.new) {
+                const update = {
+                  id: payload.new.id,
+                  status: payload.new.status,
+                  error_message: payload.new.error_message
+                };
+                this.liveSubscribers.forEach(s => {
+                  try { s.onStatusUpdate?.(update); } catch (e) { console.warn(e); }
+                });
+              }
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('[whatsappService] Error setting up live channel:', err);
+      }
+    }
 
     return () => {
-      client.removeChannel(channel);
+      this.liveSubscribers.delete(sub);
+      if (this.liveSubscribers.size === 0 && this.liveChannel && supabase) {
+        try {
+          supabase.removeChannel(this.liveChannel);
+        } catch (e) {}
+        this.liveChannel = null;
+      }
     };
   }
 }
