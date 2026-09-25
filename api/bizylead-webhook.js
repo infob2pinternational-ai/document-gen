@@ -232,6 +232,17 @@ export default async function handler(req, res) {
       }
     }
 
+    // Fetch default company_id from profiles so RLS scopes allow portal users to view records
+    let defaultCompanyId = null;
+    try {
+      const profiles = await supabaseRest('profiles?limit=1&select=id');
+      if (profiles && profiles.length > 0) {
+        defaultCompanyId = profiles[0].id;
+      }
+    } catch (e) {
+      console.warn('[Bizylead Webhook] Could not fetch default company_id:', e);
+    }
+
     // 5. Process Inbound Messages
     for (const msg of incomingMessages) {
       if (!msg.from) continue;
@@ -247,18 +258,23 @@ export default async function handler(req, res) {
       // A. Sync to whatsapp_conversations table
       let convId = null;
       try {
-        const existingConvs = await supabaseRest(`whatsapp_conversations?phone=eq.${phone91}&select=id,unread_count`);
+        const existingConvs = await supabaseRest(`whatsapp_conversations?phone=eq.${phone91}&select=id,unread_count,company_id`);
         if (existingConvs && existingConvs.length > 0) {
           convId = existingConvs[0].id;
           const currentUnread = (existingConvs[0].unread_count || 0) + 1;
-          await supabaseRest(`whatsapp_conversations?id=eq.${convId}`, 'PATCH', {
+          const patchBody = {
             last_message: textContent,
             last_message_at: new Date().toISOString(),
             unread_count: currentUnread,
             updated_at: new Date().toISOString()
-          });
+          };
+          if (!existingConvs[0].company_id && defaultCompanyId) {
+            patchBody.company_id = defaultCompanyId;
+          }
+          await supabaseRest(`whatsapp_conversations?id=eq.${convId}`, 'PATCH', patchBody);
         } else {
           const newConv = await supabaseRest('whatsapp_conversations', 'POST', {
+            company_id: defaultCompanyId,
             customer_name: customerName,
             phone: phone91,
             last_message: textContent,
@@ -276,6 +292,7 @@ export default async function handler(req, res) {
       if (convId) {
         await supabaseRest('whatsapp_messages', 'POST', {
           conversation_id: convId,
+          company_id: defaultCompanyId,
           wa_message_id: waMsgId,
           sender_type: 'customer',
           sender_name: customerName,
@@ -288,27 +305,29 @@ export default async function handler(req, res) {
 
       // C. Update or Create CRM Lead
       try {
-        const existingLeads = await supabaseRest(`leads?or=(phone.eq.${phone10},whatsapp_number.eq.${phone91},phone.eq.${phone91})&select=id,customer_name`);
+        const existingLeads = await supabaseRest(`leads?or=(phone.eq.${phone10},whatsapp_number.eq.${phone91},phone.eq.${phone91})&select=id,customer_name,company_id`);
         if (existingLeads && existingLeads.length > 0) {
           const lead = existingLeads[0];
           // Log activity on the existing lead
           await supabaseRest('lead_activities', 'POST', {
             lead_id: lead.id,
-            action: 'Inbound WhatsApp Reply',
-            note: `Customer replied on WhatsApp (+91 81390 09034): "${textContent}"`,
-            user_email: 'bizylead-bot',
+            company_id: lead.company_id || defaultCompanyId,
+            type: 'Inbound WhatsApp Reply',
+            notes: `Customer replied on WhatsApp (+91 81390 09034): "${textContent}"`,
+            performed_by: 'bizylead-bot',
             created_at: new Date().toISOString()
           });
         } else {
           // Auto-create new inbound lead
           await supabaseRest('leads', 'POST', {
+            company_id: defaultCompanyId,
             customer_name: customerName,
             phone: phone10,
             whatsapp_number: phone91,
-            lead_source: 'whatsapp',
+            lead_source: 'whatsapp_bulk',
             source_details: 'Inbound WhatsApp (+91 81390 09034)',
-            status: 'NEW',
-            priority: 'WARM',
+            status: 'new',
+            priority: 'warm',
             notes: `Initial WhatsApp message: "${textContent.substring(0, 300)}"`,
             created_at: new Date().toISOString()
           });

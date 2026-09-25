@@ -2025,6 +2025,7 @@ function App() {
               <WhatsAppInbox
                 userRole={simulatedRole}
                 userEmail={currentUserEmail}
+                companyId={activeProfile?.id}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
               />
             )}

@@ -39,3 +39,4 @@ scratch/
 supabase/
 
 .vercel
+.env*

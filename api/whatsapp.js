@@ -162,7 +162,24 @@ export default async function handler(req, res) {
       company_id
     } = req.body || {};
 
-    if (!await requireCompanyAccess(auth, company_id, res)) return;
+    let targetCompanyId = company_id;
+    if (!targetCompanyId) {
+      try {
+        const profileRes = await fetch(`${auth.url}/rest/v1/profiles?limit=1&select=id`, {
+          headers: auth.headers, signal: AbortSignal.timeout(10000)
+        });
+        if (profileRes.ok) {
+          const profs = await profileRes.json();
+          if (Array.isArray(profs) && profs.length > 0) {
+            targetCompanyId = profs[0].id;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not auto-resolve default company_id:', err);
+      }
+    }
+
+    if (!await requireCompanyAccess(auth, targetCompanyId, res)) return;
 
     if (!phone) {
       return res.status(400).json({ error: 'Missing target phone number' });

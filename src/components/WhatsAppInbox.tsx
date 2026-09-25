@@ -15,12 +15,14 @@ import {
   Check,
   CheckCheck,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  RotateCw
 } from 'lucide-react';
 
 interface WhatsAppInboxProps {
   userRole?: string;
   userEmail?: string;
+  companyId?: string;
   onOpenLead?: (leadId: string) => void;
 }
 
@@ -46,6 +48,7 @@ const QUICK_TEMPLATES = [
 export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   userRole: _userRole,
   userEmail = '',
+  companyId,
   onOpenLead
 }) => {
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
@@ -54,22 +57,41 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Modals
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
 
   const refreshConversations = useCallback(async () => {
-    const list = await whatsappService.getConversations();
-    setConversations(list);
-    if (!activeConvId && list.length > 0) {
-      setActiveConvId(list[0].id);
+    setIsRefreshing(true);
+    try {
+      const list = await whatsappService.getConversations(companyId);
+      setConversations(list);
+      if (!activeConvId && list.length > 0) {
+        setActiveConvId(list[0].id);
+      }
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [activeConvId]);
+  }, [activeConvId, companyId]);
 
   useEffect(() => {
     refreshConversations();
   }, [refreshConversations]);
+
+  // Periodic background polling (every 5 seconds) to ensure inbound webhook messages appear live
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const list = await whatsappService.getConversations(companyId);
+      setConversations(list);
+      if (activeConvId) {
+        const msgs = await whatsappService.getMessages(activeConvId);
+        setMessages(msgs);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [activeConvId, companyId]);
 
   useEffect(() => {
     if (activeConvId) {
@@ -133,7 +155,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         senderType: 'staff',
         senderName: userEmail.split('@')[0],
         senderEmail: userEmail,
-        companyId: activeConv.company_id
+        companyId: activeConv.company_id || companyId
       });
       setMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
       refreshConversations();
@@ -159,7 +181,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         senderType: 'staff',
         senderName: userEmail.split('@')[0],
         senderEmail: userEmail,
-        companyId: activeConv.company_id,
+        companyId: activeConv.company_id || companyId,
         attachment: {
           type: 'pdf',
           name: 'Quotation-B2P.pdf',
@@ -211,6 +233,28 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             Multi-staff shared messaging inbox for quick quotations, route coordinates, and customer chats.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            refreshConversations();
+            if (activeConvId) {
+              whatsappService.getMessages(activeConvId).then(setMessages);
+            }
+          }}
+          disabled={isRefreshing}
+          className="btn btn-secondary"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            fontSize: '0.8125rem',
+            padding: '0.45rem 0.85rem'
+          }}
+          title="Refresh conversations and messages"
+        >
+          <RotateCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+          <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+        </button>
       </div>
 
       {/* 3-Column Enterprise Workspace */}
