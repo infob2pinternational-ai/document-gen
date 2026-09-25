@@ -162,10 +162,16 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         senderEmail: userEmail,
         companyId: activeConv.company_id || companyId
       });
+      if (newMsg.status === 'failed') {
+        setStatusFeedback(newMsg.error_message || 'Failed to dispatch message via WhatsApp.');
+        setTimeout(() => setStatusFeedback(null), 6000);
+      }
       setMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
       refreshConversations();
     } catch (err) {
       console.error('[WhatsAppInbox] Failed to send message:', err);
+      setStatusFeedback(err instanceof Error ? err.message : 'Unable to send message');
+      setTimeout(() => setStatusFeedback(null), 6000);
     } finally {
       setIsSending(false);
     }

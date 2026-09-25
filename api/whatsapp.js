@@ -188,8 +188,19 @@ export default async function handler(req, res) {
     let cleanPhone = String(phone).replace(/\D/g, '');
     if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
+    if (cleanPhone === '918139009034') {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot send WhatsApp messages to the business's own phone number (+91 81390 09034). Please send to a customer's phone number."
+      });
+    }
+
     const bizyleadApiKey = process.env.BIZYLEAD_API_KEY;
-    const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID;
+    let bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || (bizyleadApiKey ? '992427143955673' : undefined);
+    // Auto-correct old typo (9824 -> 9924)
+    if (bizyleadPhoneId === '982427143955673') {
+      bizyleadPhoneId = '992427143955673';
+    }
     const bizyleadBaseUrl = process.env.BIZYLEAD_BASE_URL || 'https://app.bizylead.com/api/v2/whatsapp-business';
 
     // 1. Primary Outbound Provider: Bizylead Official WhatsApp Business API

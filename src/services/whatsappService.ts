@@ -212,9 +212,11 @@ class WhatsAppService {
         newMsg.status = 'sent';
         newMsg.wa_message_id = waMsgId;
       } else {
-        console.warn('[whatsappService] Outbound API dispatch returned error:', response.status);
+        const errData = await response.json().catch(() => null);
+        const errMsg = errData?.error || `HTTP ${response.status}`;
+        console.warn('[whatsappService] Outbound API dispatch returned error:', response.status, errMsg);
         newMsg.status = 'failed';
-        newMsg.error_message = `HTTP ${response.status}`;
+        newMsg.error_message = errMsg;
       }
     } catch (apiErr) {
       console.warn('[whatsappService] Could not reach WhatsApp serverless endpoint:', apiErr);

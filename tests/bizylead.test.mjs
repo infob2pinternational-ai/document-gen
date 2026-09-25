@@ -5,14 +5,14 @@ import bizyleadWebhookHandler from '../api/bizylead-webhook.js';
 test('Bizylead credentials and configuration constants match verified account', () => {
   const BIZYLEAD_CONFIG = {
     phoneNumber: '+918139009034',
-    phoneNumberId: '982427143955673',
+    phoneNumberId: '992427143955673',
     wabaId: '773200472496874',
     companyName: 'B2p International',
     webhookPath: '/api/bizylead-webhook'
   };
 
   assert.equal(BIZYLEAD_CONFIG.phoneNumber, '+918139009034');
-  assert.equal(BIZYLEAD_CONFIG.phoneNumberId, '982427143955673');
+  assert.equal(BIZYLEAD_CONFIG.phoneNumberId, '992427143955673');
   assert.equal(BIZYLEAD_CONFIG.wabaId, '773200472496874');
   assert.equal(BIZYLEAD_CONFIG.webhookPath, '/api/bizylead-webhook');
 });
