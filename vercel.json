@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/daily-report", "destination": "/api/daily-report" },
     { "source": "/api/whatsapp", "destination": "/api/whatsapp" },
     { "source": "/api/bizylead-webhook", "destination": "/api/bizylead-webhook" },
     { "source": "/doc/:id/send-push", "destination": "/api/doc?id=:id&action=send-push" },
@@ -47,6 +48,12 @@
     "api/doc.js": {
       "includeFiles": "dist/billing/index.html"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/daily-report?action=cron",
+      "schedule": "30 14 * * *"
+    }
+  ]
 }
 

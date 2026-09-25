@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
-  Share2, 
   Download, 
   Printer, 
   Filter, 
@@ -19,7 +18,10 @@ import {
   Copy,
   Check,
   Smartphone,
-  X
+  X,
+  Send,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import type { CompanyProfile, TelecallingEntry, TelecallingStatus, TelecallingDailyReportData } from '../../types';
 import { TELECALLING_STATUSES, isUnresolvedStatus } from '../../types';
@@ -31,7 +33,10 @@ import {
   getOwnerWhatsAppNumber,
   getOwnerReportEmail,
   buildDailyReportEmailContent,
-  openMailtoShare
+  openMailtoShare,
+  sendDailyReportViaB2PSystem,
+  isOwnerAutoReportEnabled,
+  getOwnerAutoReportTime
 } from '../../utils/telecallingShare';
 import { downloadTelecallingCsv } from '../../utils/csvExport';
 import { OwnerWhatsAppModal } from './OwnerWhatsAppModal';
@@ -73,7 +78,8 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
   const [shareSuccess, setShareSuccess] = useState('');
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
 
-  // Email state
+  // WhatsApp & Email dispatch state
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'success' | 'failed'>('idle');
   const [emailStatusMsg, setEmailStatusMsg] = useState('');
@@ -100,8 +106,43 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
     loadReport();
   }, [companyId, selectedDate]);
 
-  // Handle WhatsApp Share (sends separate numbered status counts)
-  const handleShareWhatsApp = () => {
+  // Handle direct B2P WhatsApp dispatch to Owner
+  const handleSendToOwnerWhatsApp = async () => {
+    if (!reportData) return;
+    setShareError('');
+    setShareSuccess('');
+
+    const ownerPhone = getOwnerWhatsAppNumber();
+    if (!ownerPhone) {
+      setOwnerModalOpen(true);
+      return;
+    }
+
+    setSendingWhatsApp(true);
+    try {
+      const result = await sendDailyReportViaB2PSystem({
+        companyName: activeProfile?.name || 'B2P International',
+        companyId: activeProfile?.id,
+        date: selectedDate,
+        reportData,
+        ownerPhone
+      });
+
+      if (result.success) {
+        setShareSuccess(`Daily Report for ${formatKolkataDisplayDate(selectedDate)} sent directly to Owner WhatsApp (+${result.recipient}) via B2P WhatsApp!`);
+        setTimeout(() => setShareSuccess(''), 6000);
+      } else {
+        setShareError(result.error || 'Failed to dispatch report via B2P WhatsApp');
+      }
+    } catch (err: any) {
+      setShareError(err.message || 'Error communicating with B2P WhatsApp service');
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  };
+
+  // Handle WhatsApp Web Share fallback (wa.me link)
+  const handleShareWhatsAppWeb = () => {
     if (!reportData) return;
     setShareError('');
     setShareSuccess('');
@@ -116,7 +157,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
     const result = openWhatsAppShare(message, ownerPhone);
 
     if (result.success) {
-      setShareSuccess('WhatsApp opened with pre-filled Daily Report!');
+      setShareSuccess('WhatsApp Web opened with pre-filled Daily Report!');
       setTimeout(() => setShareSuccess(''), 4000);
     } else {
       setShareError(result.error || 'Failed to share report via WhatsApp');
@@ -268,9 +309,33 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
             <Calendar size={24} color="#3b82f6" />
             Telecalling Daily Report
           </h2>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted, #64748b)' }}>
-            Daily performance report for <strong>{formatKolkataDisplayDate(selectedDate)}</strong> ({selectedDate})
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted, #64748b)' }}>
+              Daily performance report for <strong>{formatKolkataDisplayDate(selectedDate)}</strong> ({selectedDate})
+            </p>
+            {isOwnerAutoReportEnabled() && (
+              <span
+                onClick={() => setOwnerModalOpen(true)}
+                title="Click to configure Owner WhatsApp / Delivery Settings"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.75rem',
+                  background: '#f0fdf4',
+                  color: '#166534',
+                  border: '1px solid #bbf7d0',
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                <Clock size={12} color="#16a34a" />
+                <span>Auto-Report: Daily {getOwnerAutoReportTime()} IST to +{getOwnerWhatsAppNumber()}</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Action Toolbar */}
@@ -307,24 +372,50 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
             <span>{sendingEmail ? 'Sending Email...' : 'Send Email'}</span>
           </button>
 
-          {/* Share WhatsApp */}
-          <button
-            type="button"
-            onClick={handleShareWhatsApp}
-            className="btn-primary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              background: '#16a34a',
-              borderColor: '#16a34a'
-            }}
-          >
-            <Share2 size={15} />
-            <span>Share WhatsApp</span>
-          </button>
+          {/* Send to Owner WhatsApp via B2P WhatsApp System */}
+          <div style={{ display: 'inline-flex', borderRadius: '6px', overflow: 'hidden' }}>
+            <button
+              type="button"
+              onClick={handleSendToOwnerWhatsApp}
+              disabled={sendingWhatsApp || !entries.length}
+              className="btn-primary"
+              title={`Dispatch report directly to Owner WhatsApp (+${getOwnerWhatsAppNumber()}) via verified B2P WhatsApp API`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                background: '#16a34a',
+                borderColor: '#16a34a',
+                borderTopRightRadius: 0,
+                borderBottomRightRadius: 0
+              }}
+            >
+              {sendingWhatsApp ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
+              <span>{sendingWhatsApp ? 'Sending via B2P...' : 'Send to Owner WhatsApp'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleShareWhatsAppWeb}
+              disabled={!entries.length}
+              className="btn-primary"
+              title="Open WhatsApp Web (wa.me link fallback)"
+              style={{
+                background: '#15803d',
+                borderColor: '#15803d',
+                padding: '0 0.55rem',
+                borderTopLeftRadius: 0,
+                borderBottomLeftRadius: 0,
+                borderLeft: '1px solid rgba(255,255,255,0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <ExternalLink size={14} />
+            </button>
+          </div>
 
           {/* Export Filtered CSV */}
           <button

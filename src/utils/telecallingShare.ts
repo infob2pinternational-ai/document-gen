@@ -7,18 +7,68 @@ import type {
 import { formatKolkataDisplayDate } from './dateUtils';
 import { isUnresolvedStatus } from '../types';
 
+export const DEFAULT_OWNER_WHATSAPP_NUMBER = '918891074715';
 const OWNER_WHATSAPP_KEY = 'b2p_owner_whatsapp_number';
 const OWNER_REPORT_EMAIL_KEY = 'b2p_owner_report_email';
+const OWNER_AUTO_REPORT_ENABLED_KEY = 'b2p_owner_auto_report_enabled';
+const OWNER_AUTO_REPORT_TIME_KEY = 'b2p_owner_auto_report_time';
 
 /**
  * Gets the configured Owner WhatsApp phone number.
- * Dedicated configuration — never falls back to arbitrary profile phone.
+ * Defaults to verified company owner mobile (+91 88910 74715).
  */
 export function getOwnerWhatsAppNumber(): string {
   try {
-    return localStorage.getItem(OWNER_WHATSAPP_KEY) || '';
+    const stored = localStorage.getItem(OWNER_WHATSAPP_KEY);
+    if (stored && stored.trim()) return stored.trim();
+    return DEFAULT_OWNER_WHATSAPP_NUMBER;
   } catch {
-    return '';
+    return DEFAULT_OWNER_WHATSAPP_NUMBER;
+  }
+}
+
+/**
+ * Checks if automated daily report dispatch is enabled.
+ */
+export function isOwnerAutoReportEnabled(): boolean {
+  try {
+    const val = localStorage.getItem(OWNER_AUTO_REPORT_ENABLED_KEY);
+    return val === null ? true : val === 'true';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Sets automated daily report dispatch status.
+ */
+export function setOwnerAutoReportEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(OWNER_AUTO_REPORT_ENABLED_KEY, String(enabled));
+  } catch (err) {
+    console.error('Failed to store owner_auto_report_enabled:', err);
+  }
+}
+
+/**
+ * Gets the configured daily auto-report send time (default: 20:00 / 8:00 PM IST).
+ */
+export function getOwnerAutoReportTime(): string {
+  try {
+    return localStorage.getItem(OWNER_AUTO_REPORT_TIME_KEY) || '20:00';
+  } catch {
+    return '20:00';
+  }
+}
+
+/**
+ * Sets the daily auto-report send time.
+ */
+export function setOwnerAutoReportTime(time: string): void {
+  try {
+    localStorage.setItem(OWNER_AUTO_REPORT_TIME_KEY, time.trim() || '20:00');
+  } catch (err) {
+    console.error('Failed to store owner_auto_report_time:', err);
   }
 }
 
@@ -429,3 +479,95 @@ export function openMailtoShare(
   const mailtoUri = `mailto:${recipient.trim()}?subject=${encodedSubject}&body=${encodedBody}`;
   window.location.href = mailtoUri;
 }
+
+/**
+ * Programmatically sends the Daily Report directly to the owner WhatsApp
+ * via the verified B2P Official WhatsApp Business API (Bizylead).
+ */
+export async function sendDailyReportViaB2PSystem(params: {
+  companyName?: string;
+  companyId?: string;
+  date: string;
+  reportData: TelecallingDailyReportData;
+  ownerPhone?: string;
+}): Promise<{ success: boolean; messageId?: string; error?: string; recipient?: string }> {
+  const targetPhone = params.ownerPhone || getOwnerWhatsAppNumber();
+  if (!targetPhone || !targetPhone.trim()) {
+    return {
+      success: false,
+      error: 'Owner WhatsApp number is not configured. Please set the Owner WhatsApp number.'
+    };
+  }
+
+  const cleanPhone = normalizeIndianPhone(targetPhone);
+  if (cleanPhone === '918139009034') {
+    return {
+      success: false,
+      error: "Cannot send to the business's own sender number (+91 81390 09034). Please configure a personal owner mobile number."
+    };
+  }
+
+  let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const { authenticatedHeaders } = await import('../services/apiAuth');
+    headers = await authenticatedHeaders();
+  } catch {
+    headers = { 'Content-Type': 'application/json' };
+  }
+
+  try {
+    const res = await fetch('/api/daily-report?action=send-report', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        phone: cleanPhone,
+        date: params.date,
+        company_id: params.companyId,
+        company_name: params.companyName || 'B2P INTERNATIONAL',
+        report_data: params.reportData
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error: data?.error || `HTTP ${res.status}: Failed to dispatch report via B2P WhatsApp`
+      };
+    }
+
+    return {
+      success: true,
+      messageId: data.messageId,
+      recipient: cleanPhone
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Network error communicating with B2P WhatsApp service'
+    };
+  }
+}
+
+/**
+ * Sends a test verification ping to the owner WhatsApp number
+ * via Bizylead WhatsApp API.
+ */
+export async function sendTestPingToOwner(phone: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  const cleanPhone = normalizeIndianPhone(phone);
+  try {
+    const res = await fetch('/api/daily-report?action=test-ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: cleanPhone })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return { success: false, error: data?.error || 'Failed to send verification ping.' };
+    }
+    return { success: true, message: data.message };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error sending verification ping.' };
+  }
+}
+
