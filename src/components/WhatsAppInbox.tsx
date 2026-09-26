@@ -1128,6 +1128,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             setFollowUpModalOpen(false);
           }}
           userEmail={userEmail}
+          companyId={officeService.getActiveCompanyId() || undefined}
         />
       )}
 

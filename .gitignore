@@ -40,3 +40,11 @@ supabase/
 
 .vercel
 .env*
+
+# Playwright & test artifacts
+test-results/
+playwright-report/
+
+# IDE & patches
+.vs/
+*.patch

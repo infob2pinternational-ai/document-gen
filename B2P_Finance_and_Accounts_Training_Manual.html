@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>B2P ONE Portal & ERP — Finance & Accounts Training Manual</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 18mm 16mm;
+    @bottom-center {
+      content: "B2P ONE Portal & ERP — Finance & Accounts Training Manual";
+      font-size: 8pt;
+      color: #94a3b8;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.6;
+    font-size: 10pt;
+    background: #ffffff;
+  }
+
+  .cover-page {
+    page-break-after: always;
+    height: 96vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 40px 20px 20px 20px;
+    border: 3px solid #1e3a8a;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 70%, #eff6ff 100%);
+  }
+
+  .cover-badge {
+    align-self: flex-start;
+    background-color: #1e3a8a;
+    color: #ffffff;
+    font-size: 9pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 6px 16px;
+    border-radius: 6px;
+  }
+
+  .cover-header {
+    margin-top: 40px;
+  }
+
+  .cover-title {
+    font-size: 26pt;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+    margin-bottom: 12px;
+  }
+
+  .cover-subtitle {
+    font-size: 14pt;
+    font-weight: 500;
+    color: #2563eb;
+    margin-bottom: 24px;
+    line-height: 1.4;
+  }
+
+  .cover-desc {
+    font-size: 10.5pt;
+    color: #475569;
+    max-width: 90%;
+    line-height: 1.6;
+    border-left: 4px solid #3b82f6;
+    padding-left: 16px;
+    margin-top: 20px;
+  }
+
+  .cover-meta {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    font-size: 9.5pt;
+  }
+
+  .meta-item strong {
+    display: block;
+    color: #64748b;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+  }
+
+  .meta-item span {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+
+  h1 {
+    font-size: 18pt;
+    color: #0f172a;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 6px;
+    margin-top: 24px;
+    margin-bottom: 14px;
+    page-break-after: avoid;
+  }
+
+  h2 {
+    font-size: 13pt;
+    color: #1e3a8a;
+    margin-top: 18px;
+    margin-bottom: 10px;
+    page-break-after: avoid;
+    display: flex;
+    align-items: center;
+  }
+
+  h3 {
+    font-size: 11pt;
+    color: #334155;
+    margin-top: 14px;
+    margin-bottom: 8px;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin-bottom: 10px;
+    color: #334155;
+    font-size: 9.5pt;
+  }
+
+  ul, ol {
+    margin-left: 20px;
+    margin-bottom: 12px;
+    color: #334155;
+    font-size: 9.5pt;
+  }
+
+  li {
+    margin-bottom: 4px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 16px 0;
+    font-size: 9pt;
+    page-break-inside: avoid;
+  }
+
+  th {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  td {
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+
+  .alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 12px 0;
+    font-size: 9pt;
+    page-break-inside: avoid;
+  }
+
+  .alert-tip {
+    background-color: #f0fdf4;
+    border-left: 4px solid #16a34a;
+    color: #166534;
+  }
+
+  .alert-important {
+    background-color: #eff6ff;
+    border-left: 4px solid #2563eb;
+    color: #1e40af;
+  }
+
+  .alert-warning {
+    background-color: #fffbeb;
+    border-left: 4px solid #d97706;
+    color: #92400e;
+  }
+
+  .code-box {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 12px 14px;
+    border-radius: 6px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 8.5pt;
+    line-height: 1.4;
+    margin: 10px 0;
+    white-space: pre-wrap;
+    page-break-inside: avoid;
+  }
+
+  .flowchart {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 14px 12px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+  }
+
+  .flow-step {
+    background: #ffffff;
+    border: 1.5px solid #3b82f6;
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+    font-size: 8.5pt;
+    font-weight: 600;
+    color: #1e3a8a;
+    flex: 1;
+    margin: 0 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+
+  .flow-arrow {
+    color: #64748b;
+    font-weight: bold;
+    font-size: 11pt;
+    margin: 0 2px;
+  }
+
+  .workflow-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3b82f6;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    page-break-inside: avoid;
+  }
+
+  .workflow-card h4 {
+    font-size: 10pt;
+    color: #1e3a8a;
+    margin-bottom: 6px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 7.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-purple { background: #f3e8ff; color: #6b21a8; }
+
+  .checklist {
+    list-style: none;
+    margin-left: 0;
+  }
+
+  .checklist li {
+    position: relative;
+    padding-left: 24px;
+    margin-bottom: 6px;
+  }
+
+  .checklist li::before {
+    content: "✓";
+    position: absolute;
+    left: 4px;
+    color: #16a34a;
+    font-weight: bold;
+  }
+
+  .footer-note {
+    text-align: center;
+    font-size: 8pt;
+    color: #94a3b8;
+    margin-top: 24px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER PAGE -->
+<div class="cover-page">
+  <div>
+    <div class="cover-badge">B2P Enterprise Resource Planning</div>
+    <div class="cover-header">
+      <div class="cover-title">Finance & Accounts<br>Operations & Training Manual</div>
+      <div class="cover-subtitle">Complete Guide to Double-Entry Accounting, Fleet Vouchers, Tax Compliance, and Financial Reporting</div>
+      <div class="cover-desc">
+        A step-by-step training curriculum and operational manual for accounts executives, finance managers, billing clerks, cashiers, and company management. Built specifically for B2P's LED advertising, digital van fleets, and agency operations.
+      </div>
+    </div>
+  </div>
+
+  <div class="cover-meta">
+    <div class="meta-grid">
+      <div class="meta-item">
+        <strong>Supported Company Profiles</strong>
+        <span>B2P International & B2P Inter-Media Solutions</span>
+      </div>
+      <div class="meta-item">
+        <strong>Manual Edition & Release</strong>
+        <span>Version 1.0 (Official Staff Training Release)</span>
+      </div>
+      <div class="meta-item">
+        <strong>Accounting Standards</strong>
+        <span>Indian Accounting Standards & Indian GST Compliance (CGST/SGST/IGST)</span>
+      </div>
+      <div class="meta-item">
+        <strong>Access Permissions</strong>
+        <span>Role-Based: Owner, Admin, & Accounts</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 1: ARCHITECTURE -->
+<h1>1. Executive Summary & Double-Entry Architecture</h1>
+<p>
+  The <strong>Finance & Accounts</strong> module of B2P ONE Portal & ERP is a complete, real-time, double-entry financial suite designed for media advertising, mobile roadshows, LED fleet campaigns, and agency operations.
+</p>
+
+<div class="alert alert-important">
+  <strong>The Golden Rule of Double-Entry Accounting:</strong><br>
+  For every single financial transaction posted in the ERP, the total debits must exactly equal the total credits:
+  <div style="font-weight: bold; margin-top: 4px; font-size: 10pt; color: #1e3a8a;">
+    Total Debits (Dr.) ≡ Total Credits (Cr.)
+  </div>
+  The system prevents posting unbalanced vouchers to safeguard company books against mathematical discrepancies.
+</div>
+
+<h3>Core Accounting Data Flow</h3>
+<div class="flowchart">
+  <div class="flow-step">1. Doc Gen<br><small>Client Invoices</small></div>
+  <div class="flow-arrow">➔</div>
+  <div class="flow-step">2. Sales & AR<br><small>Collections & Aging</small></div>
+  <div class="flow-arrow">➔</div>
+  <div class="flow-step">3. General Ledger<br><small>Vouchers & Journals</small></div>
+  <div class="flow-arrow">➔</div>
+  <div class="flow-step">4. Trial Balance<br><small>Debit/Credit Audit</small></div>
+  <div class="flow-arrow">➔</div>
+  <div class="flow-step">5. P&L & Balance Sheet<br><small>Executive Statements</small></div>
+</div>
+
+<p>
+  <strong>Automatic Invoicing Integration:</strong> Tax invoices finalized in <em>Doc Gen</em> automatically synchronize into <em>Sales & Receivables</em>. When a customer payment is received, it can be allocated directly against the invoice, updating customer statements in real time.
+</p>
+
+<!-- SECTION 2: NAVIGATION MAP -->
+<h1>2. System Navigation Map (All 11 Modules)</h1>
+<p>Staff members with accounting credentials will find 11 dedicated modules under the <strong>FINANCE & ACCOUNTS</strong> section:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 5%;">#</th>
+      <th style="width: 25%;">Module Name</th>
+      <th style="width: 45%;">Primary Functional Purpose</th>
+      <th style="width: 25%;">Responsible Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>1</strong></td>
+      <td><strong>Accounts Dashboard</strong></td>
+      <td>Executive overview: Revenue, collections, aging receivables, cash runway, net profit.</td>
+      <td><span class="badge badge-blue">Owner / Manager</span></td>
+    </tr>
+    <tr>
+      <td><strong>2</strong></td>
+      <td><strong>General Journal & Vouchers</strong></td>
+      <td>Direct double-entry vouchers: Journal (JV), Contra (CV), Payment (PV), Receipt (RV).</td>
+      <td><span class="badge badge-green">Accountant</span></td>
+    </tr>
+    <tr>
+      <td><strong>3</strong></td>
+      <td><strong>Chart of Accounts (COA)</strong></td>
+      <td>Master account hierarchy (Assets, Liabilities, Equity, Revenue, Expenses).</td>
+      <td><span class="badge badge-green">Accountant</span></td>
+    </tr>
+    <tr>
+      <td><strong>4</strong></td>
+      <td><strong>Banking & Cash</strong></td>
+      <td>Cash in Hand register, petty cash drawers, bank accounts, and BRS reconciliation.</td>
+      <td><span class="badge badge-green">Cashier / Accountant</span></td>
+    </tr>
+    <tr>
+      <td><strong>5</strong></td>
+      <td><strong>Sales & Receivables</strong></td>
+      <td>Doc Gen invoice sync, customer collections, advances, aging analysis, debtor ledgers.</td>
+      <td><span class="badge badge-purple">Billing Clerk / Accounts</span></td>
+    </tr>
+    <tr>
+      <td><strong>6</strong></td>
+      <td><strong>Expenses Management</strong></td>
+      <td>Fleet fuel, driver batta, generator diesel, highway tolls, vehicle repairs, and rent.</td>
+      <td><span class="badge badge-amber">Fleet Ops / Accounts</span></td>
+    </tr>
+    <tr>
+      <td><strong>7</strong></td>
+      <td><strong>Suppliers Directory</strong></td>
+      <td>Vendor master: Company name, GSTIN, PAN, credit days, bank details, contact person.</td>
+      <td><span class="badge badge-purple">Procurement / Accounts</span></td>
+    </tr>
+    <tr>
+      <td><strong>8</strong></td>
+      <td><strong>Purchases & Payables</strong></td>
+      <td>Vendor purchase bills, payment disbursements, credit aging, supplier statements.</td>
+      <td><span class="badge badge-green">Accounts Payable</span></td>
+    </tr>
+    <tr>
+      <td><strong>9</strong></td>
+      <td><strong>GST Compliance Center</strong></td>
+      <td>GSTR-1 outward sales tables, GSTR-3B tax summary, eligible Input Tax Credit (ITC).</td>
+      <td><span class="badge badge-blue">Tax Accountant</span></td>
+    </tr>
+    <tr>
+      <td><strong>10</strong></td>
+      <td><strong>Profit & Loss Statement</strong></td>
+      <td>Net sales revenue minus direct fleet costs (COGS) minus operating overheads.</td>
+      <td><span class="badge badge-blue">Management / Owner</span></td>
+    </tr>
+    <tr>
+      <td><strong>11</strong></td>
+      <td><strong>Financial Statements</strong></td>
+      <td>Trial Balance verification, Balance Sheet, General Ledger drilldown, period locks.</td>
+      <td><span class="badge badge-blue">Senior Accountant / Auditor</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- PAGE BREAK -->
+<div class="page-break"></div>
+
+<!-- SECTION 3: ACCOUNTS DASHBOARD -->
+<h1>3. Accounts Dashboard</h1>
+<p>The operational cockpit providing high-level financial metrics and immediate action shortcuts.</p>
+
+<div class="workflow-card">
+  <h4>Key Performance Indicators (KPIs) Displayed</h4>
+  <ul>
+    <li><strong>Total Invoiced:</strong> Cumulative value of all approved tax invoices generated across campaigns.</li>
+    <li><strong>Total Collected:</strong> Realized cash and bank collections received from customers.</li>
+    <li><strong>Accounts Receivable (AR):</strong> Total unpaid balance owed by clients with overdue badges.</li>
+    <li><strong>Accounts Payable (AP):</strong> Total unpaid vendor bills with 15/30-day payment schedules.</li>
+    <li><strong>Total Expenses:</strong> Cumulative fleet, fuel, generator, and operating expenditure.</li>
+    <li><strong>Net Profit:</strong> Real-time net operating margin (Revenue - Fleet COGS - Overhead Expenses).</li>
+    <li><strong>Net GST Payable:</strong> Output GST collected from clients minus Input Tax Credit eligible.</li>
+  </ul>
+</div>
+
+<h3>Dashboard Action Buttons & Shortcuts</h3>
+<ul>
+  <li><code>+ Record Payment</code>: Quickly log customer receipts without navigating to individual client profiles.</li>
+  <li><code>+ Record Expense</code>: Log instant cash or card expenses (fuel slips, toll, maintenance).</li>
+  <li><code>+ Record Purchase</code>: Enter a new supplier bill.</li>
+  <li><code>+ Add Supplier</code>: Register a new equipment or service vendor.</li>
+  <li><code>View Statement</code>: Instantly opens the customer's or vendor's chronological ledger.</li>
+</ul>
+
+<!-- SECTION 4: CHART OF ACCOUNTS -->
+<h1>4. Chart of Accounts (COA) Structure & Master Setup</h1>
+<p>
+  Every accounting transaction must be categorized into an account head. B2P ERP uses a standard 4-digit numeric system structured into five classes:
+</p>
+
+<div class="code-box">
+1000 - ASSETS (Normal Balance: Debit)
+  ├── 1100 Current Assets
+  │     ├── 1110 Cash in Hand / Petty Cash Drawer
+  │     ├── 1120 Bank Accounts (HDFC Current Account, SBI, Federal Bank)
+  │     └── 1130 Accounts Receivable (Sundry Debtors)
+  └── 1200 Fixed Assets
+        ├── 1210 LED Digital Vehicles (Vans, 3-Side Trucks)
+        ├── 1220 LED Video Wall Panels & Processors
+        └── 1230 Office Furniture, Computers & Production Equipment
+
+2000 - LIABILITIES (Normal Balance: Credit)
+  ├── 2100 Current Liabilities
+  │     ├── 2110 Accounts Payable (Sundry Creditors)
+  │     ├── 2120 Output CGST Payable
+  │     ├── 2121 Output SGST Payable
+  │     ├── 2122 Output IGST Payable
+  │     └── 2130 Customer Advances / Deposits
+  └── 2200 Long-Term Loans & Vehicle Financing
+
+3000 - EQUITY & CAPITAL (Normal Balance: Credit)
+  ├── 3100 Partner / Owner Capital Accounts
+  └── 3200 Retained Earnings & Accumulated Surplus
+
+4000 - REVENUE & INCOME (Normal Balance: Credit)
+  ├── 4100 LED Van Advertising Revenue
+  ├── 4200 LED Video Wall Rental Revenue
+  ├── 4300 Mobile Roadshow & Campaign Services
+  └── 4400 Signage, Flex Printing & Fabrications
+
+5000 - EXPENSES (Normal Balance: Debit)
+  ├── 5100 Direct Fleet & Campaign Costs (COGS)
+  │     ├── 5110 Vehicle Fuel & Diesel
+  │     ├── 5120 Driver & Technician Campaign Wages
+  │     ├── 5130 Generator Fuel & Power Charges
+  │     └── 5140 Sound, Lighting & Staging Hire
+  └── 5200 Operating & Administrative Expenses
+        ├── 5210 Office Rent, Electricity & Internet
+        ├── 5220 Staff Salaries & Allowances
+        ├── 5230 Vehicle Insurance, Fitness & RTO Taxes
+        └── 5240 Repairs, Spares & Screen Servicing
+</div>
+
+<h3>Step-by-Step: Adding a New Account Head</h3>
+<ol>
+  <li>Go to <strong>Chart of Accounts</strong>.</li>
+  <li>Click <strong>+ New Account Head</strong>.</li>
+  <li>Enter <strong>Account Code</strong> (e.g. <code>5150</code>), <strong>Account Name</strong> (e.g. <em>Campaign Sound System Hire</em>), and select the parent <strong>Account Group</strong> (e.g. <em>Expenses</em>).</li>
+  <li>Enter <strong>Opening Balance</strong> (if onboarding starting balances as of April 1st).</li>
+  <li>Click <strong>Save Account</strong>.</li>
+</ol>
+
+<!-- PAGE BREAK -->
+<div class="page-break"></div>
+
+<!-- SECTION 5: GENERAL JOURNAL & VOUCHERS -->
+<h1>5. General Journal, Vouchers & Rules</h1>
+<p>
+  The General Journal is used for transactions that do not originate from standard billing, such as asset depreciation, salary accruals, contra transfers, and month-end adjustments.
+</p>
+
+<h3>Voucher Types Supported</h3>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 20%;">Voucher Type</th>
+      <th style="width: 15%;">Prefix</th>
+      <th style="width: 65%;">When to Use</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Journal Voucher</strong></td>
+      <td><code>JV</code></td>
+      <td>Non-cash entries, depreciation, bad debt provisions, correction entries.</td>
+    </tr>
+    <tr>
+      <td><strong>Contra Voucher</strong></td>
+      <td><code>CV</code></td>
+      <td>Internal cash-to-bank deposits or bank-to-cash petty cash withdrawals.</td>
+    </tr>
+    <tr>
+      <td><strong>Payment Voucher</strong></td>
+      <td><code>PV</code></td>
+      <td>Direct payments made via Bank/Cash without a supplier bill.</td>
+    </tr>
+    <tr>
+      <td><strong>Receipt Voucher</strong></td>
+      <td><code>RV</code></td>
+      <td>Direct miscellaneous receipts (interest income, capital injection).</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="workflow-card">
+  <h4>Step-by-Step: Posting a Journal Entry</h4>
+  <ol>
+    <li>Click <strong>+ New Journal Entry</strong> in the General Journal module.</li>
+    <li>Select <strong>Voucher Type</strong>, <strong>Voucher Date</strong>, and enter a <strong>Reference Number</strong>.</li>
+    <li>Add line items: Select Account Head, enter Debit or Credit amount, and type a line narration.</li>
+    <li>Ensure that <strong>Total Debits equal Total Credits</strong> (Difference must show ₹0.00).</li>
+    <li>Enter overall <strong>Voucher Narration</strong> and click <strong>Post Voucher</strong>.</li>
+  </ol>
+</div>
+
+<!-- SECTION 6: BANKING & CASH -->
+<h1>6. Banking & Cash Management</h1>
+<p>Provides complete control over cash registers, petty cash drawers, bank books, and reconciliation.</p>
+
+<h3>1. Cash Book vs. Bank Book</h3>
+<ul>
+  <li><strong>Cash Book:</strong> Tracks physical currency movements for daily fleet expenditures, driver batta, and cash collections.</li>
+  <li><strong>Bank Book:</strong> Tracks electronic transactions (NEFT, RTGS, IMPS, UPI, Cheques) across company bank accounts.</li>
+</ul>
+
+<h3>2. Contra Entries (Internal Fund Transfers)</h3>
+<p>When drawing cash from the bank to replenish the petty cash drawer:</p>
+<div class="code-box">
+Debit:  1110 Petty Cash Drawer        ₹ 25,000  (Cash Inflow)
+Credit: 1120 HDFC Current Account     ₹ 25,000  (Bank Outflow)
+Narration: Cash withdrawal for Palakkad LED van operations (Cheque #104421)
+</div>
+
+<h3>3. Bank Reconciliation Statement (BRS)</h3>
+<p>Staff must perform monthly bank reconciliation to ensure the ERP bank balance matches the actual bank statement:</p>
+<ol>
+  <li>Open <strong>Banking & Cash</strong> $ightarrow$ Select Bank Account $ightarrow$ Click <strong>Start Reconciliation</strong>.</li>
+  <li>Enter <strong>Statement Ending Date</strong> and <strong>Statement Ending Balance</strong> from netbanking statement.</li>
+  <li>Mark transactions as <strong>Cleared</strong> as they appear on your physical bank statement.</li>
+  <li>The ERP calculates:
+    <div style="margin: 6px 0; font-weight: bold; color: #1e3a8a;">
+      Statement Balance + Deposits in Transit - Outstanding Cheques = ERP Ledger Balance
+    </div>
+  </li>
+  <li>When the <strong>Difference is ₹0.00</strong>, click <strong>Finalize Reconciliation</strong>.</li>
+</ol>
+
+<!-- PAGE BREAK -->
+<div class="page-break"></div>
+
+<!-- SECTION 7: SALES & RECEIVABLES -->
+<h1>7. Sales & Receivables (Accounts Receivable - AR)</h1>
+<p>Manages client invoicing, payments, debtor aging, and customer ledgers.</p>
+
+<div class="flowchart">
+  <div class="flow-step">1. Doc Gen Invoice<br><small>Quotation / Bill Finalized</small></div>
+  <div class="flow-arrow">➔</div>
+  <div class="flow-step">2. AR Ledger Entry<br><small>Debit Customer / Credit Sales</small></div>
+  <div class="flow-arrow">➔</div>
+  <div class="flow-step">3. Payment Receipt<br><small>NEFT / UPI / Cheque</small></div>
+  <div class="flow-arrow">➔</div>
+  <div class="flow-step">4. Invoice Settlement<br><small>Status: Paid / Balance ₹0</small></div>
+</div>
+
+<h3>Recording a Customer Payment Receipt</h3>
+<ol>
+  <li>Go to <strong>Sales & Receivables</strong> $ightarrow$ Locate client invoice $ightarrow$ Click <strong>Record Payment</strong>.</li>
+  <li><strong>Payment Date:</strong> Date payment cleared in the bank.</li>
+  <li><strong>Deposit To Account:</strong> Select destination account (e.g. <em>HDFC Current Account</em> or <em>Cash in Hand</em>).</li>
+  <li><strong>Payment Mode:</strong> Choose <code>Bank Transfer (NEFT/RTGS)</code>, <code>UPI / QR</code>, <code>Cheque</code>, or <code>Cash</code>.</li>
+  <li><strong>Reference / UTR:</strong> Enter official bank transfer reference or Cheque number.</li>
+  <li><strong>Amount:</strong> Enter amount received. If customer pays in excess, the surplus is automatically recorded as <strong>Customer Advance Credit</strong>.</li>
+  <li>Click <strong>Confirm Payment & Post</strong>.</li>
+</ol>
+
+<div class="code-box">
+Accounting Entry Behind the Scenes:
+Debit:  1120 HDFC Current Account       ₹ 1,18,000  (Asset Increases)
+Credit: 1130 Accounts Receivable        ₹ 1,18,000  (Debtor Cleared)
+</div>
+
+<!-- SECTION 8: EXPENSES MANAGEMENT -->
+<h1>8. Expenses Management (Fleet & Operations)</h1>
+<p>Designed for rapid entry of day-to-day fleet and operating expenses without creating formal vendor bills.</p>
+
+<h3>Step-by-Step: Recording a Fleet Fuel / Maintenance Expense</h3>
+<ol>
+  <li>Go to <strong>Expenses</strong> $ightarrow$ Click <strong>+ Record Expense</strong>.</li>
+  <li><strong>Category:</strong> Select <code>Vehicle Fuel & Diesel</code>, <code>Vehicle Repairs & Spares</code>, <code>Driver Batta</code>, etc.</li>
+  <li><strong>Paid Through:</strong> Choose <code>Petty Cash</code> or <code>HDFC Debit Card</code>.</li>
+  <li><strong>Amount:</strong> Enter total amount paid on receipt.</li>
+  <li><strong>Payee / Vendor:</strong> Enter fuel station or workshop name (e.g. <em>BPCL Fuel Station, Palakkad</em>).</li>
+  <li><strong>Vehicle Tag / Notes:</strong> Enter vehicle registration (e.g. <em>KL-09-AB-1234 3-Side LED Van</em>) to enable vehicle-level cost tracking.</li>
+  <li><strong>GST ITC Eligibility:</strong> Check if a valid GST tax invoice with B2P GSTIN was received.</li>
+  <li>Click <strong>Save Expense</strong>.</li>
+</ol>
+
+<!-- SECTION 9: SUPPLIERS DIRECTORY -->
+<h1>9. Suppliers Directory (Vendor Master)</h1>
+<p>The central master database for all subcontractors, fabricators, screen manufacturers, and fleet workshops.</p>
+
+<div class="workflow-card">
+  <h4>Key Supplier Fields</h4>
+  <ul>
+    <li><strong>Supplier Name:</strong> Official registered trade name.</li>
+    <li><strong>GSTIN & PAN:</strong> Required for GST Input Tax Credit and TDS compliance.</li>
+    <li><strong>Credit Terms:</strong> Standard credit window in days (e.g. 15 Days, 30 Days, or Immediate).</li>
+    <li><strong>Bank Details:</strong> Vendor Bank Name, Account Number, and IFSC Code for NEFT payouts.</li>
+    <li><strong>Supplier Ledger:</strong> Click <em>View Ledger</em> to see total historical purchases, payments made, and current payable balance.</li>
+  </ul>
+</div>
+
+<!-- PAGE BREAK -->
+<div class="page-break"></div>
+
+<!-- SECTION 10: PURCHASES & PAYABLES -->
+<h1>10. Purchases & Payables (Accounts Payable - AP)</h1>
+<p>Tracks all formal vendor bills, fabricator invoices, equipment purchases, and payment settlements.</p>
+
+<h3>1. Recording a Vendor Purchase Bill</h3>
+<ol>
+  <li>Go to <strong>Purchases & Payables</strong> $ightarrow$ Click <strong>+ New Purchase Bill</strong>.</li>
+  <li>Select <strong>Supplier</strong> from dropdown.</li>
+  <li>Enter <strong>Vendor Bill Number</strong> and <strong>Bill Date</strong>.</li>
+  <li>Set <strong>Payment Due Date</strong> (auto-calculated from credit days).</li>
+  <li>Add Line Items: Select Expense/Asset Account (e.g. <em>5140 Sound & Light Equipment Hire</em>), HSN/SAC code, quantity, unit rate, and GST rate (5%, 12%, 18%).</li>
+  <li>Click <strong>Save & Post Bill</strong>.</li>
+</ol>
+
+<div class="code-box">
+Accounting Entry Behind the Scenes:
+Debit:  5140 Sound & Equipment Hire     ₹ 50,000  (Direct Expense)
+Debit:  1140 Input GST Tax Credit       ₹  9,000  (ITC Receivable - 18%)
+Credit: 2110 Accounts Payable           ₹ 59,000  (Liability to Vendor)
+</div>
+
+<h3>2. Paying a Vendor Bill</h3>
+<ol>
+  <li>On the purchase bill row, click <strong>Pay Vendor</strong>.</li>
+  <li>Select source account (Bank Account or Cash in Hand) and Payment Mode (NEFT/Cheque/Cash).</li>
+  <li>Enter UTR / Cheque reference and payment amount.</li>
+  <li>Click <strong>Confirm Disbursement</strong>.</li>
+</ol>
+
+<!-- SECTION 11: GST COMPLIANCE CENTER -->
+<h1>11. GST Compliance Center</h1>
+<p>Automates monthly GST reconciliation and preparation for filing under Indian tax regulations.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 25%;">GST Section</th>
+      <th style="width: 35%;">Data Sources Included</th>
+      <th style="width: 40%;">Output Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>GSTR-1 Outward Supplies</strong></td>
+      <td>All sales invoices from Doc Gen classified by B2B (Table 4), B2C (Tables 5/7), and SAC 998361.</td>
+      <td>Export GSTR-1 summary for GST Portal upload.</td>
+    </tr>
+    <tr>
+      <td><strong>GSTR-3B Tax Summary</strong></td>
+      <td>Total Outward Tax collected minus Eligible Inward ITC paid on purchase bills & expenses.</td>
+      <td>Generates Net Tax Payable settlement report before the 20th of the month.</td>
+    </tr>
+    <tr>
+      <td><strong>ITC Reconciliation</strong></td>
+      <td>Purchase bills and verified expense tax invoices.</td>
+      <td>Flags invoices missing supplier GSTIN to avoid ITC loss.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="alert alert-tip">
+  <strong>Net Tax Settlement Formula:</strong><br>
+  $$	ext{Net GST Payable} = 	ext{Total Output Tax Liability (CGST+SGST+IGST)} - 	ext{Total Eligible ITC (CGST+SGST+IGST)}$$
+</div>
+
+<!-- SECTION 12: PROFIT & LOSS -->
+<h1>12. Profit & Loss Statement (P&L)</h1>
+<p>Evaluates the true operational profitability of campaigns, vehicle fleets, and agency operations.</p>
+
+<div class="code-box">
+(+) Total Campaign & Advertising Revenue (LED Vans, Video Walls, Roadshows)
+(-) Direct Fleet Costs (COGS: Fuel, Diesel, Driver Wages, Generator, Equipment Hire)
+─────────────────────────────────────────────────────────────────────────────
+(=) GROSS PROFIT (Gross Margin %)
+
+(-) Operating Expenses (Office Rent, Administrative Salaries, Maintenance, Utilities)
+─────────────────────────────────────────────────────────────────────────────
+(=) OPERATING PROFIT (EBITDA)
+
+(-) Depreciation (LED Screens, Vehicle wear and tear)
+(-) Finance Charges (Bank fees, loan interest)
+─────────────────────────────────────────────────────────────────────────────
+(=) NET PROFIT BEFORE TAX
+</div>
+
+<!-- PAGE BREAK -->
+<div class="page-break"></div>
+
+<!-- SECTION 13: FINANCIAL STATEMENTS -->
+<h1>13. Financial Statements & Period Closing</h1>
+
+<h3>1. Trial Balance</h3>
+<p>Summarizes debit and credit totals across every account head. Verifies that the ledger is balanced prior to balance sheet generation.</p>
+
+<h3>2. Balance Sheet</h3>
+<p>The permanent financial balance sheet on any given date:</p>
+<div style="text-align: center; font-size: 11pt; font-weight: bold; color: #1e3a8a; margin: 10px 0;">
+  Total Assets ≡ Total Liabilities + Owner's Equity
+</div>
+
+<h3>3. Period Locking & Audit Safeguards</h3>
+<p>
+  To prevent backdated entries or tampering after monthly accounts have been audited, authorized managers can <strong>Lock Accounting Periods</strong>. Once locked:
+</p>
+<ul>
+  <li>No staff can add, edit, or delete vouchers dated in that locked month.</li>
+  <li>All financial actions maintain an immutable audit trail recording user email, IP address, and timestamp.</li>
+</ul>
+
+<!-- SECTION 14: STANDARD OPERATING PROCEDURES -->
+<h1>14. Standard Operating Procedures (SOPs)</h1>
+
+<div class="workflow-card">
+  <h4>SOP 1: Daily Morning Routine (Cashier / Junior Accountant)</h4>
+  <ul class="checklist">
+    <li>Open <strong>Accounts Dashboard</strong> and review <em>Due Today</em> receivables and payables.</li>
+    <li>Physically count cash in the petty cash drawer and ensure it matches the ERP <em>Cash in Hand</em> balance.</li>
+    <li>Follow up with clients who have invoices in the 30+ days overdue bracket.</li>
+  </ul>
+</div>
+
+<div class="workflow-card">
+  <h4>SOP 2: Client Billing & Payment Collection Flow (Billing Clerk)</h4>
+  <ul class="checklist">
+    <li>Verify that the approved invoice has synced from <strong>Doc Gen</strong> to <strong>Sales & Receivables</strong>.</li>
+    <li>When client sends payment screenshot, verify bank credit on netbanking portal.</li>
+    <li>Click <strong>Record Payment</strong>, enter exact UTR number, date, and allocate against the invoice.</li>
+    <li>Email or WhatsApp the updated <strong>Customer Statement</strong> to the client confirming receipt.</li>
+  </ul>
+</div>
+
+<div class="workflow-card">
+  <h4>SOP 3: Daily Fleet Fuel & Maintenance Logging (Fleet Ops)</h4>
+  <ul class="checklist">
+    <li>Collect fuel receipts and workshop slips from drivers at the end of every trip.</li>
+    <li>Navigate to <strong>Expenses</strong> $ightarrow$ Click <strong>+ Record Expense</strong>.</li>
+    <li>Tag the vehicle registration number (e.g. <em>KL-09-AB-1234</em>) in the notes field.</li>
+    <li>Save voucher so fleet costs reflect immediately in the vehicle P&L.</li>
+  </ul>
+</div>
+
+<div class="workflow-card">
+  <h4>SOP 4: Month-End Financial Closing Checklist (Senior Accountant)</h4>
+  <ul class="checklist">
+    <li>Ensure all client invoices for the month have been generated in Doc Gen.</li>
+    <li>Perform <strong>Bank Reconciliation (BRS)</strong> for all company accounts until the difference is ₹0.00.</li>
+    <li>Enter all pending vendor purchase bills and expense slips.</li>
+    <li>Inspect the <strong>GSTR-3B Summary</strong> to compute net tax liability before the 20th.</li>
+    <li>Review the <strong>Profit & Loss Statement</strong> with management.</li>
+    <li>Activate <strong>Period Lock</strong> for the closed month.</li>
+  </ul>
+</div>
+
+<!-- SECTION 15: FAQ -->
+<h1>15. Frequently Asked Questions (FAQ)</h1>
+
+<p><strong>Q1: What if a client pays for 3 different invoices in a single bank transfer?</strong><br>
+<em>Answer:</em> In <strong>Record Payment</strong>, enter the total lump-sum UTR amount. The allocation table allows you to split and apply the funds across all 3 invoices until the total receipt is fully matched.</p>
+
+<p><strong>Q2: How do we handle customer advance deposits before a quotation is approved?</strong><br>
+<em>Answer:</em> Post a <strong>Receipt Voucher (RV)</strong> under General Journal: Debit <code>Bank Account</code>, Credit <code>2130 Customer Advances</code>. Once the invoice is generated, the advance credit can be applied against the invoice balance.</p>
+
+<p><strong>Q3: Can an accountant edit or delete a posted voucher?</strong><br>
+<em>Answer:</em> No. In accordance with standard accounting audit standards, posted vouchers are immutable. If a voucher was entered in error, create a <strong>Reversal Voucher</strong> or an adjusting Journal Voucher (JV) with a clear explanation in the narration.</p>
+
+<div class="footer-note">
+  © 2026 B2P ONE Portal & ERP. All rights reserved. Confidential — Internal Training & Operations Manual.
+</div>
+
+</body>
+</html>

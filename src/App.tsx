@@ -2125,6 +2125,7 @@ function App() {
               <FollowUps
                 role={simulatedRole}
                 userEmail={currentUserEmail}
+                companyId={activeProfile?.id}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
               />
             )}

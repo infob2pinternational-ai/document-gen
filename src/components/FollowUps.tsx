@@ -19,11 +19,13 @@ import { formatStaffDisplayName } from '../utils/staffUtils';
 interface FollowUpsProps {
   role?: string;
   userEmail?: string;
+  companyId?: string;
   onOpenLead?: (leadId: string) => void;
 }
 
 export const FollowUps: React.FC<FollowUpsProps> = ({
   userEmail = '',
+  companyId: propCompanyId,
   onOpenLead
 }) => {
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all'>('today');
@@ -34,11 +36,12 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
   const [selectedFollowUpIds, setSelectedFollowUpIds] = useState<Set<string>>(new Set());
 
   const refreshFollowUps = () => {
+    const scopeId = propCompanyId || officeService.getActiveCompanyId() || undefined;
     let list: FollowUp[] = [];
     if (activeTab === 'snoozed') {
-      list = officeService.getFollowUps('all').filter(f => f.status === 'SNOOZED');
+      list = officeService.getFollowUps('all', scopeId).filter(f => f.status === 'SNOOZED');
     } else {
-      list = officeService.getFollowUps(activeTab as any);
+      list = officeService.getFollowUps(activeTab as any, scopeId);
     }
     setFollowUps(list);
   };
@@ -47,7 +50,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
     refreshFollowUps();
     const unsub = metricsService.subscribe(refreshFollowUps);
     return unsub;
-  }, [activeTab]);
+  }, [activeTab, propCompanyId]);
 
   const handleOpenAdd = () => {
     setEditingFollowUp(null);
@@ -528,6 +531,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
             refreshFollowUps();
           }}
           userEmail={userEmail}
+          companyId={propCompanyId || officeService.getActiveCompanyId() || undefined}
         />
       )}
 

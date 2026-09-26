@@ -736,6 +736,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               setFollowUpModalOpen(false);
             }}
             userEmail={userEmail}
+            companyId={lead?.company_id || officeService.getActiveCompanyId() || undefined}
           />
         )}
 

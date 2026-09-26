@@ -1335,6 +1335,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
             setViewingFollowUp(null);
           }}
           userEmail={userEmail}
+          companyId={viewingFollowUp?.company_id || officeService.getActiveCompanyId() || undefined}
         />
       )}
 

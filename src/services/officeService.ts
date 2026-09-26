@@ -224,7 +224,7 @@ function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
       created_at: row.created_at || new Date().toISOString(),
       updated_at: row.updated_at || new Date().toISOString()
     };
-    if (row.company_id && UUID_REGEX.test(row.company_id)) {
+    if (row.company_id && row.company_id !== 'default' && UUID_REGEX.test(row.company_id)) {
       payload.company_id = row.company_id;
     }
     if (row.customer_id && UUID_REGEX.test(row.customer_id)) {
@@ -346,6 +346,12 @@ function replaceCompanyScopedCache<T extends { id: string; company_id?: string |
 }
 
 async function persistOfficeRow<T extends { id: string }>(storageKey: string, table: CrmOfficeTable, fullLocalArray: T[], changedRow: T): Promise<void> {
+  if (table === 'follow_ups') {
+    const row = changedRow as any;
+    if (!row.company_id || row.company_id === 'default') {
+      throw new Error('Cannot persist follow-up without a valid company profile.');
+    }
+  }
   if (supabase) {
     if (!isCloudActive()) throw new Error('Please sign in again to save to the shared CRM.');
     const { data, error } = await supabase.from(table)
@@ -574,26 +580,72 @@ export const officeService = {
 
   async saveFollowUp(item: Partial<FollowUp> & { customer_name: string; due_date: string; reason: string }, userEmail: string): Promise<FollowUp> {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
-    const isNew = !item.id;
+    const existing = item.id ? list.find(f => f.id === item.id) : undefined;
+    const isNew = !existing;
 
-    const followUpRecord: FollowUp = {
-      id: item.id || generateUUID(),
-      company_id: item.company_id || leadService.getActiveCompany() || 'default',
-      lead_id: item.lead_id,
-      lead_number: item.lead_number,
-      customer_id: item.customer_id,
-      customer_name: item.customer_name,
-      company_name: item.company_name,
-      phone: item.phone,
-      assigned_staff_email: item.assigned_staff_email || userEmail,
-      due_date: item.due_date,
-      due_time: item.due_time || '10:00',
-      reason: item.reason,
-      notes: item.notes,
-      status: item.status || 'PENDING',
-      created_by_email: item.created_by_email || userEmail,
-      created_at: item.created_at || new Date().toISOString()
-    };
+    let followUpRecord: FollowUp;
+
+    if (existing) {
+      // PRESERVE EXISTING DATA ON EDIT:
+      // Merge intentional updates into the existing record, strictly preserving
+      // original created_at, created_by_email, completion info (completed_at, completion_note),
+      // snooze info (snoozed_until), next follow-up reference, company_id, lead_id,
+      // and any custom/existing metadata.
+      // NOTE: existing.company_id is strictly immutable on edit to prevent accidental cross-company overwrites.
+      const resolvedCompanyId = existing.company_id || item.company_id || leadService.getActiveCompany() || undefined;
+      followUpRecord = {
+        ...existing,
+        ...item,
+        id: existing.id,
+        created_at: existing.created_at || item.created_at || new Date().toISOString(),
+        created_by_email: existing.created_by_email || item.created_by_email || userEmail,
+        company_id: existing.company_id || resolvedCompanyId,
+        lead_id: item.lead_id !== undefined ? item.lead_id : existing.lead_id,
+        lead_number: item.lead_number !== undefined ? item.lead_number : existing.lead_number,
+        customer_id: item.customer_id !== undefined ? item.customer_id : existing.customer_id,
+        customer_name: (item.customer_name !== undefined && item.customer_name.trim() !== '') ? item.customer_name : existing.customer_name,
+        company_name: item.company_name !== undefined ? item.company_name : existing.company_name,
+        phone: item.phone !== undefined ? item.phone : existing.phone,
+        assigned_staff_email: item.assigned_staff_email || existing.assigned_staff_email || userEmail,
+        due_date: item.due_date || existing.due_date,
+        due_time: item.due_time || existing.due_time || '10:00',
+        reason: (item.reason !== undefined && item.reason.trim() !== '') ? item.reason : existing.reason,
+        notes: item.notes !== undefined ? item.notes : existing.notes,
+        status: item.status || existing.status || 'PENDING',
+        completed_at: item.completed_at !== undefined ? item.completed_at : existing.completed_at,
+        completion_note: item.completion_note !== undefined ? item.completion_note : existing.completion_note,
+        snoozed_until: item.snoozed_until !== undefined ? item.snoozed_until : existing.snoozed_until,
+        next_follow_up_id: item.next_follow_up_id !== undefined ? item.next_follow_up_id : existing.next_follow_up_id
+      };
+    } else {
+      const activeCompany = item.company_id || leadService.getActiveCompany() || undefined;
+      if (!activeCompany || activeCompany === 'default') {
+        throw new Error('Cannot create follow-up without a valid active company profile.');
+      }
+      followUpRecord = {
+        ...item,
+        id: item.id || generateUUID(),
+        company_id: activeCompany,
+        lead_id: item.lead_id,
+        lead_number: item.lead_number,
+        customer_id: item.customer_id,
+        customer_name: item.customer_name || '',
+        company_name: item.company_name,
+        phone: item.phone,
+        assigned_staff_email: item.assigned_staff_email || userEmail,
+        due_date: item.due_date,
+        due_time: item.due_time || '10:00',
+        reason: item.reason || '',
+        notes: item.notes,
+        status: item.status || 'PENDING',
+        created_by_email: item.created_by_email || userEmail,
+        created_at: item.created_at || new Date().toISOString(),
+        completed_at: item.completed_at,
+        completion_note: item.completion_note,
+        snoozed_until: item.snoozed_until,
+        next_follow_up_id: item.next_follow_up_id
+      };
+    }
 
     if (isNew) {
       list.unshift(followUpRecord);
@@ -602,7 +654,7 @@ export const officeService = {
       if (followUpRecord.lead_id) {
         await leadService.addLeadActivity({
           lead_id: followUpRecord.lead_id,
-          company_id: followUpRecord.company_id || leadService.getActiveCompany() || 'default',
+          company_id: followUpRecord.company_id,
           user_email: userEmail,
           action: 'Follow-up Scheduled',
           note: `Follow-up set for ${followUpRecord.due_date} ${followUpRecord.due_time}: ${followUpRecord.reason}`
@@ -610,7 +662,11 @@ export const officeService = {
       }
     } else {
       const idx = list.findIndex(f => f.id === followUpRecord.id);
-      if (idx >= 0) list[idx] = followUpRecord;
+      if (idx >= 0) {
+        list[idx] = followUpRecord;
+      } else {
+        list.unshift(followUpRecord);
+      }
       await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, followUpRecord);
     }
 

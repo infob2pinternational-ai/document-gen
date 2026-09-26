@@ -14,6 +14,7 @@ interface FollowUpModalProps {
   onDeleted?: (id: string) => void;
   prefilledLead?: Lead | null;
   userEmail: string;
+  companyId?: string;
 }
 
 export const FollowUpModal: React.FC<FollowUpModalProps> = ({
@@ -23,7 +24,8 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   onSaved,
   onDeleted,
   prefilledLead,
-  userEmail
+  userEmail,
+  companyId
 }) => {
   const [customerName, setCustomerName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -145,8 +147,21 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
 
       const linkedLead = allLeads.find(l => l.id === selectedLeadId);
 
+      // Resolve target company ID:
+      // When EDITING an existing follow-up, strictly preserve its existing company_id.
+      // When creating a NEW follow-up, resolve from props / prefilled lead / linked lead / active company.
+      const resolvedCompanyId = followUp
+        ? (followUp.company_id || companyId || officeService.getActiveCompanyId() || undefined)
+        : (companyId || prefilledLead?.company_id || linkedLead?.company_id || officeService.getActiveCompanyId() || undefined);
+
+      if (!followUp && (!resolvedCompanyId || resolvedCompanyId === 'default')) {
+        alert('Please select or activate a company profile before scheduling a follow-up.');
+        return;
+      }
+
       const saved = await officeService.saveFollowUp({
         id: followUp?.id,
+        company_id: resolvedCompanyId,
         lead_id: selectedLeadId || undefined,
         lead_number: linkedLead?.lead_number,
         customer_name: customerName.trim(),
