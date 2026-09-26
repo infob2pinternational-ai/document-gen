@@ -230,8 +230,9 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
   // 1. ALWAYS persist to local cache first so it is synchronous, reliable and instant
   try {
     localStorage.setItem(storageKey, JSON.stringify(fullLocalArray));
-  } catch (storageErr) {
+  } catch (storageErr: any) {
     console.error(`[leadService] Failed to write to localStorage for ${storageKey}:`, storageErr);
+    throw new Error(`Failed to save to local storage: ${storageErr?.message || 'Storage error'}`);
   }
   metricsService.notifyChange();
 

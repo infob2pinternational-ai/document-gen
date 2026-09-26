@@ -76,10 +76,13 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const prevOpenRef = useRef(false);
   const prevLeadRef = useRef<string | null>(null);
+  const saveInProgressRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
       prevOpenRef.current = false;
+      saveInProgressRef.current = false;
+      setIsSaving(false);
       return;
     }
 
@@ -192,7 +195,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSaving) return;
+    if (saveInProgressRef.current) return;
 
     if (!customerName.trim()) {
       alert('Please enter a customer name.');
@@ -207,8 +210,11 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       return;
     }
 
+    if (saveInProgressRef.current) return;
+    saveInProgressRef.current = true;
+    setIsSaving(true);
+
     try {
-      setIsSaving(true);
       const saved = await leadService.saveLead({
         id: lead?.id,
         lead_number: lead?.lead_number,
@@ -241,6 +247,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       console.error('[LeadModal] Failed to save lead:', err);
       alert('Failed to save lead: ' + (err?.message || 'Unknown error occurred.'));
     } finally {
+      saveInProgressRef.current = false;
       setIsSaving(false);
     }
   };

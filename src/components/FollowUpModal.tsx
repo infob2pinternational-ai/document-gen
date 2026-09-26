@@ -48,10 +48,13 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
 
   const prevOpenRef = useRef(false);
   const prevTargetRef = useRef<string | null>(null);
+  const saveInProgressRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
       prevOpenRef.current = false;
+      saveInProgressRef.current = false;
+      setIsSaving(false);
       return;
     }
 
@@ -121,6 +124,8 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveInProgressRef.current) return;
+
     if (!customerName.trim()) {
       alert('Please enter a Customer Name.');
       return;
@@ -134,10 +139,11 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       return;
     }
 
-    if (isSaving) return;
+    if (saveInProgressRef.current) return;
+    saveInProgressRef.current = true;
+    setIsSaving(true);
 
     try {
-      setIsSaving(true);
       if (isCompleting && followUp) {
         const completed = await officeService.completeFollowUp(followUp.id, completionNote, userEmail);
         if (completed) onSaved(completed);
@@ -181,6 +187,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       console.error('[FollowUpModal] Save follow up failed:', err);
       alert('Failed to save follow-up: ' + (err?.message || 'Unknown error occurred.'));
     } finally {
+      saveInProgressRef.current = false;
       setIsSaving(false);
     }
   };
