@@ -652,13 +652,21 @@ export const officeService = {
       await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, followUpRecord);
       // Log to lead activity if linked
       if (followUpRecord.lead_id) {
-        await leadService.addLeadActivity({
-          lead_id: followUpRecord.lead_id,
-          company_id: followUpRecord.company_id || officeService.getActiveCompanyId() || 'default',
-          user_email: userEmail,
-          action: 'Follow-up Scheduled',
-          note: `Follow-up set for ${followUpRecord.due_date} ${followUpRecord.due_time}: ${followUpRecord.reason}`
-        });
+        const activityCompanyId = (followUpRecord.company_id && followUpRecord.company_id !== 'default')
+          ? followUpRecord.company_id
+          : (officeService.getActiveCompanyId() && officeService.getActiveCompanyId() !== 'default'
+              ? officeService.getActiveCompanyId()!
+              : undefined);
+
+        if (activityCompanyId) {
+          await leadService.addLeadActivity({
+            lead_id: followUpRecord.lead_id,
+            company_id: activityCompanyId,
+            user_email: userEmail,
+            action: 'Follow-up Scheduled',
+            note: `Follow-up set for ${followUpRecord.due_date} ${followUpRecord.due_time}: ${followUpRecord.reason}`
+          });
+        }
       }
     } else {
       const idx = list.findIndex(f => f.id === followUpRecord.id);
