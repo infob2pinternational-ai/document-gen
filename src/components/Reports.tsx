@@ -76,7 +76,8 @@ export const Reports: React.FC<ReportsProps> = ({
   const coldCount = scopedLeads.filter(l => l.priority === 'COLD').length;
 
   // 3. Central Telecaller Metrics from metricsService
-  const telecallerData = metricsService.getTelecallerMetrics(staffFilter === 'all' ? undefined : staffFilter);
+  const activeCompanyId = officeService.getActiveCompanyId() || undefined;
+  const telecallerData = metricsService.getTelecallerMetrics(staffFilter === 'all' ? undefined : staffFilter, activeCompanyId);
 
   // 4. Quotation Financial Conversion
   const totalQuotedValue = quotations.reduce((sum, q) => sum + (q.total || 0), 0);

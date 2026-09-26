@@ -99,7 +99,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
       // Enrich with real CRM Follow-ups from app
       const crmDueToday = officeService.getFollowUps('today', companyId);
       const crmOverdue = officeService.getFollowUps('overdue', companyId);
-      const crmCounts = metricsService.getFollowUpCounts();
+      const crmCounts = metricsService.getFollowUpCounts(undefined, companyId);
 
       const followUpsDueTodayList = crmDueToday.map(f => ({
         id: f.id,

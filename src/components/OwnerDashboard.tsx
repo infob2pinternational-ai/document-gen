@@ -251,7 +251,8 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
   }, [resources, activeBookedResourceIds]);
 
   // Telecaller Performance Data (Dynamically derived from real application records)
-  const telecallerMetrics = metricsService.getTelecallerMetrics();
+  const activeCompanyId = officeService.getActiveCompanyId() || undefined;
+  const telecallerMetrics = metricsService.getTelecallerMetrics(undefined, activeCompanyId);
 
   // Lead Pipeline Funnel Breakdown
   const leadPipelineStages = useMemo(() => {

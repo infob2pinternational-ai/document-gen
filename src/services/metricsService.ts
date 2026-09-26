@@ -236,6 +236,14 @@ export function calculateFollowUpCounts(followUps: FollowUp[]): FollowUpCounts {
   };
 }
 
+function filterByCompany<T extends { company_id?: string | null }>(items: T[], companyId?: string): T[] {
+  if (!companyId) return items;
+  if (companyId === 'default') {
+    return items.filter(item => !item.company_id || item.company_id === 'default');
+  }
+  return items.filter(item => item.company_id === companyId);
+}
+
 export const metricsService = {
   // Event Notification & Subscription
   notifyChange(): void {
@@ -259,10 +267,7 @@ export const metricsService = {
 
   // 1. LEAD COUNTS
   getLeadCounts(staffEmail?: string, companyId?: string): LeadCounts {
-    let leads = readStorage<Lead[]>(LEADS_KEY, []);
-    if (companyId) {
-      leads = leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === companyId);
-    }
+    let leads = filterByCompany(readStorage<Lead[]>(LEADS_KEY, []), companyId);
     if (staffEmail && staffEmail !== 'owner@b2p.com' && staffEmail !== 'admin@b2p.com' && staffEmail.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanengadan@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
       leads = leads.filter(l => l.assigned_telecaller_email === staffEmail);
     }
@@ -308,14 +313,10 @@ export const metricsService = {
 
   // 2. FOLLOW-UP COUNTS
   getFollowUpCounts(staffEmail?: string, companyId?: string): FollowUpCounts {
-    let followUps = readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []).map(item => ({
+    let followUps = filterByCompany(readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []), companyId).map(item => ({
       ...item,
       assigned_staff_email: normalizeStaffEmail(item.assigned_staff_email)
     }));
-
-    if (companyId && companyId !== 'default') {
-      followUps = followUps.filter(f => !f.company_id || f.company_id === 'default' || f.company_id === companyId);
-    }
 
     if (staffEmail && staffEmail !== 'all') {
       const cleanEmail = normalizeStaffEmail(staffEmail);
@@ -363,8 +364,8 @@ export const metricsService = {
   },
 
   // 4. BOOKING COUNTS & FLEET AVAILABILITY
-  getBookingCounts(): BookingCounts {
-    const bookings = readStorage<Booking[]>(BOOKINGS_KEY, []);
+  getBookingCounts(companyId?: string): BookingCounts {
+    const bookings = filterByCompany(readStorage<Booking[]>(BOOKINGS_KEY, []), companyId);
     const resources = readStorage<Resource[]>(RESOURCES_KEY, []);
 
     let tentative = 0;
@@ -435,14 +436,14 @@ export const metricsService = {
   },
 
   // 5. OWNER DAILY DASHBOARD ("WHAT HAPPENED TODAY?" + DATE RANGE)
-  getOwnerDailyMetrics(filter: DateFilter = { type: 'today' }): OwnerDailyMetrics {
+  getOwnerDailyMetrics(filter: DateFilter = { type: 'today' }, companyId?: string): OwnerDailyMetrics {
     const bounds = getDateRangeBounds(filter);
 
-    const leads = readStorage<Lead[]>(LEADS_KEY, []);
-    const activities = readStorage<LeadActivity[]>(ACTIVITIES_KEY, []);
-    const quotations = readStorage<CrmQuotation[]>(QUOTATIONS_KEY, []);
-    const followUps = readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []);
-    const bookings = readStorage<Booking[]>(BOOKINGS_KEY, []);
+    const leads = filterByCompany(readStorage<Lead[]>(LEADS_KEY, []), companyId);
+    const activities = filterByCompany(readStorage<LeadActivity[]>(ACTIVITIES_KEY, []), companyId);
+    const quotations = filterByCompany(readStorage<CrmQuotation[]>(QUOTATIONS_KEY, []), companyId);
+    const followUps = filterByCompany(readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []), companyId);
+    const bookings = filterByCompany(readStorage<Booking[]>(BOOKINGS_KEY, []), companyId);
 
     // 1. New Leads created in range
     const newLeads = leads.filter(l => isDateInBounds(l.created_at, bounds)).length;
@@ -521,11 +522,11 @@ export const metricsService = {
   },
 
   // 6. OWNER ATTENTION ("ACTION REQUIRED")
-  getActionRequiredCounts(): ActionRequiredCounts {
-    const leads = readStorage<Lead[]>(LEADS_KEY, []);
-    const quotations = readStorage<CrmQuotation[]>(QUOTATIONS_KEY, []);
-    const followUps = readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []);
-    const bookings = readStorage<Booking[]>(BOOKINGS_KEY, []);
+  getActionRequiredCounts(companyId?: string): ActionRequiredCounts {
+    const leads = filterByCompany(readStorage<Lead[]>(LEADS_KEY, []), companyId);
+    const quotations = filterByCompany(readStorage<CrmQuotation[]>(QUOTATIONS_KEY, []), companyId);
+    const followUps = filterByCompany(readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []), companyId);
+    const bookings = filterByCompany(readStorage<Booking[]>(BOOKINGS_KEY, []), companyId);
 
     const today = getLocalTodayStr();
 
@@ -570,9 +571,9 @@ export const metricsService = {
   },
 
   // 7. ADMIN QUEUE COUNTS
-  getAdminCounts(): AdminQueueCounts {
-    const leads = readStorage<Lead[]>(LEADS_KEY, []);
-    const quotations = readStorage<CrmQuotation[]>(QUOTATIONS_KEY, []);
+  getAdminCounts(companyId?: string): AdminQueueCounts {
+    const leads = filterByCompany(readStorage<Lead[]>(LEADS_KEY, []), companyId);
+    const quotations = filterByCompany(readStorage<CrmQuotation[]>(QUOTATIONS_KEY, []), companyId);
 
     const incomingRequirements = leads.filter(l => l.status === 'sent_to_admin' || l.status === 'quotation_preparing').length;
     const quotationsPreparing = leads.filter(l => l.status === 'quotation_preparing').length;
@@ -588,9 +589,9 @@ export const metricsService = {
   },
 
   // 8. TELECALLER MATRIX
-  getTelecallerMetrics(staffFilter?: string): TelecallerMetricsRow[] {
-    const leads = readStorage<Lead[]>(LEADS_KEY, []);
-    const followUps = readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []);
+  getTelecallerMetrics(staffFilter?: string, companyId?: string): TelecallerMetricsRow[] {
+    const leads = filterByCompany(readStorage<Lead[]>(LEADS_KEY, []), companyId);
+    const followUps = filterByCompany(readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []), companyId);
     const today = getLocalTodayStr();
 
     const emailsSet = new Set<string>();
