@@ -30,7 +30,7 @@ export function computeDashboardStats(documents: Document[], companyId?: string 
 }
 
 export function localDateKey(date = new Date()): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date);
 }
 
 export function bookingsOnDate(bookings: Booking[], date: string): Booking[] {

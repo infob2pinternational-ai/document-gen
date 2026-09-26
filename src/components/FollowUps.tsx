@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { formatStaffDisplayName } from '../utils/staffUtils';
+import { getKolkataToday } from '../utils/dateUtils';
 
 interface FollowUpsProps {
   role?: string;
@@ -336,7 +337,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
             </thead>
             <tbody>
               {filtered.map(item => {
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getKolkataToday();
                 const isOverdue = item.status !== 'COMPLETED' && item.due_date < todayStr;
                 const isCompleted = item.status === 'COMPLETED';
                 const isToday = item.status !== 'COMPLETED' && item.due_date === todayStr;

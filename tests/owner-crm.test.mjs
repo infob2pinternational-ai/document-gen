@@ -110,7 +110,8 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
       './leadService': asModule('export const leadService = { getActiveCompany() { return null; }, async addLeadActivity() {}, async updateLeadStatus() {} }; export async function hydrateLeadsFromCloud() {}'),
       './db': dbUrl,
       '../utils/uuid': asModule('export const generateUUID = () => "33333333-3333-4333-8333-333333333333";'),
-      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`),
+      '../utils/dateUtils': asModule('export const getKolkataToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());')
     });
     const company = '11111111-1111-4111-8111-111111111111';
     const lead = '22222222-2222-4222-8222-222222222222';
@@ -265,7 +266,8 @@ test('office hydration replaces stale active-company dashboard cache with real c
       export const isCloudActive = () => true;
       export const supabase = { from(table) { return { select() { const result = { data: data[table] || [] }; return table === 'resources' ? Promise.resolve(result) : { eq() { return Promise.resolve(result); } }; } }; } };`),
       '../utils/uuid': asModule('export const generateUUID = () => "test-id";'),
-      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`)
+      '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`),
+      '../utils/dateUtils': asModule('export const getKolkataToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());')
     });
     await hydrateCrmFromCloud(companyId);
     assert.deepEqual(JSON.parse(rows.get('docgen_bookings')).map(row => row.id), ['other-booking']);

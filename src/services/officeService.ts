@@ -13,6 +13,7 @@ import { normalizeStaffEmail } from '../utils/staffUtils';
 import { metricsService } from './metricsService';
 import { supabase, isCloudActive } from './db';
 import { generateUUID } from '../utils/uuid';
+import { getKolkataToday } from '../utils/dateUtils';
 
 const FOLLOW_UPS_KEY = 'docgen_follow_ups';
 const QUOTATIONS_KEY = 'docgen_crm_quotations';
@@ -124,8 +125,8 @@ export const SEED_RESOURCES: Resource[] = [
   }
 ];
 
-// Helper to format date strings
-const getTodayStr = () => new Date().toISOString().split('T')[0];
+// Helper to format date strings in Asia/Kolkata business timezone
+const getTodayStr = () => getKolkataToday();
 
 // REMEDIATION (2026-08-24, CRM audit pass): this file used to seed six
 // fully fictional datasets (follow-ups, quotations, bookings, WhatsApp
@@ -208,7 +209,7 @@ function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
     const payload: any = {
       id: row.id,
       assigned_staff_email: row.assigned_staff_email || 'staff@b2p.com',
-      follow_up_date: row.due_date || row.follow_up_date || new Date().toISOString().split('T')[0],
+      follow_up_date: row.due_date || row.follow_up_date || getKolkataToday(),
       follow_up_time: row.due_time || row.follow_up_time || '10:00',
       customer_name: row.customer_name,
       company_name: row.company_name ?? null,
@@ -422,7 +423,7 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
         return {
           ...fu,
           status: String(fu.status || 'pending').toUpperCase(),
-          due_date: fu.follow_up_date || fu.due_date || existing?.due_date || new Date().toISOString().split('T')[0],
+          due_date: fu.follow_up_date || fu.due_date || existing?.due_date || getKolkataToday(),
           due_time: fu.follow_up_time ?? fu.due_time ?? existing?.due_time ?? '10:00',
           reason: fu.reason ?? fu.notes ?? existing?.reason ?? 'Follow-up',
           customer_name: fu.customer_name ?? existing?.customer_name ?? 'Customer',
@@ -696,13 +697,21 @@ export const officeService = {
 
     // Log to lead activity if linked
     if (current.lead_id) {
-      await leadService.addLeadActivity({
-        lead_id: current.lead_id,
-        company_id: current.company_id || leadService.getActiveCompany() || 'default',
-        user_email: userEmail,
-        action: 'Follow-up Completed',
-        note: `Completed follow-up: "${current.reason}". Note: ${completionNote || 'No completion remarks.'}`
-      });
+      const activityCompanyId = (current.company_id && current.company_id !== 'default')
+        ? current.company_id
+        : (leadService.getActiveCompany() && leadService.getActiveCompany() !== 'default'
+            ? leadService.getActiveCompany()!
+            : undefined);
+
+      if (activityCompanyId) {
+        await leadService.addLeadActivity({
+          lead_id: current.lead_id,
+          company_id: activityCompanyId,
+          user_email: userEmail,
+          action: 'Follow-up Completed',
+          note: `Completed follow-up: "${current.reason}". Note: ${completionNote || 'No completion remarks.'}`
+        });
+      }
     }
 
     return current;
@@ -716,20 +725,28 @@ export const officeService = {
     const current = list[idx];
     const newTime = new Date(Date.now() + minutes * 60 * 1000);
     current.status = 'SNOOZED';
-    current.due_time = `${String(newTime.getHours()).padStart(2, '0')}:${String(newTime.getMinutes()).padStart(2, '0')}`;
-    current.due_date = newTime.toISOString().split('T')[0];
+    current.due_time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).format(newTime);
+    current.due_date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(newTime);
 
     list[idx] = current;
     await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, current);
 
     if (current.lead_id) {
-      await leadService.addLeadActivity({
-        lead_id: current.lead_id,
-        company_id: current.company_id || leadService.getActiveCompany() || 'default',
-        user_email: userEmail,
-        action: 'Follow-up Snoozed',
-        note: `Snoozed for ${minutes} minutes until ${current.due_time}.`
-      });
+      const activityCompanyId = (current.company_id && current.company_id !== 'default')
+        ? current.company_id
+        : (leadService.getActiveCompany() && leadService.getActiveCompany() !== 'default'
+            ? leadService.getActiveCompany()!
+            : undefined);
+
+      if (activityCompanyId) {
+        await leadService.addLeadActivity({
+          lead_id: current.lead_id,
+          company_id: activityCompanyId,
+          user_email: userEmail,
+          action: 'Follow-up Snoozed',
+          note: `Snoozed for ${minutes} minutes until ${current.due_time}.`
+        });
+      }
     }
 
     return current;

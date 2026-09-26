@@ -5,6 +5,7 @@ import { X, Clock, CheckCircle2, Trash2 } from 'lucide-react';
 import { officeService } from '../services/officeService';
 import { leadService } from '../services/leadService';
 import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
+import { getKolkataToday } from '../utils/dateUtils';
 
 interface FollowUpModalProps {
   followUp: FollowUp | null;
@@ -86,7 +87,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       setPhone(prefilledLead.phone || '');
       setSelectedLeadId(prefilledLead.id);
       setAssignedStaff(prefilledLead.assigned_telecaller_email || userEmail || '');
-      setDueDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+      setDueDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() + 86400000)));
       setDueTime('11:00');
       setReason(`Follow up on ${prefilledLead.service_required || 'campaign inquiry'}`);
       setNotes('');
@@ -98,7 +99,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       setPhone('');
       setSelectedLeadId('');
       setAssignedStaff(userEmail || '');
-      setDueDate(new Date().toISOString().split('T')[0]);
+      setDueDate(getKolkataToday());
       setDueTime('11:00');
       setReason('');
       setNotes('');

@@ -9,6 +9,7 @@ import type {
   LeadActivity 
 } from '../types';
 import { formatStaffDisplayName, isDummyStaffEmail } from '../utils/staffUtils';
+import { getKolkataToday } from '../utils/dateUtils';
 
 export type DateFilterType = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom';
 
@@ -133,22 +134,16 @@ function readStorage<T>(key: string, defaultVal: T): T {
   }
 }
 
-// Date helpers
+// Date helpers (strictly in Asia/Kolkata business timezone)
 export function getLocalTodayStr(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return getKolkataToday();
 }
 
 export function getLocalYesterdayStr(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const today = getKolkataToday();
+  const [y, m, d] = today.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d - 1, 12, 0, 0));
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date);
 }
 
 export function getDateRangeBounds(filter: DateFilter): { start: string; end: string } {
