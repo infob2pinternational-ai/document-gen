@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { WhatsAppConversation, WhatsAppMessage } from '../types';
 import { whatsappService } from '../services/whatsappService';
 import { leadService } from '../services/leadService';
+import { officeService } from '../services/officeService';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { FollowUpModal } from './FollowUpModal';
 import { SaveAsLeadModal } from './SaveAsLeadModal';

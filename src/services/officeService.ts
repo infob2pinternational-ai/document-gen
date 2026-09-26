@@ -654,7 +654,7 @@ export const officeService = {
       if (followUpRecord.lead_id) {
         await leadService.addLeadActivity({
           lead_id: followUpRecord.lead_id,
-          company_id: followUpRecord.company_id,
+          company_id: followUpRecord.company_id || officeService.getActiveCompanyId() || 'default',
           user_email: userEmail,
           action: 'Follow-up Scheduled',
           note: `Follow-up set for ${followUpRecord.due_date} ${followUpRecord.due_time}: ${followUpRecord.reason}`
