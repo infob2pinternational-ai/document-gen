@@ -219,6 +219,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
         id: lead?.id,
         lead_number: lead?.lead_number,
         company_id: companyId,
+        customer_id: lead?.customer_id || matchedCustomer?.id || undefined,
         customer_name: customerName.trim(),
         company_name: companyName.trim() || undefined,
         phone: phone.trim(),

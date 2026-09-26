@@ -371,6 +371,9 @@ export const dbService = {
   },
 
   async saveCustomer(customer: Customer): Promise<Customer> {
+    if (!customer.id) {
+      customer.id = crypto.randomUUID();
+    }
     if (isCloudActive() && supabase) {
       const userStr = localStorage.getItem('supabase_user');
       const userId = userStr ? JSON.parse(userStr).id : null;
@@ -406,6 +409,45 @@ export const dbService = {
     } else {
       const customers = getLocal<Customer[]>('customers', []);
       setLocal('customers', customers.filter(c => c.id !== id));
+    }
+
+    // Mirror ON DELETE SET NULL for leads and follow-ups in local cache
+    try {
+      const rawLeads = localStorage.getItem('docgen_leads');
+      if (rawLeads) {
+        const leads = JSON.parse(rawLeads) as any[];
+        let changed = false;
+        leads.forEach(l => {
+          if (l.customer_id === id) {
+            delete l.customer_id;
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('docgen_leads', JSON.stringify(leads));
+        }
+      }
+    } catch (e) {
+      console.warn('[dbService] Failed to unlink customer from leads on customer delete:', e);
+    }
+
+    try {
+      const rawFollowUps = localStorage.getItem('docgen_follow_ups');
+      if (rawFollowUps) {
+        const followUps = JSON.parse(rawFollowUps) as any[];
+        let changed = false;
+        followUps.forEach((f: any) => {
+          if (f.customer_id === id) {
+            delete f.customer_id;
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('docgen_follow_ups', JSON.stringify(followUps));
+        }
+      }
+    } catch (e) {
+      console.warn('[dbService] Failed to unlink customer from follow-ups on customer delete:', e);
     }
   },
 

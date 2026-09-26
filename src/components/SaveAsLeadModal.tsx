@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { WhatsAppConversation, Lead, LeadPriority } from '../types';
 import { UserPlus, X, AlertCircle } from 'lucide-react';
@@ -41,8 +41,14 @@ export const SaveAsLeadModal: React.FC<SaveAsLeadModalProps> = ({
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saveInProgressRef = useRef(false);
 
   useEffect(() => {
+    if (!isOpen) {
+      saveInProgressRef.current = false;
+      setIsSaving(false);
+      return;
+    }
     if (isOpen && conversation) {
       setCustomerName(conversation.customer_name || '');
       setPhone(conversation.phone || '');
@@ -59,11 +65,15 @@ export const SaveAsLeadModal: React.FC<SaveAsLeadModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveInProgressRef.current) return;
+
     if (!customerName.trim() || !phone.trim()) {
       setError('Customer name and phone number are required.');
       return;
     }
 
+    if (saveInProgressRef.current) return;
+    saveInProgressRef.current = true;
     setIsSaving(true);
     setError(null);
 
@@ -91,6 +101,7 @@ export const SaveAsLeadModal: React.FC<SaveAsLeadModalProps> = ({
       console.error('[SaveAsLeadModal] Error saving lead:', err);
       setError(err?.message || 'Failed to save lead to CRM. Please try again.');
     } finally {
+      saveInProgressRef.current = false;
       setIsSaving(false);
     }
   };

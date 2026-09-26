@@ -415,6 +415,7 @@ function formatStaffName(email?: string): string {
   return prefix.charAt(0).toUpperCase() + prefix.slice(1);
 }
 
+let leadSaveQueue: Promise<any> = Promise.resolve();
 let activeCompanyId: string | null = null;
 
 export const leadService = {
@@ -449,35 +450,36 @@ export const leadService = {
   },
 
   async saveLead(lead: Partial<Lead> & { customer_name: string; phone: string }, userEmail: string = 'Staff'): Promise<Lead> {
-    const leads = getStoredLeads();
-    const existing = lead.id ? leads.find(l => l.id === lead.id) : undefined;
-    const isNew = !existing;
-    const now = new Date().toISOString();
-    lead = { ...existing, ...lead };
+    const doSave = async (): Promise<Lead> => {
+      const leads = getStoredLeads();
+      const existing = lead.id ? leads.find(l => l.id === lead.id) : undefined;
+      const isNew = !existing;
+      const now = new Date().toISOString();
+      lead = { ...existing, ...lead };
 
-    const companyId = lead.company_id || activeCompanyId || 'default';
-    const leadNumberMap = getLeadNumberMap();
-    let leadNumber = lead.lead_number || existing?.lead_number || (lead.id ? leadNumberMap[lead.id] : undefined);
+      const companyId = lead.company_id || activeCompanyId || 'default';
+      const leadNumberMap = getLeadNumberMap();
+      let leadNumber = lead.lead_number || existing?.lead_number || (lead.id ? leadNumberMap[lead.id] : undefined);
 
-    if (isNew && !leadNumber) {
-      const companyLeads = leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === companyId);
-      const existingNums = new Set<number>();
-      let maxSeq = 1000;
-      for (const l of companyLeads) {
-        if (l.lead_number && l.lead_number.startsWith('B2P-LD-')) {
-          const num = parseInt(l.lead_number.replace('B2P-LD-', ''), 10);
-          if (!isNaN(num)) {
-            existingNums.add(num);
-            if (num > maxSeq) maxSeq = num;
+      if (isNew && !leadNumber) {
+        const companyLeads = leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === companyId);
+        const existingNums = new Set<number>();
+        let maxSeq = 1000;
+        for (const l of companyLeads) {
+          if (l.lead_number && l.lead_number.startsWith('B2P-LD-')) {
+            const num = parseInt(l.lead_number.replace('B2P-LD-', ''), 10);
+            if (!isNaN(num)) {
+              existingNums.add(num);
+              if (num > maxSeq) maxSeq = num;
+            }
           }
         }
+        let nextSeq = maxSeq + 1;
+        while (existingNums.has(nextSeq)) {
+          nextSeq++;
+        }
+        leadNumber = `B2P-LD-${nextSeq}`;
       }
-      let nextSeq = maxSeq + 1;
-      while (existingNums.has(nextSeq)) {
-        nextSeq++;
-      }
-      leadNumber = `B2P-LD-${nextSeq}`;
-    }
 
     const leadRecord: Lead = {
       id: lead.id || generateUUID(),
@@ -565,7 +567,12 @@ export const leadService = {
     }
 
     return leadRecord;
-  },
+  };
+
+  const nextPromise = leadSaveQueue.then(doSave, doSave);
+  leadSaveQueue = nextPromise.then(() => {}, () => {});
+  return nextPromise;
+},
 
   async deleteLead(id: string): Promise<void> {
     const leads = getStoredLeads();

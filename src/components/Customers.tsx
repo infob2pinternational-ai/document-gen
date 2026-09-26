@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { CompanyProfile, Customer } from '../types';
 import { dbService } from '../services/db';
 import { Search, Plus, Edit, Trash2, ShieldAlert, Eye, X } from 'lucide-react';
@@ -31,8 +31,11 @@ export const Customers: React.FC<CustomersProps> = ({
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
+  const saveInProgressRef = useRef(false);
 
   const handleOpenModal = (customer: Customer | null = null) => {
+    saveInProgressRef.current = false;
+    setLoading(false);
     if (customer) {
       setEditingCustomer(customer);
       setName(customer.name);
@@ -53,18 +56,25 @@ export const Customers: React.FC<CustomersProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeProfile) return;
+    if (!activeProfile || saveInProgressRef.current) return;
 
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      alert('Please enter a customer name.');
+      return;
+    }
+
+    saveInProgressRef.current = true;
     setLoading(true);
     try {
       const payload: Customer = {
         id: editingCustomer?.id || crypto.randomUUID(),
         company_id: activeProfile.id,
-        name,
-        gstin: gstin || undefined,
-        email: email || undefined,
-        phone: phone || undefined,
-        address: address || undefined
+        name: trimmedName,
+        gstin: gstin.trim() || undefined,
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        address: address.trim() || undefined
       };
 
       await dbService.saveCustomer(payload);
@@ -75,6 +85,7 @@ export const Customers: React.FC<CustomersProps> = ({
       console.error('Error saving customer:', err);
       alert('Failed to save customer.');
     } finally {
+      saveInProgressRef.current = false;
       setLoading(false);
     }
   };

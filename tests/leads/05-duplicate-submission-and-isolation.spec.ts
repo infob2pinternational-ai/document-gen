@@ -185,4 +185,24 @@ test.describe('Leads — Duplicate Prevention & Multi-Tenant Company Isolation',
     await expect(page.locator('table tbody tr', { hasText: 'Alpha Corp Kochi' })).toBeVisible();
     await expect(page.locator('table tbody tr', { hasText: 'Beta Media Trivandrum' })).not.toBeVisible();
   });
+
+  test('rapid double-click on customer submit does not create duplicate customer records', async ({ page }) => {
+    await setupApp(page);
+    await navigateToTab(page, 'customers');
+
+    await page.locator('button:has-text("Add Customer")').click();
+    const modal = page.locator('.modal-content');
+    await expect(modal).toBeVisible();
+
+    await modal.locator('input[placeholder*="Malabar Gold"]').fill('Double Click Retailer');
+    await modal.locator('input[type="tel"]').fill('9847888999');
+
+    const submitBtn = modal.locator('button[type="submit"]:has-text("Save Customer")');
+    await submitBtn.dblclick();
+
+    await expect(modal).not.toBeVisible({ timeout: 5000 });
+
+    const matchingRows = page.locator('table tbody tr', { hasText: 'Double Click Retailer' });
+    expect(await matchingRows.count(), 'Rapid double-clicking save customer created duplicate records!').toBe(1);
+  });
 });
