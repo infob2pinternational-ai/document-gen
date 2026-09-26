@@ -37,14 +37,14 @@ export const Customer360Modal: React.FC<Customer360ModalProps> = ({
 
   useEffect(() => {
     if (customer) {
-      const allLeads = leadService.getLeads().filter(l => 
+      const allLeads = leadService.getLeads(customer.company_id).filter(l => 
         (l.customer_id && l.customer_id === customer.id) ||
         l.customer_name.toLowerCase() === customer.name.toLowerCase() ||
         (l.phone && customer.phone && l.phone.replace(/\D/g, '') === customer.phone.replace(/\D/g, ''))
       );
       setCustomerLeads(allLeads);
 
-      const allQuotes = officeService.getQuotations().filter(q =>
+      const allQuotes = officeService.getQuotations(customer.company_id).filter(q =>
         (q.customer_id && q.customer_id === customer.id) ||
         q.customer_name.toLowerCase() === customer.name.toLowerCase() ||
         allLeads.some(l => l.id === q.lead_id)
@@ -52,13 +52,14 @@ export const Customer360Modal: React.FC<Customer360ModalProps> = ({
       setCustomerQuotations(allQuotes);
 
       const allBookings = officeService.getBookings().filter(b =>
-        (b.customer_id && b.customer_id === customer.id) ||
+        ((b.customer_id && b.customer_id === customer.id) ||
         b.customer_name.toLowerCase() === customer.name.toLowerCase() ||
-        allLeads.some(l => l.id === b.lead_id)
+        allLeads.some(l => l.id === b.lead_id)) &&
+        (!customer.company_id || !b.company_id || b.company_id === 'default' || b.company_id === customer.company_id)
       );
       setCustomerBookings(allBookings);
 
-      const allFollowUps = officeService.getFollowUps('all').filter(f =>
+      const allFollowUps = officeService.getFollowUps('all', customer.company_id).filter(f =>
         (f.customer_id && f.customer_id === customer.id) ||
         f.customer_name.toLowerCase() === customer.name.toLowerCase() ||
         allLeads.some(l => l.id === f.lead_id)

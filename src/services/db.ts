@@ -449,6 +449,46 @@ export const dbService = {
     } catch (e) {
       console.warn('[dbService] Failed to unlink customer from follow-ups on customer delete:', e);
     }
+
+    // Mirror ON DELETE SET NULL for documents in local cache
+    try {
+      const rawDocs = localStorage.getItem('documents');
+      if (rawDocs) {
+        const docs = JSON.parse(rawDocs) as any[];
+        let changed = false;
+        docs.forEach(d => {
+          if (d.customer_id === id) {
+            delete d.customer_id;
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('documents', JSON.stringify(docs));
+        }
+      }
+    } catch (e) {
+      console.warn('[dbService] Failed to unlink customer from documents on customer delete:', e);
+    }
+
+    // Mirror ON DELETE SET NULL for CRM quotations in local cache
+    try {
+      const rawQuotes = localStorage.getItem('docgen_quotations');
+      if (rawQuotes) {
+        const quotes = JSON.parse(rawQuotes) as any[];
+        let changed = false;
+        quotes.forEach(q => {
+          if (q.customer_id === id) {
+            delete q.customer_id;
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('docgen_quotations', JSON.stringify(quotes));
+        }
+      }
+    } catch (e) {
+      console.warn('[dbService] Failed to unlink customer from quotations on customer delete:', e);
+    }
   },
 
   // Services (Shared catalog across profiles with zero duplicate entries)
