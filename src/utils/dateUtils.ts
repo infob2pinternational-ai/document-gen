@@ -32,6 +32,25 @@ export function getKolkataToday(): string {
 }
 
 /**
+ * Formats a snoozed_until timestamp or date string into Asia/Kolkata display string (DD/MM/YYYY HH:mm).
+ */
+export function formatKolkataSnoozeUntil(snoozedUntil?: string | null, fallbackDate?: string, fallbackTime?: string): string {
+  if (snoozedUntil) {
+    const d = new Date(snoozedUntil);
+    if (!isNaN(d.getTime())) {
+      const datePart = getKolkataDateString(d).split('-').reverse().join('/');
+      const timePart = getKolkataTimeString(d);
+      return `${datePart} ${timePart}`;
+    }
+  }
+  if (fallbackDate) {
+    const datePart = fallbackDate.split('-').reverse().join('/');
+    return fallbackTime ? `${datePart} ${fallbackTime}` : datePart;
+  }
+  return '';
+}
+
+/**
  * Formats a date string (YYYY-MM-DD or ISO) into human-readable display date (e.g. "22 Sep 2026").
  */
 export function formatKolkataDisplayDate(dateStr?: string | null): string {

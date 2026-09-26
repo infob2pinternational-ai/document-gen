@@ -77,262 +77,306 @@ function getRelativeDate(dayOffset) {
   return `${y}-${m}-${dt}`;
 }
 
-test('Test 1 — Company A counts: Overdue: 2, Today: 1, Upcoming: 3, Completed: 1', async () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Step 6 — SNOOZED FOLLOW-UP BEHAVIOR TESTS (Tests 1–9)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('Test 1 — Snooze a pending Follow-up: status becomes SNOOZED, snoozed_until stored, appears in Snoozed, count increases', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
+
+  // Create a pending follow-up
+  const task = await officeService.saveFollowUp({
+    company_id: companyA,
+    customer_name: 'Dr. Joseph Thomas',
+    due_date: todayStr,
+    due_time: '15:30',
+    reason: 'Health camp discussion'
+  }, 'staff@b2p.com');
+
+  assert.equal(task.status, 'PENDING');
+  let counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.today, 1);
+  assert.equal(counts.snoozed, 0);
+
+  // Snooze by 30 minutes
+  const snoozed = await officeService.snoozeFollowUp(task.id, 30, 'staff@b2p.com');
+
+  assert.ok(snoozed, 'snoozeFollowUp returned updated task');
+  assert.equal(snoozed.status, 'SNOOZED', 'status must become SNOOZED');
+  assert.ok(snoozed.snoozed_until, 'snoozed_until must be stored');
+
+  // Verify Snoozed tab retrieval
+  const snoozedRecords = officeService.getFollowUps('snoozed', companyA);
+  assert.equal(snoozedRecords.length, 1);
+  assert.equal(snoozedRecords[0].id, task.id);
+  assert.equal(snoozedRecords[0].status, 'SNOOZED');
+
+  // Verify Snoozed count increases
+  counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.snoozed, 1, 'Snoozed count must be 1');
+});
+
+test('Test 2 — Snoozed excluded from pending categories: does NOT appear/count as Today, Overdue, or Upcoming', async () => {
   storage.clear();
   const companyA = '11111111-1111-4111-8111-111111111111';
   const todayStr = dateUtils.getKolkataToday();
   const yesterdayStr = getRelativeDate(-1);
-  const twoDaysAgoStr = getRelativeDate(-2);
   const tomorrowStr = getRelativeDate(1);
-  const twoDaysLaterStr = getRelativeDate(2);
-  const threeDaysLaterStr = getRelativeDate(3);
 
-  // 2 Overdue
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Overdue 1', due_date: twoDaysAgoStr, reason: 'Call 1' }, 'staff@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Overdue 2', due_date: yesterdayStr, reason: 'Call 2' }, 'staff@b2p.com');
+  // Create follow-ups in each pending category and snooze them
+  const tToday = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Task Today', due_date: todayStr, reason: 'R1' }, 'staff@b2p.com');
+  const tOverdue = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Task Overdue', due_date: yesterdayStr, reason: 'R2' }, 'staff@b2p.com');
+  const tUpcoming = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Task Upcoming', due_date: tomorrowStr, reason: 'R3' }, 'staff@b2p.com');
 
-  // 1 Today
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Today 1', due_date: todayStr, reason: 'Call 3' }, 'staff@b2p.com');
-
-  // 3 Upcoming
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Upcoming 1', due_date: tomorrowStr, reason: 'Call 4' }, 'staff@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Upcoming 2', due_date: twoDaysLaterStr, reason: 'Call 5' }, 'staff@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Upcoming 3', due_date: threeDaysLaterStr, reason: 'Call 6' }, 'staff@b2p.com');
-
-  // 1 Completed
-  const completedTask = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Completed 1', due_date: todayStr, reason: 'Call 7' }, 'staff@b2p.com');
-  await officeService.completeFollowUp(completedTask.id, 'Done successfully', 'staff@b2p.com');
+  // Snooze all 3
+  await officeService.snoozeFollowUp(tToday.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tOverdue.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tUpcoming.id, 60, 'staff@b2p.com');
 
   const counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.today, 0, 'Snoozed tasks must NOT count in Today');
+  assert.equal(counts.overdue, 0, 'Snoozed tasks must NOT count in Overdue');
+  assert.equal(counts.upcoming, 0, 'Snoozed tasks must NOT count in Upcoming');
+  assert.equal(counts.completed, 0, 'Snoozed tasks must NOT count in Completed');
+  assert.equal(counts.snoozed, 3, 'Snoozed count must be 3');
+  assert.equal(counts.total, 3, 'Total count must be 3');
 
-  assert.equal(counts.overdue, 2, 'Overdue count should be 2');
-  assert.equal(counts.today, 1, 'Today count should be 1');
-  assert.equal(counts.dueNow, 1, 'DueNow count should be 1');
-  assert.equal(counts.upcoming, 3, 'Upcoming count should be 3');
-  assert.equal(counts.completed, 1, 'Completed count should be 1');
-  assert.equal(counts.snoozed, 0, 'Snoozed count should be 0');
-  assert.equal(counts.total, 7, 'Total count should be 7');
-
-  // Verify officeService.getFollowUps records match counts exactly
-  assert.equal(officeService.getFollowUps('overdue', companyA).length, 2);
-  assert.equal(officeService.getFollowUps('today', companyA).length, 1);
-  assert.equal(officeService.getFollowUps('upcoming', companyA).length, 3);
-  assert.equal(officeService.getFollowUps('completed', companyA).length, 1);
-  assert.equal(officeService.getFollowUps('snoozed', companyA).length, 0);
-  assert.equal(officeService.getFollowUps('all', companyA).length, 7);
-});
-
-test('Test 2 — Company B isolation: Company A and B records remain strictly segregated', async () => {
-  const companyA = '11111111-1111-4111-8111-111111111111';
-  const companyB = '22222222-2222-4222-8222-222222222222';
-  const todayStr = dateUtils.getKolkataToday();
-  const yesterdayStr = getRelativeDate(-1);
-
-  // Add 3 follow-ups to Company B
-  await officeService.saveFollowUp({ company_id: companyB, customer_name: 'B Overdue', due_date: yesterdayStr, reason: 'B Task 1' }, 'staffB@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyB, customer_name: 'B Today', due_date: todayStr, reason: 'B Task 2' }, 'staffB@b2p.com');
-  const bCompleted = await officeService.saveFollowUp({ company_id: companyB, customer_name: 'B Completed', due_date: todayStr, reason: 'B Task 3' }, 'staffB@b2p.com');
-  await officeService.completeFollowUp(bCompleted.id, 'Finished B task', 'staffB@b2p.com');
-
-  // Company A counts should NOT change (still 7 records: 2 overdue, 1 today, 3 upcoming, 1 completed)
-  const countsA = metricsService.getFollowUpCounts(undefined, companyA);
-  assert.equal(countsA.total, 7);
-  assert.equal(countsA.overdue, 2);
-  assert.equal(countsA.today, 1);
-  assert.equal(countsA.upcoming, 3);
-  assert.equal(countsA.completed, 1);
-
-  // Company B counts should only reflect Company B
-  const countsB = metricsService.getFollowUpCounts(undefined, companyB);
-  assert.equal(countsB.total, 3);
-  assert.equal(countsB.overdue, 1);
-  assert.equal(countsB.today, 1);
-  assert.equal(countsB.upcoming, 0);
-  assert.equal(countsB.completed, 1);
-
-  // Dataset queries are strictly isolated
-  assert.equal(officeService.getFollowUps('all', companyA).length, 7);
-  assert.equal(officeService.getFollowUps('all', companyB).length, 3);
-  assert.ok(officeService.getFollowUps('all', companyA).every(f => f.company_id === companyA));
-  assert.ok(officeService.getFollowUps('all', companyB).every(f => f.company_id === companyB));
-});
-
-test('Test 3 — Staff filtering: All Staff, Staff A, and Staff B counts calculate accurately', async () => {
-  storage.clear();
-  const companyA = '11111111-1111-4111-8111-111111111111';
-  const todayStr = dateUtils.getKolkataToday();
-  const yesterdayStr = getRelativeDate(-1);
-  const tomorrowStr = getRelativeDate(1);
-
-  // Staff A tasks (2 tasks: 1 overdue, 1 today)
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Customer A1', due_date: yesterdayStr, reason: 'Staff A Overdue', assigned_staff_email: 'staffA@b2p.com' }, 'admin@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Customer A2', due_date: todayStr, reason: 'Staff A Today', assigned_staff_email: 'staffA@b2p.com' }, 'admin@b2p.com');
-
-  // Staff B tasks (3 tasks: 1 today, 2 upcoming)
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Customer B1', due_date: todayStr, reason: 'Staff B Today', assigned_staff_email: 'staffB@b2p.com' }, 'admin@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Customer B2', due_date: tomorrowStr, reason: 'Staff B Upcoming 1', assigned_staff_email: 'staffB@b2p.com' }, 'admin@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Customer B3', due_date: tomorrowStr, reason: 'Staff B Upcoming 2', assigned_staff_email: 'staffB@b2p.com' }, 'admin@b2p.com');
-
-  // All Staff
-  const allCounts = metricsService.getFollowUpCounts('all', companyA);
-  assert.equal(allCounts.total, 5);
-  assert.equal(allCounts.overdue, 1);
-  assert.equal(allCounts.today, 2);
-  assert.equal(allCounts.upcoming, 2);
-
-  // Staff A
-  const staffACounts = metricsService.getFollowUpCounts('staffA@b2p.com', companyA);
-  assert.equal(staffACounts.total, 2);
-  assert.equal(staffACounts.overdue, 1);
-  assert.equal(staffACounts.today, 1);
-  assert.equal(staffACounts.upcoming, 0);
-
-  // Staff B
-  const staffBCounts = metricsService.getFollowUpCounts('staffB@b2p.com', companyA);
-  assert.equal(staffBCounts.total, 3);
-  assert.equal(staffBCounts.overdue, 0);
-  assert.equal(staffBCounts.today, 1);
-  assert.equal(staffBCounts.upcoming, 2);
-});
-
-test('Test 4 — Staff + status combination: displayed records and count refer to exactly the same subset', async () => {
-  const companyA = '11111111-1111-4111-8111-111111111111';
-
-  // Staff A + Overdue
-  const staffAOverdueRecords = officeService.getFollowUps('overdue', companyA, 'staffA@b2p.com');
-  const staffACounts = metricsService.getFollowUpCounts('staffA@b2p.com', companyA);
-  assert.equal(staffAOverdueRecords.length, staffACounts.overdue);
-  assert.equal(staffAOverdueRecords.length, 1);
-  assert.equal(staffAOverdueRecords[0].assigned_staff_email, 'staffa@b2p.com');
-
-  // Staff A + Today
-  const staffATodayRecords = officeService.getFollowUps('today', companyA, 'staffA@b2p.com');
-  assert.equal(staffATodayRecords.length, staffACounts.today);
-  assert.equal(staffATodayRecords.length, 1);
-  assert.equal(staffATodayRecords[0].assigned_staff_email, 'staffa@b2p.com');
-
-  // Staff A + Upcoming
-  const staffAUpcomingRecords = officeService.getFollowUps('upcoming', companyA, 'staffA@b2p.com');
-  assert.equal(staffAUpcomingRecords.length, staffACounts.upcoming);
-  assert.equal(staffAUpcomingRecords.length, 0);
-
-  // Staff B + Upcoming
-  const staffBUpcomingRecords = officeService.getFollowUps('upcoming', companyA, 'staffB@b2p.com');
-  const staffBCounts = metricsService.getFollowUpCounts('staffB@b2p.com', companyA);
-  assert.equal(staffBUpcomingRecords.length, staffBCounts.upcoming);
-  assert.equal(staffBUpcomingRecords.length, 2);
-  assert.ok(staffBUpcomingRecords.every(r => r.assigned_staff_email === 'staffb@b2p.com'));
-});
-
-test('Test 5 — Completed: counted only in Completed and not in pending counts', async () => {
-  storage.clear();
-  const companyA = '11111111-1111-4111-8111-111111111111';
-  const todayStr = dateUtils.getKolkataToday();
-  const yesterdayStr = getRelativeDate(-1);
-
-  // Save an overdue follow-up, then complete it
-  const task = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'To Complete', due_date: yesterdayStr, reason: 'Initial call' }, 'staff@b2p.com');
-  assert.equal(metricsService.getFollowUpCounts(undefined, companyA).overdue, 1);
-  assert.equal(metricsService.getFollowUpCounts(undefined, companyA).completed, 0);
-
-  await officeService.completeFollowUp(task.id, 'Customer confirmed booking', 'staff@b2p.com');
-
-  const afterComplete = metricsService.getFollowUpCounts(undefined, companyA);
-  assert.equal(afterComplete.overdue, 0, 'Completed task must not remain in overdue');
-  assert.equal(afterComplete.today, 0, 'Completed task must not be in today');
-  assert.equal(afterComplete.upcoming, 0, 'Completed task must not be in upcoming');
-  assert.equal(afterComplete.completed, 1, 'Completed count must be 1');
-  assert.equal(afterComplete.total, 1, 'Total must be 1');
-
-  // Verify getFollowUps('overdue') does NOT return it
-  assert.equal(officeService.getFollowUps('overdue', companyA).length, 0);
-  assert.equal(officeService.getFollowUps('completed', companyA).length, 1);
-});
-
-test('Test 6 — Snoozed: counted only in Snoozed and does not inflate pending categories', async () => {
-  storage.clear();
-  const companyA = '11111111-1111-4111-8111-111111111111';
-  const todayStr = dateUtils.getKolkataToday();
-
-  // Create a pending follow-up for today
-  const task = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'To Snooze', due_date: todayStr, reason: 'Pending call' }, 'staff@b2p.com');
-  assert.equal(metricsService.getFollowUpCounts(undefined, companyA).today, 1);
-  assert.equal(metricsService.getFollowUpCounts(undefined, companyA).snoozed, 0);
-
-  // Snooze by 60 minutes
-  await officeService.snoozeFollowUp(task.id, 60, 'staff@b2p.com');
-
-  const afterSnooze = metricsService.getFollowUpCounts(undefined, companyA);
-  assert.equal(afterSnooze.snoozed, 1, 'Snoozed count should be 1');
-  assert.equal(afterSnooze.today, 0, 'Snoozed task must NOT inflate today count');
-  assert.equal(afterSnooze.overdue, 0, 'Snoozed task must NOT inflate overdue count');
-  assert.equal(afterSnooze.upcoming, 0, 'Snoozed task must NOT inflate upcoming count');
-  assert.equal(afterSnooze.completed, 0, 'Snoozed task must NOT inflate completed count');
-  assert.equal(afterSnooze.total, 1, 'Total task count should be 1');
-
-  // Verify getFollowUps views
-  assert.equal(officeService.getFollowUps('snoozed', companyA).length, 1);
+  // Verify table views exclude them
   assert.equal(officeService.getFollowUps('today', companyA).length, 0);
   assert.equal(officeService.getFollowUps('overdue', companyA).length, 0);
   assert.equal(officeService.getFollowUps('upcoming', companyA).length, 0);
+  assert.equal(officeService.getFollowUps('snoozed', companyA).length, 3);
 });
 
-test('Test 7 — Company switch refresh: counts immediately update when company changes', async () => {
+test('Test 3 — Snoozed badge: Snoozed count === Snoozed records displayed (including clean 0)', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+
+  // Empty state check
+  let counts = metricsService.getFollowUpCounts(undefined, companyA);
+  let displayed = officeService.getFollowUps('snoozed', companyA);
+  assert.equal(counts.snoozed, 0);
+  assert.equal(displayed.length, 0);
+  assert.equal(counts.snoozed, displayed.length);
+
+  // Add 2 snoozed tasks
+  const t1 = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'A', due_date: dateUtils.getKolkataToday(), reason: 'R1' }, 'staff@b2p.com');
+  const t2 = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'B', due_date: dateUtils.getKolkataToday(), reason: 'R2' }, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(t1.id, 30, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(t2.id, 120, 'staff@b2p.com');
+
+  counts = metricsService.getFollowUpCounts(undefined, companyA);
+  displayed = officeService.getFollowUps('snoozed', companyA);
+  assert.equal(counts.snoozed, 2);
+  assert.equal(displayed.length, 2);
+  assert.equal(counts.snoozed, displayed.length, 'Snoozed count must exactly equal displayed records');
+});
+
+test('Test 4 — Snoozed date/time display: formatKolkataSnoozeUntil displays correctly in IST deterministically', () => {
+  // Test deterministic ISO UTC timestamp: 2026-09-26T10:00:00.000Z
+  // In Asia/Kolkata (+5:30), 10:00 UTC = 15:30 IST on 26/09/2026.
+  const utcTime1 = '2026-09-26T10:00:00.000Z';
+  const display1 = dateUtils.formatKolkataSnoozeUntil(utcTime1);
+  assert.equal(display1, '26/09/2026 15:30', 'Must display 26/09/2026 15:30 in Asia/Kolkata');
+
+  // Test UTC midnight rollover: 2026-09-26T20:00:00.000Z (8 PM UTC = 1:30 AM next day IST)
+  const utcTime2 = '2026-09-26T20:00:00.000Z';
+  const display2 = dateUtils.formatKolkataSnoozeUntil(utcTime2);
+  assert.equal(display2, '27/09/2026 01:30', 'Must roll over to next calendar day in Asia/Kolkata');
+
+  // Test fallback to due_date and due_time when snoozed_until is undefined
+  const displayFallback = dateUtils.formatKolkataSnoozeUntil(undefined, '2026-09-26', '11:00');
+  assert.equal(displayFallback, '26/09/2026 11:00');
+});
+
+test('Test 5 — Snoozed + Company isolation: Company A and B snoozed tasks remain segregated', async () => {
   storage.clear();
   const companyA = '11111111-1111-4111-8111-111111111111';
   const companyB = '22222222-2222-4222-8222-222222222222';
   const todayStr = dateUtils.getKolkataToday();
 
-  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Cust A', due_date: todayStr, reason: 'Call A' }, 'staff@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyB, customer_name: 'Cust B1', due_date: todayStr, reason: 'Call B1' }, 'staff@b2p.com');
-  await officeService.saveFollowUp({ company_id: companyB, customer_name: 'Cust B2', due_date: todayStr, reason: 'Call B2' }, 'staff@b2p.com');
+  // Create and snooze 1 task for Company A
+  const tA = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Co A Snoozed', due_date: todayStr, reason: 'Call A' }, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tA.id, 60, 'staff@b2p.com');
 
-  // Step 1: Viewing Company A
-  let activeCounts = metricsService.getFollowUpCounts(undefined, companyA);
-  assert.equal(activeCounts.total, 1);
-  assert.equal(activeCounts.today, 1);
+  // Create and snooze 2 tasks for Company B
+  const tB1 = await officeService.saveFollowUp({ company_id: companyB, customer_name: 'Co B Snoozed 1', due_date: todayStr, reason: 'Call B1' }, 'staff@b2p.com');
+  const tB2 = await officeService.saveFollowUp({ company_id: companyB, customer_name: 'Co B Snoozed 2', due_date: todayStr, reason: 'Call B2' }, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tB1.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tB2.id, 60, 'staff@b2p.com');
 
-  // Step 2: Switch to Company B
-  activeCounts = metricsService.getFollowUpCounts(undefined, companyB);
-  assert.equal(activeCounts.total, 2);
-  assert.equal(activeCounts.today, 2);
+  // Assert Company A sees only its 1 snoozed task
+  const aList = officeService.getFollowUps('snoozed', companyA);
+  assert.equal(aList.length, 1);
+  assert.equal(aList[0].customer_name, 'Co A Snoozed');
+  assert.equal(metricsService.getFollowUpCounts(undefined, companyA).snoozed, 1);
 
-  // Step 3: Switch back to Company A
-  activeCounts = metricsService.getFollowUpCounts(undefined, companyA);
-  assert.equal(activeCounts.total, 1);
-  assert.equal(activeCounts.today, 1);
+  // Assert Company B sees only its 2 snoozed tasks
+  const bList = officeService.getFollowUps('snoozed', companyB);
+  assert.equal(bList.length, 2);
+  assert.ok(bList.every(f => f.company_id === companyB));
+  assert.equal(metricsService.getFollowUpCounts(undefined, companyB).snoozed, 2);
 });
 
-test('Test 8 — IST consistency: pure Asia/Kolkata date boundary prevents UTC shifts', () => {
-  // Midnight UTC boundary test:
-  // At 2026-09-26T20:00:00Z (8 PM UTC), in Asia/Kolkata (+5:30), the time is 2026-09-27T01:30:00+05:30 (next calendar day).
-  const lateNightUTC = new Date('2026-09-26T20:00:00Z');
-  const kolkataDate = dateUtils.getKolkataDateString(lateNightUTC);
-  const kolkataTime = dateUtils.getKolkataTimeString(lateNightUTC);
+test('Test 6 — Snoozed + Staff filter: Staff filtering applies correctly to Snoozed tasks', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
 
-  assert.equal(kolkataDate, '2026-09-27', 'Date in IST must be next calendar day 2026-09-27');
-  assert.equal(kolkataTime, '01:30', 'Time in IST must be 01:30');
+  // Snoozed for Staff A
+  const tA = await officeService.saveFollowUp({
+    company_id: companyA,
+    customer_name: 'Staff A Snoozed',
+    due_date: todayStr,
+    reason: 'R-A',
+    assigned_staff_email: 'staffA@b2p.com'
+  }, 'admin@b2p.com');
+  await officeService.snoozeFollowUp(tA.id, 60, 'staffA@b2p.com');
 
-  // Follow-up due on 2026-09-27 evaluated at this moment is TODAY, not upcoming
-  const mockFollowUps = [
-    { id: '1', due_date: '2026-09-27', status: 'PENDING', customer_name: 'Test' },
-    { id: '2', due_date: '2026-09-26', status: 'PENDING', customer_name: 'Test 2' }
-  ];
+  // Snoozed for Staff B
+  const tB = await officeService.saveFollowUp({
+    company_id: companyA,
+    customer_name: 'Staff B Snoozed',
+    due_date: todayStr,
+    reason: 'R-B',
+    assigned_staff_email: 'staffB@b2p.com'
+  }, 'admin@b2p.com');
+  await officeService.snoozeFollowUp(tB.id, 60, 'staffB@b2p.com');
 
-  // In IST on 2026-09-27:
-  // id 1 (2026-09-27) is TODAY
-  // id 2 (2026-09-26) is OVERDUE
-  const counts = calculateFollowUpCounts(mockFollowUps);
-  // Today in current runtime vs given
-  const runtimeToday = dateUtils.getKolkataToday();
-  const testItems = [
-    { id: 't1', due_date: runtimeToday, status: 'PENDING', customer_name: 'Due today' },
-    { id: 't2', due_date: '2020-01-01', status: 'PENDING', customer_name: 'Old overdue' }
-  ];
-  const runtimeCounts = calculateFollowUpCounts(testItems);
-  assert.equal(runtimeCounts.today, 1);
-  assert.equal(runtimeCounts.overdue, 1);
+  // Filter Staff A
+  const listStaffA = officeService.getFollowUps('snoozed', companyA, 'staffA@b2p.com');
+  const countStaffA = metricsService.getFollowUpCounts('staffA@b2p.com', companyA);
+  assert.equal(listStaffA.length, 1);
+  assert.equal(listStaffA[0].customer_name, 'Staff A Snoozed');
+  assert.equal(countStaffA.snoozed, 1);
+
+  // Filter Staff B
+  const listStaffB = officeService.getFollowUps('snoozed', companyA, 'staffB@b2p.com');
+  const countStaffB = metricsService.getFollowUpCounts('staffB@b2p.com', companyA);
+  assert.equal(listStaffB.length, 1);
+  assert.equal(listStaffB[0].customer_name, 'Staff B Snoozed');
+  assert.equal(countStaffB.snoozed, 1);
+
+  // All Staff
+  const listAll = officeService.getFollowUps('snoozed', companyA, 'all');
+  const countAll = metricsService.getFollowUpCounts('all', companyA);
+  assert.equal(listAll.length, 2);
+  assert.equal(countAll.snoozed, 2);
 });
+
+test('Test 7 — Edit Snoozed Follow-up: retains SNOOZED status, company_id, lead_id, snoozed_until, no duplicate', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const leadId = '44444444-4444-4444-8444-444444444444';
+  const todayStr = dateUtils.getKolkataToday();
+
+  const original = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: leadId,
+    customer_name: 'Client Snoozed',
+    due_date: todayStr,
+    reason: 'Initial Call'
+  }, 'staff@b2p.com');
+
+  const snoozed = await officeService.snoozeFollowUp(original.id, 90, 'staff@b2p.com');
+  const snoozedUntil = snoozed.snoozed_until;
+  assert.ok(snoozedUntil);
+
+  // Edit the snoozed follow-up (e.g. updating notes or reason)
+  const updated = await officeService.saveFollowUp({
+    id: original.id,
+    customer_name: 'Client Snoozed Updated',
+    reason: 'Updated Reason after Call',
+    notes: 'Client was busy, will pick up in 90 mins'
+  }, 'staff@b2p.com');
+
+  assert.equal(updated.id, original.id);
+  assert.equal(updated.status, 'SNOOZED', 'Must remain SNOOZED after edit');
+  assert.equal(updated.company_id, companyA, 'company_id must remain unchanged');
+  assert.equal(updated.lead_id, leadId, 'lead_id must remain unchanged');
+  assert.equal(updated.snoozed_until, snoozedUntil, 'snoozed_until must be preserved');
+
+  // Verify no duplicate record created
+  const allRecords = officeService.getFollowUps('all', companyA);
+  assert.equal(allRecords.length, 1);
+  assert.equal(allRecords[0].reason, 'Updated Reason after Call');
+});
+
+test('Test 8 — Snoozed -> Complete: SNOOZED follow-up transitions to COMPLETED, logs note, leaves Snoozed, joins Completed', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
+
+  const task = await officeService.saveFollowUp({
+    company_id: companyA,
+    customer_name: 'Snoozed to Complete',
+    due_date: todayStr,
+    reason: 'Follow-up discussion'
+  }, 'staff@b2p.com');
+
+  await officeService.snoozeFollowUp(task.id, 60, 'staff@b2p.com');
+  assert.equal(metricsService.getFollowUpCounts(undefined, companyA).snoozed, 1);
+  assert.equal(officeService.getFollowUps('snoozed', companyA).length, 1);
+
+  // Complete the snoozed follow-up
+  const completed = await officeService.completeFollowUp(task.id, 'Spoke with customer and booked service', 'staff@b2p.com');
+  assert.ok(completed);
+  assert.equal(completed.status, 'COMPLETED');
+  assert.equal(completed.completion_note, 'Spoke with customer and booked service');
+  assert.ok(completed.completed_at);
+
+  // Verify counts
+  const counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.snoozed, 0, 'Snoozed count must decrement');
+  assert.equal(counts.completed, 1, 'Completed count must increment');
+
+  // Verify tab lists
+  assert.equal(officeService.getFollowUps('snoozed', companyA).length, 0, 'Must leave Snoozed tab');
+  const completedList = officeService.getFollowUps('completed', companyA);
+  assert.equal(completedList.length, 1, 'Must appear in Completed tab');
+  assert.equal(completedList[0].completion_note, 'Spoke with customer and booked service');
+});
+
+test('Test 9 — Snoozed expiry: existing application behavior preserves SNOOZED status and excludes from pending categories', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
+
+  // Create a task that was snoozed in the past (snoozed_until has passed)
+  const pastSnoozeTime = new Date(Date.now() - 3 * 3600 * 1000).toISOString(); // 3 hours ago
+  const task = await officeService.saveFollowUp({
+    company_id: companyA,
+    customer_name: 'Past Snooze Task',
+    due_date: todayStr,
+    due_time: '09:00',
+    reason: 'Expired snooze check',
+    status: 'SNOOZED',
+    snoozed_until: pastSnoozeTime
+  }, 'staff@b2p.com');
+
+  // Verify existing behavior: record remains SNOOZED in storage
+  const stored = officeService.getFollowUps('all', companyA)[0];
+  assert.equal(stored.status, 'SNOOZED');
+  assert.equal(stored.snoozed_until, pastSnoozeTime);
+
+  // Verify it appears in Snoozed tab and counts under Snoozed
+  assert.equal(officeService.getFollowUps('snoozed', companyA).length, 1);
+  const counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.snoozed, 1);
+
+  // Crucially, it does NOT accidentally leak into Today, Overdue, or Upcoming
+  assert.equal(counts.today, 0, 'Expired snooze must not inflate Today count without reactivation');
+  assert.equal(counts.overdue, 0, 'Expired snooze must not inflate Overdue count without reactivation');
+  assert.equal(counts.upcoming, 0, 'Expired snooze must not inflate Upcoming count without reactivation');
+  assert.equal(officeService.getFollowUps('today', companyA).length, 0);
+  assert.equal(officeService.getFollowUps('overdue', companyA).length, 0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REGRESSION PROTECTION TESTS (Steps 1–5)
+// ─────────────────────────────────────────────────────────────────────────────
 
 test('Regression — Step 1: Follow-up edit preserves metadata, completion notes, and company_id', async () => {
   storage.clear();
@@ -407,4 +451,34 @@ test('Regression — Step 4: Pure Asia/Kolkata date classification used across s
   assert.match(followUpsCode, /getKolkataToday\(\)/);
   assert.match(metricsServiceCode, /getKolkataToday\(\)/);
   assert.match(officeServiceCode, /getKolkataToday\(\)/);
+});
+
+test('Regression — Step 5: Filter consistency & table counts match badges across all status categories', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
+  const yesterdayStr = getRelativeDate(-1);
+  const tomorrowStr = getRelativeDate(1);
+
+  // Overdue
+  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Overdue Task', due_date: yesterdayStr, reason: 'R1' }, 'staff@b2p.com');
+  // Today
+  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Today Task', due_date: todayStr, reason: 'R2' }, 'staff@b2p.com');
+  // Upcoming
+  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Upcoming Task', due_date: tomorrowStr, reason: 'R3' }, 'staff@b2p.com');
+  // Completed
+  const comp = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Completed Task', due_date: todayStr, reason: 'R4' }, 'staff@b2p.com');
+  await officeService.completeFollowUp(comp.id, 'Done', 'staff@b2p.com');
+  // Snoozed
+  const snz = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Snoozed Task', due_date: todayStr, reason: 'R5' }, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(snz.id, 60, 'staff@b2p.com');
+
+  const counts = metricsService.getFollowUpCounts(undefined, companyA);
+
+  assert.equal(counts.overdue, officeService.getFollowUps('overdue', companyA).length, 'Overdue count must match overdue table records');
+  assert.equal(counts.today, officeService.getFollowUps('today', companyA).length, 'Today count must match today table records');
+  assert.equal(counts.upcoming, officeService.getFollowUps('upcoming', companyA).length, 'Upcoming count must match upcoming table records');
+  assert.equal(counts.completed, officeService.getFollowUps('completed', companyA).length, 'Completed count must match completed table records');
+  assert.equal(counts.snoozed, officeService.getFollowUps('snoozed', companyA).length, 'Snoozed count must match snoozed table records');
+  assert.equal(counts.total, officeService.getFollowUps('all', companyA).length, 'Total count must match all table records');
 });

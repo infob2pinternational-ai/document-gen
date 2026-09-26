@@ -360,7 +360,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
           {/* Modal Actions Footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {followUp && !isCompleting && followUp.status === 'PENDING' && (
+              {followUp && !isCompleting && (followUp.status === 'PENDING' || followUp.status === 'SNOOZED') && (
                 <button
                   type="button"
                   onClick={() => setIsCompleting(true)}

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { formatStaffDisplayName, getAvailableStaffList, normalizeStaffEmail } from '../utils/staffUtils';
-import { getKolkataToday } from '../utils/dateUtils';
+import { getKolkataToday, formatKolkataSnoozeUntil } from '../utils/dateUtils';
 
 interface FollowUpsProps {
   role?: string;
@@ -464,7 +464,12 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
                       {isCompleted ? (
                         <span className="badge badge-success">Completed</span>
                       ) : isSnoozed ? (
-                        <span className="badge badge-neutral">Snoozed</span>
+                        <div>
+                          <span className="badge badge-neutral">Snoozed</span>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                            Until: {formatKolkataSnoozeUntil(item.snoozed_until, item.due_date, item.due_time)}
+                          </div>
+                        </div>
                       ) : isOverdue ? (
                         <span className="badge badge-danger">Overdue</span>
                       ) : isToday ? (
