@@ -77,8 +77,13 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   };
 
   const activities: LeadActivity[] = leadService.getLeadActivities(lead.id);
-  const pendingFollowUps = officeService.getFollowUps('all').filter(f => f.lead_id === lead.id && f.status === 'PENDING');
-  const nextFollowUp = pendingFollowUps.length > 0 ? pendingFollowUps[0] : null;
+  const actionableFollowUps = officeService.getFollowUps('all', lead.company_id).filter(f =>
+    f.lead_id === lead.id &&
+    f.status !== 'COMPLETED' &&
+    f.status !== 'CANCELLED' &&
+    f.status !== 'SNOOZED'
+  );
+  const nextFollowUp = actionableFollowUps.length > 0 ? actionableFollowUps[0] : null;
 
   const handleStatusChange = async (newStatus: LeadStatus) => {
     const updated = await leadService.updateLeadStatus(lead.id, newStatus, userEmail);

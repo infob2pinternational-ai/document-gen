@@ -888,6 +888,9 @@ export const officeService = {
   },
 
   async saveQuotation(q: CrmQuotation, userEmail: string): Promise<CrmQuotation> {
+    if (!q.id) {
+      q.id = generateUUID();
+    }
     const list = getLocal<CrmQuotation[]>(QUOTATIONS_KEY, SEED_QUOTATIONS);
     const isNew = !list.some(existing => existing.id === q.id);
 

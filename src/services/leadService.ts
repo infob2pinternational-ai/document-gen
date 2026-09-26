@@ -409,6 +409,12 @@ function getStoredActivities(): LeadActivity[] {
 // financeService.setActiveCompany()), and every method defaults to that
 // scope when no explicit companyId is supplied. An explicit companyId
 // argument, where still accepted, still wins.
+function formatStaffName(email?: string): string {
+  if (!email) return 'Unassigned';
+  const prefix = email.split('@')[0];
+  return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+}
+
 let activeCompanyId: string | null = null;
 
 export const leadService = {
@@ -494,7 +500,7 @@ export const leadService = {
       campaign_location: lead.campaign_location,
       number_of_days: lead.number_of_days ? Number(lead.number_of_days) : undefined,
       priority: lead.priority || 'WARM',
-      assigned_telecaller_email: lead.assigned_telecaller_email,
+      assigned_telecaller_email: lead.assigned_telecaller_email ? normalizeStaffEmail(lead.assigned_telecaller_email) : undefined,
       status: lead.status || 'new',
       next_follow_up_at: lead.next_follow_up_at !== undefined ? lead.next_follow_up_at : (existing ? (existing.next_follow_up_at ?? null) : null),
       notes: lead.notes,
@@ -534,6 +540,21 @@ export const leadService = {
           note: `Status updated to ${leadRecord.status.replace(/_/g, ' ')}.`
         });
       }
+
+      // Record reassignment activity if assigned telecaller changed
+      if (prev && prev.assigned_telecaller_email !== leadRecord.assigned_telecaller_email) {
+        const fromStaff = formatStaffName(prev.assigned_telecaller_email);
+        const toStaff = formatStaffName(leadRecord.assigned_telecaller_email);
+        await this.addLeadActivity({
+          lead_id: leadRecord.id,
+          company_id: leadRecord.company_id,
+          user_email: userEmail,
+          action: 'Staff Reassigned',
+          previous_status: prev.status,
+          new_status: leadRecord.status,
+          note: `Assigned telecaller changed from ${fromStaff} to ${toStaff}.`
+        });
+      }
     }
 
     if (leadRecord.id) {
@@ -553,7 +574,7 @@ export const leadService = {
     setSubDistrictInMap(id, undefined);
     setLeadNumberInMap(id, undefined);
 
-    // Clean up local activities cache for this lead
+    // Clean up local activities cache for this lead (mirrors ON DELETE CASCADE)
     const activities = getStoredActivities();
     const updatedActs = activities.filter(a => a.lead_id !== id);
     try {
@@ -561,6 +582,27 @@ export const leadService = {
       metricsService.notifyChange();
     } catch (e) {
       console.error('[leadService] Failed to update activities cache on lead delete:', e);
+    }
+
+    // Mirror ON DELETE SET NULL for follow-ups linked to this lead
+    try {
+      const rawFollowUps = localStorage.getItem('docgen_follow_ups');
+      if (rawFollowUps) {
+        const followUps = JSON.parse(rawFollowUps) as any[];
+        let changed = false;
+        followUps.forEach((f: any) => {
+          if (f.lead_id === id) {
+            delete f.lead_id;
+            delete f.lead_number;
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('docgen_follow_ups', JSON.stringify(followUps));
+        }
+      }
+    } catch (e) {
+      console.warn('[leadService] Failed to unlink follow-ups on lead delete:', e);
     }
   },
 
@@ -607,6 +649,42 @@ export const leadService = {
       note: note || `Status changed from ${prev.status} to ${newStatus}.`
     });
 
+    return updated;
+  },
+
+  async reassignLead(leadId: string, newTelecallerEmail: string, userEmail: string, note?: string): Promise<Lead | null> {
+    const leads = getStoredLeads();
+    const idx = leads.findIndex(l => l.id === leadId);
+    if (idx < 0) return null;
+
+    const prev = leads[idx];
+    const normalizedNewEmail = newTelecallerEmail ? normalizeStaffEmail(newTelecallerEmail) : undefined;
+    if (prev.assigned_telecaller_email === normalizedNewEmail) {
+      return prev;
+    }
+
+    const updated: Lead = {
+      ...prev,
+      assigned_telecaller_email: normalizedNewEmail,
+      updated_at: new Date().toISOString()
+    };
+    leads[idx] = updated;
+    await persistCrmRow(LEADS_KEY, 'leads', leads, updated);
+
+    const fromStaff = formatStaffName(prev.assigned_telecaller_email);
+    const toStaff = formatStaffName(normalizedNewEmail);
+
+    await this.addLeadActivity({
+      lead_id: leadId,
+      company_id: updated.company_id,
+      user_email: userEmail,
+      action: 'Staff Reassigned',
+      previous_status: prev.status,
+      new_status: prev.status,
+      note: note || `Assigned telecaller changed from ${fromStaff} to ${toStaff}.`
+    });
+
+    metricsService.notifyChange();
     return updated;
   },
 
