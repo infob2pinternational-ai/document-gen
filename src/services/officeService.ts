@@ -13,7 +13,7 @@ import { normalizeStaffEmail } from '../utils/staffUtils';
 import { metricsService } from './metricsService';
 import { supabase, isCloudActive } from './db';
 import { generateUUID } from '../utils/uuid';
-import { getKolkataToday } from '../utils/dateUtils';
+import { getKolkataToday, getKolkataDateString, getKolkataTimeString } from '../utils/dateUtils';
 
 const FOLLOW_UPS_KEY = 'docgen_follow_ups';
 const QUOTATIONS_KEY = 'docgen_crm_quotations';
@@ -125,7 +125,7 @@ export const SEED_RESOURCES: Resource[] = [
   }
 ];
 
-// Helper to format date strings in Asia/Kolkata business timezone
+// Helper to format date strings strictly in Asia/Kolkata
 const getTodayStr = () => getKolkataToday();
 
 // REMEDIATION (2026-08-24, CRM audit pass): this file used to seed six
@@ -561,20 +561,29 @@ export const officeService = {
   // site across the CRM UI (FollowUps, BookingCalendar, OwnerDashboard,
   // Reports, Customer360Modal, QuotationModal, FollowUpModal,
   // LeadDetailModal) calls them with zero arguments.
-  getFollowUps(filter: 'today' | 'upcoming' | 'overdue' | 'completed' | 'all' = 'all', companyId?: string): FollowUp[] {
+  getFollowUps(
+    filter: 'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all' = 'all',
+    companyId?: string,
+    staffEmail?: string
+  ): FollowUp[] {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS).map(item => ({
       ...item,
       assigned_staff_email: normalizeStaffEmail(item.assigned_staff_email)
     }));
     const today = getTodayStr();
-    const scopeId = companyId || leadService.getActiveCompany();
+    const scopeId = companyId && companyId !== 'default' ? companyId : leadService.getActiveCompany();
 
     return list.filter(item => {
-      if (scopeId && item.company_id && item.company_id !== 'default' && item.company_id !== scopeId) return false;
+      if (scopeId && scopeId !== 'default' && item.company_id && item.company_id !== 'default' && item.company_id !== scopeId) return false;
+      if (staffEmail && staffEmail !== 'all') {
+        const clean = normalizeStaffEmail(staffEmail);
+        if (clean && normalizeStaffEmail(item.assigned_staff_email) !== clean) return false;
+      }
       if (filter === 'completed') return item.status === 'COMPLETED' || item.status === 'CANCELLED';
-      if (filter === 'today') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.due_date === today;
-      if (filter === 'upcoming') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.due_date > today;
-      if (filter === 'overdue') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.due_date < today;
+      if (filter === 'snoozed') return item.status === 'SNOOZED';
+      if (filter === 'today') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date === today;
+      if (filter === 'upcoming') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date > today;
+      if (filter === 'overdue') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date < today;
       return true;
     }).sort((a, b) => `${a.due_date} ${a.due_time}`.localeCompare(`${b.due_date} ${b.due_time}`));
   },
@@ -583,7 +592,6 @@ export const officeService = {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
     const existing = item.id ? list.find(f => f.id === item.id) : undefined;
     const isNew = !existing;
-
     let followUpRecord: FollowUp;
 
     if (existing) {
@@ -725,8 +733,9 @@ export const officeService = {
     const current = list[idx];
     const newTime = new Date(Date.now() + minutes * 60 * 1000);
     current.status = 'SNOOZED';
-    current.due_time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).format(newTime);
-    current.due_date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(newTime);
+    current.due_time = getKolkataTimeString(newTime);
+    current.due_date = getKolkataDateString(newTime);
+    current.snoozed_until = newTime.toISOString();
 
     list[idx] = current;
     await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, current);
@@ -785,7 +794,7 @@ export const officeService = {
     const scopeId = companyId || leadService.getActiveCompany();
     return list.filter(f => {
       if (scopeId && f.company_id && f.company_id !== 'default' && f.company_id !== scopeId) return false;
-      return f.status === 'PENDING' && f.due_date <= today;
+      return f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.status !== 'SNOOZED' && f.due_date <= today;
     });
   },
 

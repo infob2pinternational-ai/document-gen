@@ -41,11 +41,11 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   const [completionNote, setCompletionNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const allLeads = leadService.getLeads();
+  const allLeads = leadService.getLeads(companyId);
 
   const availableStaff = useMemo(() => {
-    return getAvailableStaffList(userEmail, allLeads, officeService.getFollowUps('all'));
-  }, [userEmail, isOpen]);
+    return getAvailableStaffList(userEmail, allLeads, officeService.getFollowUps('all', companyId));
+  }, [userEmail, isOpen, companyId]);
 
   const prevOpenRef = useRef(false);
   const prevTargetRef = useRef<string | null>(null);

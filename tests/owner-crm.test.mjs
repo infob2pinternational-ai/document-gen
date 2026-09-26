@@ -15,6 +15,20 @@ async function load(path, replacements = {}) {
 }
 const staff = await load('../src/utils/staffUtils.ts');
 
+const dateUtilsUrl = asModule(`
+  export function getKolkataDateString(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+    const get = type => parts.find(p => p.type === type)?.value || '';
+    return \`\${get('year')}-\${get('month')}-\${get('day')}\`;
+  }
+  export function getKolkataTimeString(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(date);
+    const get = type => parts.find(p => p.type === type)?.value || '';
+    return \`\${get('hour')}:\${get('minute')}\`;
+  }
+  export function getKolkataToday() { return getKolkataDateString(); }
+`);
+
 test('shared lead save requires cloud confirmation and is visible from a fresh browser cache', async () => {
   const original = globalThis.localStorage;
   const rows = new Map();
@@ -111,7 +125,7 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
       './db': dbUrl,
       '../utils/uuid': asModule('export const generateUUID = () => "33333333-3333-4333-8333-333333333333";'),
       '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`),
-      '../utils/dateUtils': asModule('export const getKolkataToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());')
+      '../utils/dateUtils': dateUtilsUrl
     });
     const company = '11111111-1111-4111-8111-111111111111';
     const lead = '22222222-2222-4222-8222-222222222222';
@@ -267,7 +281,7 @@ test('office hydration replaces stale active-company dashboard cache with real c
       export const supabase = { from(table) { return { select() { const result = { data: data[table] || [] }; return table === 'resources' ? Promise.resolve(result) : { eq() { return Promise.resolve(result); } }; } }; } };`),
       '../utils/uuid': asModule('export const generateUUID = () => "test-id";'),
       '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`),
-      '../utils/dateUtils': asModule('export const getKolkataToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());')
+      '../utils/dateUtils': dateUtilsUrl
     });
     await hydrateCrmFromCloud(companyId);
     assert.deepEqual(JSON.parse(rows.get('docgen_bookings')).map(row => row.id), ['other-booking']);

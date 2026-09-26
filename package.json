@@ -16,6 +16,7 @@
     "test:leads": "playwright test tests/leads",
     "test:followups": "playwright test tests/followups",
     "test:regression": "playwright test tests/regression",
+    "test:unit:followups": "node --test tests/followups.test.mjs",
     "test:report": "playwright show-report"
   },
   "dependencies": {

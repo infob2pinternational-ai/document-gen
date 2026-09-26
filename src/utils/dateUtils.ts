@@ -6,11 +6,29 @@
 const TIME_ZONE = 'Asia/Kolkata';
 
 /**
+ * Returns a date formatted as YYYY-MM-DD strictly in Asia/Kolkata.
+ */
+export function getKolkataDateString(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(date);
+}
+
+/**
+ * Returns a time formatted as HH:mm strictly in Asia/Kolkata (24-hour).
+ */
+export function getKolkataTimeString(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(date);
+}
+
+/**
  * Returns today's date formatted as YYYY-MM-DD strictly in Asia/Kolkata.
  */
 export function getKolkataToday(): string {
-  // 'en-CA' gives ISO format YYYY-MM-DD
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
+  return getKolkataDateString();
 }
 
 /**

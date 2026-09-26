@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { FollowUp } from '../types';
 import { officeService } from '../services/officeService';
-import { metricsService } from '../services/metricsService';
+import { metricsService, calculateFollowUpCounts } from '../services/metricsService';
 import { FollowUpModal } from './FollowUpModal';
 import { 
   Clock, 
@@ -14,7 +14,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
-import { formatStaffDisplayName } from '../utils/staffUtils';
+import { formatStaffDisplayName, getAvailableStaffList, normalizeStaffEmail } from '../utils/staffUtils';
 import { getKolkataToday } from '../utils/dateUtils';
 
 interface FollowUpsProps {
@@ -25,33 +25,31 @@ interface FollowUpsProps {
 }
 
 export const FollowUps: React.FC<FollowUpsProps> = ({
+  role: _role,
   userEmail = '',
   companyId: propCompanyId,
   onOpenLead
 }) => {
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all'>('today');
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [allFollowUps, setAllFollowUps] = useState<FollowUp[]>([]);
+  const [staffFilter, setStaffFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
   const [selectedFollowUpIds, setSelectedFollowUpIds] = useState<Set<string>>(new Set());
 
+  const scopeId = propCompanyId || officeService.getActiveCompanyId() || undefined;
+
   const refreshFollowUps = () => {
-    const scopeId = propCompanyId || officeService.getActiveCompanyId() || undefined;
-    let list: FollowUp[] = [];
-    if (activeTab === 'snoozed') {
-      list = officeService.getFollowUps('all', scopeId).filter(f => f.status === 'SNOOZED');
-    } else {
-      list = officeService.getFollowUps(activeTab as any, scopeId);
-    }
-    setFollowUps(list);
+    const list = officeService.getFollowUps('all', scopeId);
+    setAllFollowUps(list);
   };
 
   useEffect(() => {
     refreshFollowUps();
     const unsub = metricsService.subscribe(refreshFollowUps);
     return unsub;
-  }, [activeTab, propCompanyId]);
+  }, [scopeId]);
 
   const handleOpenAdd = () => {
     setEditingFollowUp(null);
@@ -127,13 +125,46 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
     });
   };
 
-  const filtered = followUps.filter(f =>
-    f.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (f.company_name && f.company_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    f.reason.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (f.phone && f.phone.includes(searchTerm)) ||
-    (f.lead_number && f.lead_number.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const availableStaff = useMemo(() => {
+    return getAvailableStaffList(userEmail, undefined, allFollowUps);
+  }, [userEmail, allFollowUps]);
+
+  const scopedFollowUps = useMemo(() => {
+    if (!staffFilter || staffFilter === 'all') {
+      return allFollowUps;
+    }
+    const clean = normalizeStaffEmail(staffFilter);
+    return allFollowUps.filter(f => normalizeStaffEmail(f.assigned_staff_email) === clean);
+  }, [allFollowUps, staffFilter]);
+
+  const counts = useMemo(() => {
+    return calculateFollowUpCounts(scopedFollowUps);
+  }, [scopedFollowUps]);
+
+  const today = getKolkataToday();
+
+  const tabRecords = useMemo(() => {
+    return scopedFollowUps.filter(item => {
+      if (activeTab === 'completed') return item.status === 'COMPLETED' || item.status === 'CANCELLED';
+      if (activeTab === 'snoozed') return item.status === 'SNOOZED';
+      if (activeTab === 'today') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date === today;
+      if (activeTab === 'upcoming') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date > today;
+      if (activeTab === 'overdue') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date < today;
+      return true; // 'all'
+    });
+  }, [scopedFollowUps, activeTab, today]);
+
+  const filtered = useMemo(() => {
+    if (!searchTerm.trim()) return tabRecords;
+    const term = searchTerm.toLowerCase();
+    return tabRecords.filter(f =>
+      f.customer_name.toLowerCase().includes(term) ||
+      (f.company_name && f.company_name.toLowerCase().includes(term)) ||
+      f.reason.toLowerCase().includes(term) ||
+      (f.phone && f.phone.includes(term)) ||
+      (f.lead_number && f.lead_number.toLowerCase().includes(term))
+    );
+  }, [tabRecords, searchTerm]);
 
   const allSelected = filtered.length > 0 && filtered.every(f => selectedFollowUpIds.has(f.id));
   const someSelected = filtered.some(f => selectedFollowUpIds.has(f.id)) && !allSelected;
@@ -145,8 +176,6 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
       setSelectedFollowUpIds(new Set(filtered.map(f => f.id)));
     }
   };
-
-  const counts = metricsService.getFollowUpCounts(userEmail);
 
   const tabs: { key: typeof activeTab; label: string; count: number; alert?: boolean }[] = [
     { key: 'today', label: 'Due Today', count: counts.today },
@@ -247,16 +276,32 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
           })}
         </div>
 
-        {/* Right: Search Box */}
-        <div style={{ position: 'relative', width: '260px' }}>
-          <Search size={14} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            placeholder="Search customer, phone, purpose..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ paddingLeft: '2rem', fontSize: '0.8125rem' }}
-          />
+        {/* Right: Staff filter and Search Box */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <select
+            value={staffFilter}
+            onChange={(e) => setStaffFilter(e.target.value)}
+            style={{ minWidth: '150px', fontSize: '0.8125rem', padding: '0.35rem 0.6rem' }}
+            title="Filter by assigned staff"
+          >
+            <option value="all">All Staff</option>
+            {availableStaff.map(s => (
+              <option key={s.email} value={s.email}>
+                {s.name}{s.email.toLowerCase() === (userEmail || '').toLowerCase().trim() ? ' (You)' : ''}
+              </option>
+            ))}
+          </select>
+
+          <div style={{ position: 'relative', width: '240px' }}>
+            <Search size={14} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              placeholder="Search customer, phone, purpose..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ paddingLeft: '2rem', fontSize: '0.8125rem' }}
+            />
+          </div>
         </div>
       </div>
 
@@ -337,10 +382,10 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
             </thead>
             <tbody>
               {filtered.map(item => {
-                const todayStr = getKolkataToday();
-                const isOverdue = item.status !== 'COMPLETED' && item.due_date < todayStr;
-                const isCompleted = item.status === 'COMPLETED';
-                const isToday = item.status !== 'COMPLETED' && item.due_date === todayStr;
+                const isCompleted = item.status === 'COMPLETED' || item.status === 'CANCELLED';
+                const isSnoozed = item.status === 'SNOOZED';
+                const isOverdue = !isCompleted && !isSnoozed && item.due_date < today;
+                const isToday = !isCompleted && !isSnoozed && item.due_date === today;
 
                 return (
                   <tr 
@@ -418,6 +463,8 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
                     <td>
                       {isCompleted ? (
                         <span className="badge badge-success">Completed</span>
+                      ) : isSnoozed ? (
+                        <span className="badge badge-neutral">Snoozed</span>
                       ) : isOverdue ? (
                         <span className="badge badge-danger">Overdue</span>
                       ) : isToday ? (
@@ -521,6 +568,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
         <FollowUpModal
           followUp={editingFollowUp}
           isOpen={modalOpen}
+          companyId={scopeId}
           onClose={() => setModalOpen(false)}
           onSaved={() => refreshFollowUps()}
           onDeleted={(deletedId) => {
@@ -532,7 +580,6 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
             refreshFollowUps();
           }}
           userEmail={userEmail}
-          companyId={propCompanyId || officeService.getActiveCompanyId() || undefined}
         />
       )}
 

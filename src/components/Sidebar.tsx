@@ -84,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const refreshBadges = () => {
     const leads = metricsService.getLeadCounts(undefined, activeProfile?.id);
-    const followUps = metricsService.getFollowUpCounts();
+    const followUps = metricsService.getFollowUpCounts(undefined, activeProfile?.id);
     const quotes = metricsService.getQuotationCounts();
     const convs = officeService.getConversations().filter(c => 
       c.customer_name !== 'Company Owner (Reports)' && 

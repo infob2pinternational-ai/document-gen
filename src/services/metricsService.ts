@@ -8,7 +8,7 @@ import type {
   Resource,
   LeadActivity 
 } from '../types';
-import { formatStaffDisplayName, isDummyStaffEmail } from '../utils/staffUtils';
+import { formatStaffDisplayName, isDummyStaffEmail, normalizeStaffEmail } from '../utils/staffUtils';
 import { getKolkataToday } from '../utils/dateUtils';
 
 export type DateFilterType = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom';
@@ -197,6 +197,45 @@ export function isDateInBounds(dateStr?: string | null, bounds?: { start: string
   return dateOnly >= bounds.start && dateOnly <= bounds.end;
 }
 
+// Pure Follow-up counts calculation
+export function calculateFollowUpCounts(followUps: FollowUp[]): FollowUpCounts {
+  const today = getKolkataToday();
+  let todayCount = 0;
+  let dueNowCount = 0;
+  let upcomingCount = 0;
+  let overdueCount = 0;
+  let completedCount = 0;
+  let snoozedCount = 0;
+
+  followUps.forEach(f => {
+    if (f.status === 'COMPLETED' || f.status === 'CANCELLED') {
+      completedCount++;
+    } else if (f.status === 'SNOOZED') {
+      snoozedCount++;
+    } else {
+      // Pending tasks categorized by due date against IST today
+      if (f.due_date === today) {
+        todayCount++;
+        dueNowCount++;
+      } else if (f.due_date > today) {
+        upcomingCount++;
+      } else if (f.due_date < today) {
+        overdueCount++;
+      }
+    }
+  });
+
+  return {
+    total: followUps.length,
+    today: todayCount,
+    dueNow: dueNowCount,
+    upcoming: upcomingCount,
+    overdue: overdueCount,
+    completed: completedCount,
+    snoozed: snoozedCount
+  };
+}
+
 export const metricsService = {
   // Event Notification & Subscription
   notifyChange(): void {
@@ -268,48 +307,22 @@ export const metricsService = {
   },
 
   // 2. FOLLOW-UP COUNTS
-  getFollowUpCounts(staffEmail?: string): FollowUpCounts {
-    let followUps = readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []);
-    if (staffEmail && staffEmail !== 'owner@b2p.com' && staffEmail !== 'admin@b2p.com' && staffEmail.toLowerCase() !== 'fransonputhukkara@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanengadan@gmail.com' && staffEmail.toLowerCase() !== 'sarathjohnpanegdan@gmail.com') {
-      followUps = followUps.filter(f => f.assigned_staff_email === staffEmail);
+  getFollowUpCounts(staffEmail?: string, companyId?: string): FollowUpCounts {
+    let followUps = readStorage<FollowUp[]>(FOLLOW_UPS_KEY, []).map(item => ({
+      ...item,
+      assigned_staff_email: normalizeStaffEmail(item.assigned_staff_email)
+    }));
+
+    if (companyId && companyId !== 'default') {
+      followUps = followUps.filter(f => !f.company_id || f.company_id === 'default' || f.company_id === companyId);
     }
 
-    const today = getLocalTodayStr();
-    let todayCount = 0;
-    let dueNowCount = 0;
-    let upcomingCount = 0;
-    let overdueCount = 0;
-    let completedCount = 0;
-    let snoozedCount = 0;
+    if (staffEmail && staffEmail !== 'all') {
+      const cleanEmail = normalizeStaffEmail(staffEmail);
+      followUps = followUps.filter(f => normalizeStaffEmail(f.assigned_staff_email) === cleanEmail);
+    }
 
-    followUps.forEach(f => {
-      if (f.status === 'COMPLETED') {
-        completedCount++;
-      } else if (f.status === 'SNOOZED') {
-        snoozedCount++;
-      }
-
-      if (f.status !== 'COMPLETED' && f.status !== 'CANCELLED') {
-        if (f.due_date === today) {
-          todayCount++;
-          dueNowCount++;
-        } else if (f.due_date > today) {
-          upcomingCount++;
-        } else if (f.due_date < today) {
-          overdueCount++;
-        }
-      }
-    });
-
-    return {
-      total: followUps.length,
-      today: todayCount,
-      dueNow: dueNowCount,
-      upcoming: upcomingCount,
-      overdue: overdueCount,
-      completed: completedCount,
-      snoozed: snoozedCount
-    };
+    return calculateFollowUpCounts(followUps);
   },
 
   // 3. QUOTATION COUNTS
@@ -486,7 +499,7 @@ export const metricsService = {
     
     const today = getLocalTodayStr();
     const overdueFollowUps = followUps.filter(f => 
-      f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.due_date < today
+      f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.status !== 'SNOOZED' && f.due_date < today
     ).length;
 
     return {
@@ -518,8 +531,8 @@ export const metricsService = {
 
     const leadsWaitingAdmin = leads.filter(l => l.status === 'sent_to_admin').length;
     const quotationsWaitingOwnerApproval = quotations.filter(q => q.approval_status === 'WAITING_APPROVAL').length;
-    const followUpsDueNow = followUps.filter(f => f.status === 'PENDING' && f.due_date === today).length;
-    const overdueFollowUps = followUps.filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.due_date < today).length;
+    const followUpsDueNow = followUps.filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.status !== 'SNOOZED' && f.due_date === today).length;
+    const overdueFollowUps = followUps.filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.status !== 'SNOOZED' && f.due_date < today).length;
     const unassignedLeads = leads.filter(l => !l.assigned_telecaller_email).length;
 
     // Conflict calculations
@@ -621,7 +634,7 @@ export const metricsService = {
       const workingLeads = staffLeads.filter(l => l.status === 'telecaller_working').length;
       const requirementsCollected = staffLeads.filter(l => l.status === 'requirement_collected').length;
       const sentToAdmin = staffLeads.filter(l => l.status === 'sent_to_admin').length;
-      const followUpsDue = staffFollowUps.filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.due_date <= today).length;
+      const followUpsDue = staffFollowUps.filter(f => f.status !== 'COMPLETED' && f.status !== 'CANCELLED' && f.status !== 'SNOOZED' && f.due_date <= today).length;
       const confirmed = staffLeads.filter(l => l.status === 'confirmed').length;
       const lost = staffLeads.filter(l => l.status === 'lost').length;
 
