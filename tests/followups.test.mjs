@@ -951,3 +951,369 @@ test('Step 7 - Test 13: Deleting follow-up syncs lead.next_follow_up_at', async 
   await officeService.deleteFollowUp(fu2.id);
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step 8 — SNOOZED FOLLOW-UP REACTIVATION & LIFECYCLE CONSISTENCY AUDIT TESTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('Step 8 - Test 1: Snoozed remains Snoozed after expiry (no unintended auto-reactivation)', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const pastIso = new Date(Date.now() - 3600000).toISOString(); // 1 hour ago
+  const task = await officeService.saveFollowUp({
+    company_id: companyA,
+    customer_name: 'Expired Snooze Task',
+    due_date: '2026-09-20',
+    due_time: '10:00',
+    reason: 'Follow-up with client',
+    status: 'SNOOZED',
+    snoozed_until: pastIso
+  }, 'staff@b2p.com');
+
+  assert.equal(task.status, 'SNOOZED');
+  assert.equal(task.snoozed_until, pastIso);
+
+  const snoozedList = officeService.getFollowUps('snoozed', companyA);
+  const todayList = officeService.getFollowUps('today', companyA);
+  const overdueList = officeService.getFollowUps('overdue', companyA);
+  const upcomingList = officeService.getFollowUps('upcoming', companyA);
+
+  assert.equal(snoozedList.length, 1, 'Expired snoozed task must remain in snoozed list');
+  assert.equal(todayList.length, 0, 'Expired snoozed task must not appear in today');
+  assert.equal(overdueList.length, 0, 'Expired snoozed task must not appear in overdue');
+  assert.equal(upcomingList.length, 0, 'Expired snoozed task must not appear in upcoming');
+
+  const counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.snoozed, 1);
+  assert.equal(counts.overdue, 0);
+  assert.equal(counts.today, 0);
+});
+
+test('Step 8 - Test 2: Expired Snoozed follow-up is excluded from lead.next_follow_up_at', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Expired Snooze',
+    phone: '9876543230',
+    status: 'new'
+  });
+
+  const pastIso = new Date(Date.now() - 7200000).toISOString(); // 2 hours ago
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Expired Snooze',
+    due_date: '2026-09-20',
+    due_time: '09:00',
+    reason: 'Snoozed call',
+    status: 'SNOOZED',
+    snoozed_until: pastIso
+  }, 'staff@b2p.com');
+
+  const updatedLead = leadService.getLeadById(lead.id);
+  assert.equal(updatedLead.next_follow_up_at, null, 'Expired snoozed follow-up must not populate next_follow_up_at');
+});
+
+test('Step 8 - Test 3: Editing a Snoozed record strictly preserves protected fields', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Edit Snooze',
+    phone: '9876543231',
+    status: 'new'
+  });
+
+  const snoozeTime = new Date(Date.now() + 3600000).toISOString();
+  const original = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Edit Snooze',
+    due_date: '2026-09-28',
+    due_time: '10:00',
+    reason: 'Original reason',
+    status: 'SNOOZED',
+    snoozed_until: snoozeTime,
+    created_at: '2026-09-26T10:00:00.000Z'
+  }, 'creator@b2p.com');
+
+  // Edit reason and notes
+  const updated = await officeService.saveFollowUp({
+    id: original.id,
+    customer_name: 'Lead Edit Snooze Renamed',
+    reason: 'Updated reason after call check',
+    notes: 'Important notes added'
+  }, 'editor@b2p.com');
+
+  assert.equal(updated.id, original.id);
+  assert.equal(updated.company_id, companyA, 'company_id must be preserved');
+  assert.equal(updated.lead_id, lead.id, 'lead_id must be preserved');
+  assert.equal(updated.created_at, '2026-09-26T10:00:00.000Z', 'created_at must be preserved');
+  assert.equal(updated.created_by_email, 'creator@b2p.com', 'created_by_email must be preserved');
+  assert.equal(updated.status, 'SNOOZED', 'status must remain SNOOZED');
+  assert.equal(updated.snoozed_until, snoozeTime, 'snoozed_until must be preserved');
+  assert.equal(updated.reason, 'Updated reason after call check');
+  assert.equal(updated.notes, 'Important notes added');
+});
+
+test('Step 8 - Test 4: Completing a Snoozed follow-up transitions to COMPLETED and recalculates lead.next_follow_up_at', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Complete Snooze',
+    phone: '9876543232',
+    status: 'new'
+  });
+
+  const fu1 = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Complete Snooze',
+    due_date: '2026-09-27',
+    due_time: '10:00',
+    reason: 'Call 1'
+  }, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fu1.id, 60, 'staff@b2p.com');
+
+  const fu2 = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Complete Snooze',
+    due_date: '2026-09-29',
+    due_time: '16:00',
+    reason: 'Call 2'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-29T16:00:00+05:30');
+
+  // Complete the snoozed follow-up
+  const completed = await officeService.completeFollowUp(fu1.id, 'Customer reached early', 'staff@b2p.com');
+  assert.equal(completed.status, 'COMPLETED');
+  assert.ok(completed.completed_at);
+  assert.equal(completed.completion_note, 'Customer reached early');
+
+  // Verifying it no longer counts or displays as Snoozed
+  assert.equal(officeService.getFollowUps('snoozed', companyA).length, 0);
+  assert.equal(officeService.getFollowUps('completed', companyA).length, 1);
+
+  // Next actionable follow-up remains FU2
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-29T16:00:00+05:30');
+});
+
+test('Step 8 - Test 5: Snoozing/completing final actionable follow-up leaves next_follow_up_at as null', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Final Actionable',
+    phone: '9876543233',
+    status: 'new'
+  });
+
+  const fu = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Final Actionable',
+    due_date: '2026-09-28',
+    due_time: '11:00',
+    reason: 'Final call'
+  }, 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T11:00:00+05:30');
+
+  // Snoozing the only actionable follow-up
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
+
+  // Completing it subsequently
+  await officeService.completeFollowUp(fu.id, 'Done after snooze', 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
+});
+
+test('Step 8 - Test 6: Snoozed follow-up does not displace a Pending follow-up', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Displacement Test',
+    phone: '9876543234',
+    status: 'new'
+  });
+
+  // Earlier due date, but SNOOZED
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Displacement Test',
+    due_date: '2026-09-27',
+    due_time: '09:00',
+    reason: 'Snoozed early FU',
+    status: 'SNOOZED',
+    snoozed_until: new Date(Date.now() + 1800000).toISOString()
+  }, 'staff@b2p.com');
+
+  // Later due date, but PENDING
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Displacement Test',
+    due_date: '2026-09-29',
+    due_time: '11:00',
+    reason: 'Active pending FU',
+    status: 'PENDING'
+  }, 'staff@b2p.com');
+
+  // The active pending follow-up must be chosen, not the earlier snoozed one
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-29T11:00:00+05:30');
+});
+
+test('Step 8 - Test 7: Snoozed lifecycle operations strictly maintain company isolation', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const companyB = '22222222-2222-4222-8222-222222222222';
+
+  leadService.setActiveCompany(companyB);
+  const leadB = await leadService.saveLead({
+    company_id: companyB,
+    customer_name: 'Lead in B',
+    phone: '9876543235',
+    status: 'new'
+  });
+
+  leadService.setActiveCompany(companyA);
+  const leadA = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead in A',
+    phone: '9876543236',
+    status: 'new'
+  });
+
+  const fuA = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: leadA.id,
+    customer_name: 'Lead in A',
+    due_date: '2026-09-28',
+    due_time: '10:00',
+    reason: 'FU A'
+  }, 'staff@b2p.com');
+
+  await officeService.snoozeFollowUp(fuA.id, 60, 'staff@b2p.com');
+
+  // Verify Company A and Company B isolation
+  const listA = officeService.getFollowUps('snoozed', companyA);
+  const listB = officeService.getFollowUps('snoozed', companyB);
+  assert.equal(listA.length, 1);
+  assert.equal(listB.length, 0);
+
+  const countsA = metricsService.getFollowUpCounts(undefined, companyA);
+  const countsB = metricsService.getFollowUpCounts(undefined, companyB);
+  assert.equal(countsA.snoozed, 1);
+  assert.equal(countsB.snoozed, 0);
+
+  assert.equal(leadService.getLeadById(leadA.id).next_follow_up_at, null);
+  assert.equal(leadService.getLeadById(leadB.id).next_follow_up_at, null);
+});
+
+test('Step 8 - Test 8: Counters keep Snoozed records strictly segregated from active tabs', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
+  const yesterdayStr = getRelativeDate(-1);
+  const tomorrowStr = getRelativeDate(1);
+
+  // Create normal tasks
+  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Overdue Task', due_date: yesterdayStr, reason: 'R1' }, 'staff@b2p.com');
+  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Today Task', due_date: todayStr, reason: 'R2' }, 'staff@b2p.com');
+  await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Upcoming Task', due_date: tomorrowStr, reason: 'R3' }, 'staff@b2p.com');
+
+  // Create snoozed task (active snooze)
+  const snzActive = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Active Snooze', due_date: todayStr, reason: 'R4' }, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(snzActive.id, 60, 'staff@b2p.com');
+
+  // Create snoozed task (expired snooze)
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    customer_name: 'Expired Snooze',
+    due_date: yesterdayStr,
+    reason: 'R5',
+    status: 'SNOOZED',
+    snoozed_until: new Date(Date.now() - 3600000).toISOString()
+  }, 'staff@b2p.com');
+
+  const counts = metricsService.getFollowUpCounts(undefined, companyA);
+
+  assert.equal(counts.overdue, 1, 'Only non-snoozed overdue tasks counted in overdue');
+  assert.equal(counts.today, 1, 'Only non-snoozed today tasks counted in today');
+  assert.equal(counts.upcoming, 1, 'Only non-snoozed upcoming tasks counted in upcoming');
+  assert.equal(counts.snoozed, 2, 'Both active and expired snoozed tasks counted under snoozed');
+  assert.equal(counts.total, 5, 'Total includes all 5 tasks');
+});
+
+test('Step 8 - Test 9: UI display formatKolkataSnoozeUntil renders deterministic IST output', () => {
+  // Test with explicit UTC ISO timestamp corresponding to 15:45 IST on 2026-09-28
+  const isoTime = '2026-09-28T10:15:00.000Z'; // 10:15 UTC = 15:45 IST
+  const formatted = dateUtils.formatKolkataSnoozeUntil(isoTime);
+  assert.equal(formatted, '28/09/2026 15:45');
+
+  // Test with fallback date and time
+  const fallback = dateUtils.formatKolkataSnoozeUntil(null, '2026-09-28', '11:30');
+  assert.equal(fallback, '28/09/2026 11:30');
+
+  // Test with empty inputs
+  assert.equal(dateUtils.formatKolkataSnoozeUntil(null, null, null), '');
+});
+
+test('Step 8 - Test 10: Steps 1–7 regression verification intact', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Regression Lead',
+    phone: '9876543237',
+    status: 'new'
+  });
+
+  const fu = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Regression Lead',
+    due_date: '2026-09-28',
+    due_time: '10:00',
+    reason: 'Initial task'
+  }, 'staff@b2p.com');
+
+  // Step 7 check
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T10:00:00+05:30');
+
+  // Step 6 & Step 1 check
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com');
+  const snoozedFu = officeService.getFollowUps('snoozed', companyA)[0];
+  assert.equal(snoozedFu.status, 'SNOOZED');
+  assert.ok(snoozedFu.snoozed_until);
+  assert.equal(snoozedFu.company_id, companyA);
+
+  // Step 7 lead sync after snooze
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
+
+  // Complete from snoozed
+  await officeService.completeFollowUp(fu.id, 'Finished callback', 'staff@b2p.com');
+  const completedFu = officeService.getFollowUps('completed', companyA)[0];
+  assert.equal(completedFu.status, 'COMPLETED');
+  assert.equal(completedFu.completion_note, 'Finished callback');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
+});
