@@ -13,7 +13,7 @@ import { normalizeStaffEmail } from '../utils/staffUtils';
 import { metricsService } from './metricsService';
 import { supabase, isCloudActive } from './db';
 import { generateUUID } from '../utils/uuid';
-import { getKolkataToday, getKolkataDateString, getKolkataTimeString } from '../utils/dateUtils';
+import { getKolkataToday, getKolkataDateString, getKolkataTimeString, formatKolkataIsoDateTime } from '../utils/dateUtils';
 
 const FOLLOW_UPS_KEY = 'docgen_follow_ups';
 const QUOTATIONS_KEY = 'docgen_crm_quotations';
@@ -588,9 +588,39 @@ export const officeService = {
     }).sort((a, b) => `${a.due_date} ${a.due_time}`.localeCompare(`${b.due_date} ${b.due_time}`));
   },
 
+  async syncLeadNextFollowUpAt(leadId?: string, companyId?: string): Promise<string | null> {
+    if (!leadId || !companyId || companyId === 'default') return null;
+
+    const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
+    const actionable = list.filter(f =>
+      f.lead_id === leadId &&
+      (f.company_id === companyId || (!f.company_id && companyId === leadService.getActiveCompany())) &&
+      f.status !== 'COMPLETED' &&
+      f.status !== 'CANCELLED' &&
+      f.status !== 'SNOOZED'
+    );
+
+    actionable.sort((a, b) => {
+      const dtA = `${a.due_date} ${(a.due_time || '10:00').slice(0, 5)}`;
+      const dtB = `${b.due_date} ${(b.due_time || '10:00').slice(0, 5)}`;
+      return dtA.localeCompare(dtB);
+    });
+
+    const earliest = actionable[0];
+    const nextFollowUpAt = earliest ? formatKolkataIsoDateTime(earliest.due_date, earliest.due_time) : null;
+
+    if (typeof leadService.updateLeadNextFollowUpAt === 'function') {
+      await leadService.updateLeadNextFollowUpAt(leadId, companyId, nextFollowUpAt);
+    }
+
+    return nextFollowUpAt;
+  },
+
   async saveFollowUp(item: Partial<FollowUp> & { customer_name: string; due_date: string; reason: string }, userEmail: string): Promise<FollowUp> {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
     const existing = item.id ? list.find(f => f.id === item.id) : undefined;
+    const oldLeadId = existing?.lead_id;
+    const oldCompanyId = existing?.company_id;
     const isNew = !existing;
     let followUpRecord: FollowUp;
 
@@ -687,6 +717,13 @@ export const officeService = {
       await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, followUpRecord);
     }
 
+    if (followUpRecord.lead_id && followUpRecord.company_id) {
+      await this.syncLeadNextFollowUpAt(followUpRecord.lead_id, followUpRecord.company_id);
+    }
+    if (oldLeadId && oldLeadId !== followUpRecord.lead_id && (oldCompanyId || followUpRecord.company_id)) {
+      await this.syncLeadNextFollowUpAt(oldLeadId, oldCompanyId || followUpRecord.company_id);
+    }
+
     return followUpRecord;
   },
 
@@ -702,6 +739,18 @@ export const officeService = {
 
     list[idx] = current;
     await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, current);
+
+    // Sync lead's next_follow_up_at
+    if (current.lead_id) {
+      const syncCompanyId = (current.company_id && current.company_id !== 'default')
+        ? current.company_id
+        : (leadService.getActiveCompany() && leadService.getActiveCompany() !== 'default'
+            ? leadService.getActiveCompany()!
+            : undefined);
+      if (syncCompanyId) {
+        await this.syncLeadNextFollowUpAt(current.lead_id, syncCompanyId);
+      }
+    }
 
     // Log to lead activity if linked
     if (current.lead_id) {
@@ -740,6 +789,18 @@ export const officeService = {
     list[idx] = current;
     await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, current);
 
+    // Sync lead's next_follow_up_at
+    if (current.lead_id) {
+      const syncCompanyId = (current.company_id && current.company_id !== 'default')
+        ? current.company_id
+        : (leadService.getActiveCompany() && leadService.getActiveCompany() !== 'default'
+            ? leadService.getActiveCompany()!
+            : undefined);
+      if (syncCompanyId) {
+        await this.syncLeadNextFollowUpAt(current.lead_id, syncCompanyId);
+      }
+    }
+
     if (current.lead_id) {
       const activityCompanyId = (current.company_id && current.company_id !== 'default')
         ? current.company_id
@@ -768,6 +829,14 @@ export const officeService = {
     await persistOfficeRowDeleted(FOLLOW_UPS_KEY, 'follow_ups', updated, id);
 
     if (existing?.lead_id) {
+      const syncCompanyId = (existing.company_id && existing.company_id !== 'default')
+        ? existing.company_id
+        : (leadService.getActiveCompany() && leadService.getActiveCompany() !== 'default'
+            ? leadService.getActiveCompany()!
+            : undefined);
+      if (syncCompanyId) {
+        await this.syncLeadNextFollowUpAt(existing.lead_id, syncCompanyId);
+      }
       try {
         await leadService.addLeadActivity({
           lead_id: existing.lead_id,

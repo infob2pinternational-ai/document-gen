@@ -50,21 +50,21 @@ const { metricsService, calculateFollowUpCounts } = await load('../src/services/
   '../utils/staffUtils': staffUtilsModule
 });
 
+const leadServiceModule = asModule(
+  transpile('../src/services/leadService.ts')
+    .replaceAll(`'./metricsService'`, JSON.stringify(asModule('export const metricsService = { notifyChange() {} };')))
+    .replaceAll(`'./db'`, JSON.stringify(asModule('export const isCloudActive = () => false; export const supabase = null;')))
+    .replaceAll(`'../utils/uuid'`, JSON.stringify(asModule('let leadSeq = 500; export const generateUUID = () => "lead-" + (leadSeq++);')))
+    .replaceAll(`'../utils/staffUtils'`, JSON.stringify(staffUtilsModule))
+);
+const { leadService } = await import(leadServiceModule);
+
 const { officeService } = await load('../src/services/officeService.ts', {
   '../utils/dateUtils': dateUtilsModule,
   '../utils/staffUtils': staffUtilsModule,
   './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
   './db': asModule('export const isCloudActive = () => false; export const supabase = null;'),
-  './leadService': asModule(`
-    let activeCo = null;
-    export const leadService = {
-      getActiveCompany: () => activeCo,
-      setActiveCompany: (id) => { activeCo = id; },
-      addLeadActivity: async () => {},
-      getLeads: () => []
-    };
-    export async function hydrateLeadsFromCloud() {}
-  `),
+  './leadService': leadServiceModule,
   '../utils/uuid': asModule('let seq = 100; export const generateUUID = () => "uuid-" + (seq++);')
 });
 
@@ -481,4 +481,473 @@ test('Regression — Step 5: Filter consistency & table counts match badges acro
   assert.equal(counts.completed, officeService.getFollowUps('completed', companyA).length, 'Completed count must match completed table records');
   assert.equal(counts.snoozed, officeService.getFollowUps('snoozed', companyA).length, 'Snoozed count must match snoozed table records');
   assert.equal(counts.total, officeService.getFollowUps('all', companyA).length, 'Total count must match all table records');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step 7 — LEADS.NEXT_FOLLOW_UP_AT LIFECYCLE SYNCHRONIZATION TESTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('Step 7 - Test 1: Creating a follow-up updates lead.next_follow_up_at to formatted IST timestamp', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Alice',
+    phone: '9876543210',
+    status: 'new'
+  });
+  assert.equal(lead.next_follow_up_at, null);
+
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Alice',
+    due_date: '2026-09-28',
+    due_time: '15:45',
+    reason: 'Initial consultation'
+  }, 'staff@b2p.com');
+
+  const updatedLead = leadService.getLeadById(lead.id);
+  assert.equal(updatedLead.next_follow_up_at, '2026-09-28T15:45:00+05:30');
+});
+
+test('Step 7 - Test 2: Multiple follow-ups select the earliest actionable due datetime', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Bob',
+    phone: '9876543211',
+    status: 'new'
+  });
+
+  // Later follow-up created first
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Bob',
+    due_date: '2026-09-30',
+    due_time: '10:00',
+    reason: 'Later follow-up'
+  }, 'staff@b2p.com');
+
+  // Earlier follow-up created second
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Bob',
+    due_date: '2026-09-28',
+    due_time: '09:15',
+    reason: 'Earlier follow-up'
+  }, 'staff@b2p.com');
+
+  const updatedLead = leadService.getLeadById(lead.id);
+  assert.equal(updatedLead.next_follow_up_at, '2026-09-28T09:15:00+05:30');
+});
+
+test('Step 7 - Test 3: Adding an earlier follow-up updates lead.next_follow_up_at to the new earliest', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Charlie',
+    phone: '9876543212',
+    status: 'new'
+  });
+
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Charlie',
+    due_date: '2026-09-29',
+    due_time: '14:00',
+    reason: 'Scheduled demo'
+  }, 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-29T14:00:00+05:30');
+
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Charlie',
+    due_date: '2026-09-27',
+    due_time: '11:00',
+    reason: 'Pre-check call'
+  }, 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-27T11:00:00+05:30');
+});
+
+test('Step 7 - Test 4: Editing due date shifts lead.next_follow_up_at to new earliest', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead David',
+    phone: '9876543213',
+    status: 'new'
+  });
+
+  const fu1 = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead David',
+    due_date: '2026-09-27',
+    due_time: '10:00',
+    reason: 'Call 1'
+  }, 'staff@b2p.com');
+
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead David',
+    due_date: '2026-09-29',
+    due_time: '16:00',
+    reason: 'Call 2'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-27T10:00:00+05:30');
+
+  // Push fu1 into the future beyond fu2
+  await officeService.saveFollowUp({
+    id: fu1.id,
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead David',
+    due_date: '2026-10-05',
+    due_time: '12:00',
+    reason: 'Rescheduled Call 1'
+  }, 'staff@b2p.com');
+
+  // Next follow-up should now be Call 2 (2026-09-29T16:00:00+05:30)
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-29T16:00:00+05:30');
+});
+
+test('Step 7 - Test 5: Completing earliest follow-up advances lead.next_follow_up_at to next actionable', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Eve',
+    phone: '9876543214',
+    status: 'new'
+  });
+
+  const fu1 = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Eve',
+    due_date: '2026-09-27',
+    due_time: '09:00',
+    reason: 'FU 1'
+  }, 'staff@b2p.com');
+
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Eve',
+    due_date: '2026-09-29',
+    due_time: '15:00',
+    reason: 'FU 2'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-27T09:00:00+05:30');
+
+  await officeService.completeFollowUp(fu1.id, 'Done first call', 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-29T15:00:00+05:30');
+});
+
+test('Step 7 - Test 6: Completing the only follow-up sets lead.next_follow_up_at to null', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Frank',
+    phone: '9876543215',
+    status: 'new'
+  });
+
+  const fu = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Frank',
+    due_date: '2026-09-28',
+    due_time: '11:00',
+    reason: 'Single FU'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T11:00:00+05:30');
+
+  await officeService.completeFollowUp(fu.id, 'Completed single FU', 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
+});
+
+test('Step 7 - Test 7: Snoozing earliest follow-up advances lead.next_follow_up_at to next actionable', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Grace',
+    phone: '9876543216',
+    status: 'new'
+  });
+
+  const fu1 = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Grace',
+    due_date: '2026-09-28',
+    due_time: '10:00',
+    reason: 'FU 1'
+  }, 'staff@b2p.com');
+
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Grace',
+    due_date: '2026-09-30',
+    due_time: '14:00',
+    reason: 'FU 2'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T10:00:00+05:30');
+
+  await officeService.snoozeFollowUp(fu1.id, 60, 'staff@b2p.com');
+  // SNOOZED status is excluded from actionable follow-ups, so FU 2 becomes earliest actionable
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-30T14:00:00+05:30');
+});
+
+test('Step 7 - Test 8: Snoozing the only follow-up sets lead.next_follow_up_at to null', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Heidi',
+    phone: '9876543217',
+    status: 'new'
+  });
+
+  const fu = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Heidi',
+    due_date: '2026-09-28',
+    due_time: '12:00',
+    reason: 'Solo FU'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T12:00:00+05:30');
+
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com');
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
+});
+
+test('Step 7 - Test 9: Company isolation ensures Company A follow-ups do not leak into Company B lead', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const companyB = '22222222-2222-4222-8222-222222222222';
+
+  leadService.setActiveCompany(companyB);
+  const leadB = await leadService.saveLead({
+    company_id: companyB,
+    customer_name: 'Lead in B',
+    phone: '9876543218',
+    status: 'new'
+  });
+
+  leadService.setActiveCompany(companyA);
+  const leadA = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead in A',
+    phone: '9876543219',
+    status: 'new'
+  });
+
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: leadA.id,
+    customer_name: 'Lead in A',
+    due_date: '2026-09-28',
+    due_time: '10:00',
+    reason: 'A follow-up'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(leadA.id).next_follow_up_at, '2026-09-28T10:00:00+05:30');
+  assert.equal(leadService.getLeadById(leadB.id).next_follow_up_at, null, 'Company B lead must not receive Company A follow-up');
+});
+
+test('Step 7 - Test 10: Staff filter in UI does not alter stored lead.next_follow_up_at', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Ian',
+    phone: '9876543220',
+    status: 'new'
+  });
+
+  // FU 1 assigned to staff1
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Ian',
+    assigned_staff_email: 'staff1@b2p.com',
+    due_date: '2026-09-28',
+    due_time: '09:00',
+    reason: 'FU staff1'
+  }, 'staff1@b2p.com');
+
+  // FU 2 assigned to staff2
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Ian',
+    assigned_staff_email: 'staff2@b2p.com',
+    due_date: '2026-09-29',
+    due_time: '14:00',
+    reason: 'FU staff2'
+  }, 'staff2@b2p.com');
+
+  // Querying UI with staff2 filter should not change canonical next_follow_up_at
+  const staff2List = officeService.getFollowUps('all', companyA, 'staff2@b2p.com');
+  assert.equal(staff2List.length, 1);
+  assert.equal(staff2List[0].assigned_staff_email, 'staff2@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T09:00:00+05:30', 'Lead next_follow_up_at reflects earliest across all staff');
+});
+
+test('Step 7 - Test 11: IST midnight boundary formatting and ordering are deterministic', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Julia',
+    phone: '9876543221',
+    status: 'new'
+  });
+
+  // Day 1 late night 23:45
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Julia',
+    due_date: '2026-09-28',
+    due_time: '23:45',
+    reason: 'Late night call'
+  }, 'staff@b2p.com');
+
+  // Day 2 early morning 00:15
+  await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Julia',
+    due_date: '2026-09-29',
+    due_time: '00:15',
+    reason: 'Past midnight follow-up'
+  }, 'staff@b2p.com');
+
+  // 23:45 on Day 1 is earlier than 00:15 on Day 2
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T23:45:00+05:30');
+});
+
+test('Step 7 - Test 12: Lead reassignment on edit syncs both original and new leads', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead1 = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead One',
+    phone: '9876543222',
+    status: 'new'
+  });
+  const lead2 = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Two',
+    phone: '9876543223',
+    status: 'new'
+  });
+
+  const fu = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead1.id,
+    customer_name: 'Lead One',
+    due_date: '2026-09-28',
+    due_time: '14:00',
+    reason: 'Reassignable FU'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead1.id).next_follow_up_at, '2026-09-28T14:00:00+05:30');
+  assert.equal(leadService.getLeadById(lead2.id).next_follow_up_at, null);
+
+  // Reassign fu to lead2
+  await officeService.saveFollowUp({
+    id: fu.id,
+    company_id: companyA,
+    lead_id: lead2.id,
+    customer_name: 'Lead Two',
+    due_date: '2026-09-28',
+    due_time: '14:00',
+    reason: 'Reassignable FU'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead1.id).next_follow_up_at, null, 'Lead 1 has no remaining follow-ups');
+  assert.equal(leadService.getLeadById(lead2.id).next_follow_up_at, '2026-09-28T14:00:00+05:30', 'Lead 2 now has the follow-up');
+});
+
+test('Step 7 - Test 13: Deleting follow-up syncs lead.next_follow_up_at', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(companyA);
+
+  const lead = await leadService.saveLead({
+    company_id: companyA,
+    customer_name: 'Lead Delete Test',
+    phone: '9876543224',
+    status: 'new'
+  });
+
+  const fu1 = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Delete Test',
+    due_date: '2026-09-28',
+    due_time: '10:00',
+    reason: 'FU 1'
+  }, 'staff@b2p.com');
+
+  const fu2 = await officeService.saveFollowUp({
+    company_id: companyA,
+    lead_id: lead.id,
+    customer_name: 'Lead Delete Test',
+    due_date: '2026-09-30',
+    due_time: '12:00',
+    reason: 'FU 2'
+  }, 'staff@b2p.com');
+
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T10:00:00+05:30');
+
+  await officeService.deleteFollowUp(fu1.id);
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-30T12:00:00+05:30');
+
+  await officeService.deleteFollowUp(fu2.id);
+  assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
 });

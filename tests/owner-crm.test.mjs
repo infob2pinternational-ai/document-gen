@@ -27,6 +27,14 @@ const dateUtilsUrl = asModule(`
     return \`\${get('hour')}:\${get('minute')}\`;
   }
   export function getKolkataToday() { return getKolkataDateString(); }
+  export function formatKolkataIsoDateTime(dueDate, dueTime) {
+    const time = (dueTime || '10:00').trim();
+    const parts = time.split(':');
+    const hour = (parts[0] || '10').padStart(2, '0');
+    const minute = (parts[1] || '00').padStart(2, '0');
+    const second = (parts[2] ? parts[2].slice(0, 2) : '00').padStart(2, '0');
+    return \`\${dueDate}T\${hour}:\${minute}:\${second}+05:30\`;
+  }
 `);
 
 test('shared lead save requires cloud confirmation and is visible from a fresh browser cache', async () => {
@@ -121,7 +129,7 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
     const db = await import(dbUrl);
     const { officeService, hydrateCrmFromCloud } = await load('../src/services/officeService.ts', {
       './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
-      './leadService': asModule('export const leadService = { getActiveCompany() { return null; }, async addLeadActivity() {}, async updateLeadStatus() {} }; export async function hydrateLeadsFromCloud() {}'),
+      './leadService': asModule('export const leadService = { getActiveCompany() { return null; }, async addLeadActivity() {}, async updateLeadStatus() {}, async updateLeadNextFollowUpAt() {} }; export async function hydrateLeadsFromCloud() {}'),
       './db': dbUrl,
       '../utils/uuid': asModule('export const generateUUID = () => "33333333-3333-4333-8333-333333333333";'),
       '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`),

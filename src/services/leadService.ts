@@ -496,7 +496,7 @@ export const leadService = {
       priority: lead.priority || 'WARM',
       assigned_telecaller_email: lead.assigned_telecaller_email,
       status: lead.status || 'new',
-      next_follow_up_at: lead.next_follow_up_at,
+      next_follow_up_at: lead.next_follow_up_at !== undefined ? lead.next_follow_up_at : (existing ? (existing.next_follow_up_at ?? null) : null),
       notes: lead.notes,
       remarks: lead.remarks,
       created_at: lead.created_at || now,
@@ -607,6 +607,32 @@ export const leadService = {
       note: note || `Status changed from ${prev.status} to ${newStatus}.`
     });
 
+    return updated;
+  },
+
+  async updateLeadNextFollowUpAt(leadId: string, companyId: string, nextFollowUpAt: string | null): Promise<Lead | null> {
+    if (!leadId || !companyId || companyId === 'default') {
+      return null;
+    }
+
+    const leads = getStoredLeads();
+    const idx = leads.findIndex(l => l.id === leadId);
+    if (idx < 0) return null;
+
+    const prev = leads[idx];
+    if (prev.company_id && prev.company_id !== 'default' && prev.company_id !== companyId) {
+      return null;
+    }
+
+    const updated: Lead = {
+      ...prev,
+      next_follow_up_at: nextFollowUpAt ?? null,
+      updated_at: new Date().toISOString()
+    };
+
+    leads[idx] = updated;
+    await persistCrmRow(LEADS_KEY, 'leads', leads, updated);
+    metricsService.notifyChange();
     return updated;
   },
 

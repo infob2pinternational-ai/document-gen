@@ -51,6 +51,20 @@ export function formatKolkataSnoozeUntil(snoozedUntil?: string | null, fallbackD
 }
 
 /**
+ * Combines an Asia/Kolkata due_date (YYYY-MM-DD) and due_time (HH:mm) into an ISO-8601 string with +05:30 offset.
+ */
+export function formatKolkataIsoDateTime(dueDate: string, dueTime?: string | null): string {
+  if (!dueDate) return '';
+  const cleanDate = dueDate.trim();
+  const time = (dueTime || '10:00').trim();
+  const parts = time.split(':');
+  const hour = (parts[0] || '10').padStart(2, '0');
+  const minute = (parts[1] || '00').padStart(2, '0');
+  const second = (parts[2] ? parts[2].slice(0, 2) : '00').padStart(2, '0');
+  return `${cleanDate}T${hour}:${minute}:${second}+05:30`;
+}
+
+/**
  * Formats a date string (YYYY-MM-DD or ISO) into human-readable display date (e.g. "22 Sep 2026").
  */
 export function formatKolkataDisplayDate(dateStr?: string | null): string {

@@ -185,7 +185,7 @@ export interface Lead {
   priority: LeadPriority;
   assigned_telecaller_email?: string;
   status: LeadStatus;
-  next_follow_up_at?: string;
+  next_follow_up_at?: string | null;
   notes?: string;
   remarks?: string;
   created_at: string;
