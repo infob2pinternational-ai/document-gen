@@ -100,6 +100,7 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   // ─── Draft Recovery (Phase A4) ──────────────────────────────────────
   // Same architecture as DocumentEditor (Phase A2): hybrid session/
@@ -578,11 +579,13 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
 
   // Save Document Trigger
   const handleSaveDoc = async () => {
+    if (isSubmittingRef.current) return;
     if (!customerName) {
       alert('Please select or specify a Customer.');
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSaving(true);
     try {
       const selectedOption = options.find(o => o.id === selectedOptionIdForTotal) || options[0];
@@ -665,6 +668,7 @@ export const ComparisonEditor: React.FC<ComparisonEditorProps> = ({
       alert(`Failed to save ${documentType === 'comparison_invoice' ? 'Manual Invoice' : 'Quote'}: ` + err.message);
     } finally {
       setIsSaving(false);
+      isSubmittingRef.current = false;
     }
   };
 

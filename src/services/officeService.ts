@@ -294,6 +294,9 @@ function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
     if (row.lead_id && UUID_REGEX.test(row.lead_id)) {
       payload.lead_id = row.lead_id;
     }
+    if (row.customer_id && UUID_REGEX.test(row.customer_id)) {
+      payload.customer_id = row.customer_id;
+    }
     if (row.approved_at) payload.approved_at = row.approved_at;
     if (row.valid_until) payload.valid_until = row.valid_until;
     return payload;
@@ -351,6 +354,12 @@ async function persistOfficeRow<T extends { id: string }>(storageKey: string, ta
     const row = changedRow as any;
     if (!row.company_id || row.company_id === 'default') {
       throw new Error('Cannot persist follow-up without a valid company profile.');
+    }
+  }
+  if (table === 'crm_quotations') {
+    const row = changedRow as any;
+    if (!row.company_id || row.company_id === 'default') {
+      throw new Error('Cannot persist quotation without a valid company profile.');
     }
   }
   if (supabase) {

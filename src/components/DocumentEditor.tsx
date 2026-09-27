@@ -137,6 +137,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   // dropdown mid-session (new documents only) can clean up the
   // now-abandoned key instead of leaving an orphaned draft behind.
   const prevDraftKeyRef = useRef<string | null>(null);
+  // Synchronous guard against double-submissions from rapid clicks / Enter keys
+  const isSubmittingRef = useRef(false);
 
   const buildDraftFields = useCallback(() => ({
     docType, docNumber, sequenceNumber, date, notes, terms, discountTotal, advance,
@@ -613,6 +615,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
   // Save Document
   const handleSaveDoc = async () => {
+    if (isSubmittingRef.current) return;
     if (!activeProfile) return;
     if (!customerName) {
       alert('Please specify a Customer Name.');
@@ -646,6 +649,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       const docId = documentToEdit?.id || crypto.randomUUID();
@@ -752,6 +756,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       alert(`Failed to save document: ${errorMsg}\n\n(Please ensure you have executed the SQL migration scripts in your Supabase SQL Editor under "SQL Editor")`);
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 

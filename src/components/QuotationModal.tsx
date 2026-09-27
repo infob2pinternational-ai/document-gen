@@ -58,6 +58,7 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
 
   const prevOpenRef = useRef(false);
   const prevTargetRef = useRef<string | null>(null);
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -166,51 +167,57 @@ export const QuotationModal: React.FC<QuotationModalProps> = ({
 
   const handleSaveDraft = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
     if (!customerName) {
       alert('Please specify customer name.');
       return;
     }
 
-    const payload: CrmQuotation = {
-      id: quotation?.id || crypto.randomUUID(),
-      quotation_number: quotationNumber,
-      // REMEDIATION (2026-08-24, full-project audit pass): was
-      // hardcoded to the literal string 'default' regardless of which
-      // company profile was actually active, so every CRM quotation
-      // ever created carried the same fake company_id. Falls back
-      // through the existing quotation's own company_id (editing), then
-      // the linked lead's company_id (that lead already carries the
-      // real active company it was created under - see leadService's
-      // saveLead), then the service layer's own active-company default.
-      company_id: quotation?.company_id || linkedLead?.company_id || officeService.getActiveCompanyId() || 'default',
-      lead_id: linkedLead?.id || quotation?.lead_id,
-      lead_number: linkedLead?.lead_number || quotation?.lead_number,
-      customer_id: linkedLead?.customer_id || quotation?.customer_id,
-      customer_name: customerName,
-      company_name: company || undefined,
-      customer_phone: phone || undefined,
-      customer_address: address || undefined,
-      service_required: serviceRequired,
-      vehicle_service_type: vehicleServiceType || undefined,
-      campaign_location: campaignLocation,
-      required_date: requiredDate,
-      number_of_days: numberOfDays,
-      subtotal,
-      tax_total: taxTotal,
-      discount_total: discountTotal,
-      total: grandTotal,
-      items,
-      notes,
-      terms,
-      approval_status: approvalStatus,
-      created_by_email: quotation?.created_by_email || userEmail,
-      created_at: quotation?.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+    const resolvedCompanyId = quotation?.company_id || linkedLead?.company_id || officeService.getActiveCompanyId();
+    if (!resolvedCompanyId || resolvedCompanyId === 'default') {
+      alert('Cannot save quotation without a valid active company profile.');
+      return;
+    }
 
-    const saved = await officeService.saveQuotation(payload, userEmail);
-    onSaved(saved);
-    onClose();
+    isSubmittingRef.current = true;
+    try {
+      const payload: CrmQuotation = {
+        id: quotation?.id || crypto.randomUUID(),
+        quotation_number: quotationNumber,
+        company_id: resolvedCompanyId,
+        lead_id: linkedLead?.id || quotation?.lead_id,
+        lead_number: linkedLead?.lead_number || quotation?.lead_number,
+        customer_id: linkedLead?.customer_id || quotation?.customer_id,
+        customer_name: customerName,
+        company_name: company || undefined,
+        customer_phone: phone || undefined,
+        customer_address: address || undefined,
+        service_required: serviceRequired,
+        vehicle_service_type: vehicleServiceType || undefined,
+        campaign_location: campaignLocation,
+        required_date: requiredDate,
+        number_of_days: numberOfDays,
+        subtotal,
+        tax_total: taxTotal,
+        discount_total: discountTotal,
+        total: grandTotal,
+        items,
+        notes,
+        terms,
+        approval_status: approvalStatus,
+        created_by_email: quotation?.created_by_email || userEmail,
+        created_at: quotation?.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const saved = await officeService.saveQuotation(payload, userEmail);
+      onSaved(saved);
+      onClose();
+    } catch (err) {
+      showSaveError(err);
+    } finally {
+      isSubmittingRef.current = false;
+    }
   };
 
   // Submit for Approval action
