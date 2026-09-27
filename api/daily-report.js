@@ -59,9 +59,9 @@ function httpsRequest(url, options, bodyContent) {
   });
 }
 
-const DEFAULT_SUPABASE_URL = 'https://rqovkmjsdwzggebvwvdk.supabase.co';
-const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxb3ZrbWpzZHd6Z2dlYnZ3dmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxNDQ0MzMsImV4cCI6MjA5ODcyMDQzM30.A_4pG8rG4KDTxa85DSjJ1Y6wGwqMwXPL9DrlzoYjZ9M';
-const DEFAULT_ADMIN_REFRESH_TOKEN = 'uiwzhphkiwvc';
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const SUPABASE_ADMIN_REFRESH_TOKEN = process.env.SUPABASE_ADMIN_REFRESH_TOKEN || '';
 
 let cachedAdminToken = null;
 let adminTokenExpiry = 0;
@@ -74,9 +74,9 @@ async function getAdminToken(forceRefresh = false) {
   if (!forceRefresh && cachedAdminToken && adminTokenExpiry > now + 60000) {
     return cachedAdminToken;
   }
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
-  const refreshToken = process.env.SUPABASE_ADMIN_REFRESH_TOKEN || DEFAULT_ADMIN_REFRESH_TOKEN;
+  const supabaseUrl = SUPABASE_URL;
+  const anonKey = SUPABASE_ANON_KEY;
+  const refreshToken = SUPABASE_ADMIN_REFRESH_TOKEN;
 
   try {
     const url = `${supabaseUrl.replace(/\/$/, '')}/auth/v1/token?grant_type=refresh_token`;
@@ -101,8 +101,8 @@ async function getAdminToken(forceRefresh = false) {
 
 // Helper to query Supabase REST API from serverless functions
 async function supabaseRest(endpoint, method = 'GET', body = null, callerToken = null) {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
+  const supabaseUrl = SUPABASE_URL;
+  const anonKey = SUPABASE_ANON_KEY;
 
   let token = callerToken || await getAdminToken(false);
   const url = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/${endpoint}`;
@@ -809,8 +809,8 @@ export default async function handler(req, res) {
 
   // Handle Quick Test Ping action
   if (action === 'test-ping') {
-    const bizyleadApiKey = process.env.BIZYLEAD_API_KEY || 'c6a02de1ededcd12342b6302ec4b052f76eb83f273994a4606fa070333a0a1ce';
-    const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || '992427143955673';
+    const bizyleadApiKey = process.env.BIZYLEAD_API_KEY;
+    const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID;
     const bizyleadBaseUrl = process.env.BIZYLEAD_BASE_URL || 'https://app.bizylead.com/api/v2/whatsapp-business';
 
     const testText = `✅ *B2P ONE - System Verification Ping*\n\nThis is a test notification confirming that your Owner WhatsApp number (*+${cleanPhone}*) is connected to the B2P WhatsApp System.\n\nDaily automated operational reports will be dispatched here at 6:30 PM IST.\n\n_B2P International Pvt Ltd_`;
@@ -1177,8 +1177,8 @@ export default async function handler(req, res) {
   }
 
   // Dispatch via Bizylead WhatsApp API
-  const bizyleadApiKey = process.env.BIZYLEAD_API_KEY || 'c6a02de1ededcd12342b6302ec4b052f76eb83f273994a4606fa070333a0a1ce';
-  const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID || '992427143955673';
+  const bizyleadApiKey = process.env.BIZYLEAD_API_KEY;
+  const bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID;
   const bizyleadBaseUrl = process.env.BIZYLEAD_BASE_URL || 'https://app.bizylead.com/api/v2/whatsapp-business';
   const bizyUrl = `${bizyleadBaseUrl.replace(/\/$/, '')}/messages`;
 

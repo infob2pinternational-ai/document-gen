@@ -368,10 +368,13 @@ function App() {
       await supabase.auth.signOut();
     }
     localStorage.removeItem('supabase_user');
+    localStorage.removeItem('docgen_active_profile_id');
     setUser(null);
     setProfiles([]);
     setActiveProfile(null);
     setDocuments([]);
+    setCustomers([]);
+    setServices([]);
     financeService.setActiveCompany(null);
     leadService.setActiveCompany(null);
   };

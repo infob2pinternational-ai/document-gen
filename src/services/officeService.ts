@@ -583,7 +583,11 @@ export const officeService = {
     const scopeId = companyId && companyId !== 'default' ? companyId : leadService.getActiveCompany();
 
     return list.filter(item => {
-      if (scopeId && scopeId !== 'default' && item.company_id && item.company_id !== 'default' && item.company_id !== scopeId) return false;
+      if (scopeId && scopeId !== 'default' && UUID_REGEX.test(scopeId)) {
+        if (item.company_id !== scopeId) return false;
+      } else if (scopeId && scopeId !== 'default' && item.company_id && item.company_id !== 'default' && item.company_id !== scopeId) {
+        return false;
+      }
       if (staffEmail && staffEmail !== 'all') {
         const clean = normalizeStaffEmail(staffEmail);
         if (clean && normalizeStaffEmail(item.assigned_staff_email) !== clean) return false;
@@ -628,6 +632,14 @@ export const officeService = {
   async saveFollowUp(item: Partial<FollowUp> & { customer_name: string; due_date: string; reason: string }, userEmail: string): Promise<FollowUp> {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
     const existing = item.id ? list.find(f => f.id === item.id) : undefined;
+    if (existing) {
+      const activeCompany = leadService.getActiveCompany();
+      if (activeCompany && activeCompany !== 'default' && UUID_REGEX.test(activeCompany)) {
+        if (existing.company_id && existing.company_id !== 'default' && existing.company_id !== activeCompany) {
+          throw new Error('Cannot modify a follow-up belonging to another company.');
+        }
+      }
+    }
     const oldLeadId = existing?.lead_id;
     const oldCompanyId = existing?.company_id;
     const isNew = !existing;
@@ -834,6 +846,12 @@ export const officeService = {
   async deleteFollowUp(id: string): Promise<void> {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
     const existing = list.find(f => f.id === id);
+    const activeCompany = leadService.getActiveCompany();
+    if (existing && activeCompany && activeCompany !== 'default' && UUID_REGEX.test(activeCompany)) {
+      if (existing.company_id && existing.company_id !== 'default' && existing.company_id !== activeCompany) {
+        throw new Error('Cannot delete a follow-up belonging to another company.');
+      }
+    }
     const updated = list.filter(f => f.id !== id);
     await persistOfficeRowDeleted(FOLLOW_UPS_KEY, 'follow_ups', updated, id);
 
@@ -881,6 +899,9 @@ export const officeService = {
     const list = getLocal<CrmQuotation[]>(QUOTATIONS_KEY, SEED_QUOTATIONS);
     const scopeId = companyId || leadService.getActiveCompany();
     if (scopeId) {
+      if (scopeId !== 'default' && UUID_REGEX.test(scopeId)) {
+        return list.filter(q => q.company_id === scopeId);
+      }
       return list.filter(q => !q.company_id || q.company_id === 'default' || q.company_id === scopeId);
     }
     return list;
@@ -917,6 +938,13 @@ export const officeService = {
       }
     } else {
       const idx = list.findIndex(existing => existing.id === q.id);
+      const existing = list[idx];
+      const activeCompany = leadService.getActiveCompany();
+      if (existing && activeCompany && activeCompany !== 'default' && UUID_REGEX.test(activeCompany)) {
+        if (existing.company_id && existing.company_id !== 'default' && existing.company_id !== activeCompany) {
+          throw new Error('Cannot modify a quotation belonging to another company.');
+        }
+      }
       list[idx] = q;
       await persistOfficeRow(QUOTATIONS_KEY, 'crm_quotations', list, q);
     }

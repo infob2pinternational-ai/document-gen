@@ -128,5 +128,8 @@ $$;
 REVOKE ALL ON FUNCTION public.claim_telecalling_sync_queue_rows(text, integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.claim_telecalling_sync_queue_rows(text, integer) TO authenticated;
 
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.telecalling_entries TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.telecalling_google_sync_queue TO authenticated;
+
 COMMIT;
 

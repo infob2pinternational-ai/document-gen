@@ -431,7 +431,9 @@ export const leadService = {
     const leads = getStoredLeads();
     const scopeId = companyId || activeCompanyId;
     const scoped = scopeId
-      ? leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === scopeId)
+      ? (scopeId !== 'default' && UUID_REGEX.test(scopeId)
+          ? leads.filter(l => l.company_id === scopeId)
+          : leads.filter(l => !l.company_id || l.company_id === 'default' || l.company_id === scopeId))
       : leads;
     return scoped.sort((a, b) => {
       const cmp = compareLeadNumbers(b.lead_number || b.id, a.lead_number || a.id);
@@ -440,9 +442,16 @@ export const leadService = {
     });
   },
 
-  getLeadById(id: string): Lead | null {
+  getLeadById(id: string, companyId?: string): Lead | null {
     const leads = getStoredLeads();
-    return leads.find(l => l.id === id) || null;
+    const lead = leads.find(l => l.id === id);
+    if (!lead) return null;
+    if (companyId && companyId !== 'default' && UUID_REGEX.test(companyId)) {
+      if (lead.company_id && lead.company_id !== 'default' && lead.company_id !== companyId) {
+        return null;
+      }
+    }
+    return lead;
   },
 
   getSubDistrict(id: string): string | undefined {
@@ -453,11 +462,28 @@ export const leadService = {
     const doSave = async (): Promise<Lead> => {
       const leads = getStoredLeads();
       const existing = lead.id ? leads.find(l => l.id === lead.id) : undefined;
+      if (existing) {
+        if (activeCompanyId && activeCompanyId !== 'default' && UUID_REGEX.test(activeCompanyId)) {
+          if (existing.company_id && existing.company_id !== 'default' && existing.company_id !== activeCompanyId) {
+            throw new Error('Cannot modify a lead belonging to another company.');
+          }
+        }
+      }
+
+      if (lead.company_id && activeCompanyId && activeCompanyId !== 'default' && UUID_REGEX.test(activeCompanyId)) {
+        if (lead.company_id !== 'default' && lead.company_id !== activeCompanyId) {
+          throw new Error('Cannot assign lead to a different company than the active profile.');
+        }
+      }
+
       const isNew = !existing;
       const now = new Date().toISOString();
       lead = { ...existing, ...lead };
 
-      const companyId = lead.company_id || activeCompanyId || 'default';
+      const resolvedCompany = (activeCompanyId && activeCompanyId !== 'default' && UUID_REGEX.test(activeCompanyId))
+        ? activeCompanyId
+        : (lead.company_id || activeCompanyId || 'default');
+      const companyId = resolvedCompany;
       const leadNumberMap = getLeadNumberMap();
       let leadNumber = lead.lead_number || existing?.lead_number || (lead.id ? leadNumberMap[lead.id] : undefined);
 
@@ -484,7 +510,7 @@ export const leadService = {
     const leadRecord: Lead = {
       id: lead.id || generateUUID(),
       lead_number: leadNumber,
-      company_id: lead.company_id || activeCompanyId || 'default',
+      company_id: resolvedCompany,
       customer_id: lead.customer_id,
       customer_name: lead.customer_name,
       company_name: lead.company_name,
@@ -576,6 +602,12 @@ export const leadService = {
 
   async deleteLead(id: string): Promise<void> {
     const leads = getStoredLeads();
+    const target = leads.find(l => l.id === id);
+    if (target && activeCompanyId && activeCompanyId !== 'default' && UUID_REGEX.test(activeCompanyId)) {
+      if (target.company_id && target.company_id !== 'default' && target.company_id !== activeCompanyId) {
+        throw new Error('Cannot delete a lead belonging to another company.');
+      }
+    }
     const updated = leads.filter(l => l.id !== id);
     await persistCrmRowDeleted(LEADS_KEY, 'leads', updated, id);
     setSubDistrictInMap(id, undefined);
