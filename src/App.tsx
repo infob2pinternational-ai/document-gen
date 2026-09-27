@@ -331,7 +331,12 @@ function App() {
     // Read cached user
     const cached = localStorage.getItem('supabase_user');
     if (cached) {
-      setUser(JSON.parse(cached));
+      try {
+        setUser(JSON.parse(cached));
+      } catch (err) {
+        console.warn('[App] Corrupt cached user session, removing:', err);
+        localStorage.removeItem('supabase_user');
+      }
     }
 
     // Listener

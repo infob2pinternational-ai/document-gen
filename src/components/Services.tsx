@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { CompanyProfile, Service } from '../types';
 import { dbService } from '../services/db';
 import { Search, Plus, Edit, Trash2, ShieldAlert, X } from 'lucide-react';
@@ -30,6 +30,7 @@ export const Services: React.FC<ServicesProps> = ({
   const [hsnSac, setHsnSac] = useState('');
   const [gstPercentage, setGstPercentage] = useState<number>(18);
   const [loading, setLoading] = useState(false);
+  const saveInProgressRef = useRef(false);
 
   const handleOpenModal = (service: Service | null = null) => {
     if (service) {
@@ -54,8 +55,9 @@ export const Services: React.FC<ServicesProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeProfile) return;
+    if (!activeProfile || saveInProgressRef.current) return;
 
+    saveInProgressRef.current = true;
     setLoading(true);
     try {
       const trimmedName = name.trim();
@@ -82,6 +84,7 @@ export const Services: React.FC<ServicesProps> = ({
       console.error('Error saving service:', err);
       alert('Failed to save service.');
     } finally {
+      saveInProgressRef.current = false;
       setLoading(false);
     }
   };

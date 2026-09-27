@@ -30,6 +30,7 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
   colRate = 'Rate'
 }) => {
   // Form States
+  const saveInProgressRef = useRef(false);
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
   const [serviceSearchQuery, setServiceSearchQuery] = useState<string>('');
   const [isServiceDropdownOpen, setIsServiceDropdownOpen] = useState<boolean>(false);
@@ -203,33 +204,39 @@ export const LineItemModal: React.FC<LineItemModalProps> = ({
   const currSymbol = currency === 'INR' ? '₹' : (currency === 'USD' ? '$' : currency + ' ');
 
   const handleSave = () => {
+    if (saveInProgressRef.current) return;
     if (!isValid) return;
 
-    // Append notes to description if provided
-    let finalDesc = description.trim();
-    if (notes.trim()) {
-      finalDesc += `\n[Note: ${notes.trim()}]`;
+    saveInProgressRef.current = true;
+    try {
+      // Append notes to description if provided
+      let finalDesc = description.trim();
+      if (notes.trim()) {
+        finalDesc += `\n[Note: ${notes.trim()}]`;
+      }
+
+      const itemToSave: DocumentItem = {
+        id: itemToEdit?.id || crypto.randomUUID(),
+        document_id: itemToEdit?.document_id || '',
+        service_id: selectedServiceId || undefined,
+        description: finalDesc,
+        hsn_sac: hsnSac.trim() || undefined,
+        quantity: qtyNum,
+        days: daysNum > 1 ? daysNum : undefined,
+        unit: unit.trim() || 'Unit',
+        rate: rateNum,
+        gst_percentage: isTaxableDoc ? gstPercentage : 0,
+        amount: subtotal, // Line Subtotal compatible with backend DB & PDF
+        sort_order: itemToEdit?.sort_order ?? 0,
+        discount_amount: calculatedDiscountAmount > 0 ? calculatedDiscountAmount : undefined,
+        discount_percent: (calculatedDiscountAmount > 0 && Number(discountPercent) > 0) ? Number(discountPercent) : undefined
+      };
+
+      onSaveItem(itemToSave);
+      onClose();
+    } finally {
+      saveInProgressRef.current = false;
     }
-
-    const itemToSave: DocumentItem = {
-      id: itemToEdit?.id || crypto.randomUUID(),
-      document_id: itemToEdit?.document_id || '',
-      service_id: selectedServiceId || undefined,
-      description: finalDesc,
-      hsn_sac: hsnSac.trim() || undefined,
-      quantity: qtyNum,
-      days: daysNum > 1 ? daysNum : undefined,
-      unit: unit.trim() || 'Unit',
-      rate: rateNum,
-      gst_percentage: isTaxableDoc ? gstPercentage : 0,
-      amount: subtotal, // Line Subtotal compatible with backend DB & PDF
-      sort_order: itemToEdit?.sort_order ?? 0,
-      discount_amount: calculatedDiscountAmount > 0 ? calculatedDiscountAmount : undefined,
-      discount_percent: (calculatedDiscountAmount > 0 && Number(discountPercent) > 0) ? Number(discountPercent) : undefined
-    };
-
-    onSaveItem(itemToSave);
-    onClose();
   };
 
   // Keyboard shortcut listener (Esc -> Close, Ctrl+Enter -> Save)

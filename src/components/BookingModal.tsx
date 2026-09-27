@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { Booking, BookingStatus, Lead, Resource } from '../types';
 import { SERVICE_OPTIONS, SERVICE_SUB_DIVISIONS } from '../types';
@@ -36,6 +36,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [status, setStatus] = useState<BookingStatus>('CONFIRMED');
   const [notes, setNotes] = useState('');
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveInProgressRef = useRef(false);
 
   const resources = officeService.getResources();
 
@@ -181,6 +183,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveInProgressRef.current) return;
     setConflictError(null);
 
     if (!customerName.trim()) {
@@ -200,33 +203,43 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return;
     }
 
-    const res = await officeService.saveBooking({
-      id: booking?.id,
-      booking_number: booking?.booking_number,
-      customer_name: customerName.trim(),
-      company_name: companyName.trim() || undefined,
-      customer_phone: phone.trim() || undefined,
-      lead_id: booking?.lead_id || prefilledLead?.id,
-      lead_number: booking?.lead_number || prefilledLead?.lead_number,
-      service_required: serviceRequired,
-      vehicle_service_type: vehicleServiceType.trim() || undefined,
-      resource_id: resourceId,
-      start_date: startDate,
-      end_date: endDate,
-      location: location.trim() || 'Kerala',
-      driver_or_operator: driverOperator.trim() || undefined,
-      status,
-      notes: notes.trim() || undefined
-    }, userEmail);
+    saveInProgressRef.current = true;
+    setIsSaving(true);
+    try {
+      const res = await officeService.saveBooking({
+        id: booking?.id,
+        booking_number: booking?.booking_number,
+        customer_name: customerName.trim(),
+        company_name: companyName.trim() || undefined,
+        customer_phone: phone.trim() || undefined,
+        lead_id: booking?.lead_id || prefilledLead?.id,
+        lead_number: booking?.lead_number || prefilledLead?.lead_number,
+        service_required: serviceRequired,
+        vehicle_service_type: vehicleServiceType.trim() || undefined,
+        resource_id: resourceId,
+        start_date: startDate,
+        end_date: endDate,
+        location: location.trim() || 'Kerala',
+        driver_or_operator: driverOperator.trim() || undefined,
+        status,
+        notes: notes.trim() || undefined
+      }, userEmail);
 
-    if (!res.success) {
-      setConflictError(res.error || 'Resource conflict detected.');
-      return;
-    }
+      if (!res.success) {
+        setConflictError(res.error || 'Resource conflict detected.');
+        return;
+      }
 
-    if (res.booking) {
-      onSaved(res.booking);
-      onClose();
+      if (res.booking) {
+        onSaved(res.booking);
+        onClose();
+      }
+    } catch (err) {
+      console.error('[BookingModal] Save booking failed:', err);
+      alert('Failed to save booking.');
+    } finally {
+      saveInProgressRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -483,8 +496,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <button type="button" onClick={onClose} className="btn-secondary">
               Cancel
             </button>
-            <button type="submit" className="btn-primary">
-              {booking ? 'Update Booking' : 'Confirm Calendar Reservation'}
+            <button type="submit" className="btn-primary" disabled={isSaving} style={{ opacity: isSaving ? 0.7 : 1, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
+              {isSaving ? 'Saving...' : booking ? 'Update Booking' : 'Confirm Calendar Reservation'}
             </button>
           </div>
 

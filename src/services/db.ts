@@ -209,19 +209,41 @@ CREATE POLICY approver_devices_auth_all ON approver_devices
 // instead of inventing a second, possibly-divergent check.
 export const isCloudActive = (): boolean => {
   if (!supabase) return false;
-  // If supabase is initialized, only write/read if a session user exists
-  const storedUser = localStorage.getItem('supabase_user');
-  return !!storedUser;
+  try {
+    const storedUser = localStorage.getItem('supabase_user');
+    return !!storedUser;
+  } catch {
+    return false;
+  }
+};
+
+const getStoredUserId = (): string | null => {
+  try {
+    const userStr = localStorage.getItem('supabase_user');
+    return userStr ? (JSON.parse(userStr).id || null) : null;
+  } catch {
+    return null;
+  }
 };
 
 // Local storage helpers
 const getLocal = <T>(key: string, defaultValue: T): T => {
-  const data = localStorage.getItem(`docgen_${key}`);
-  return data ? JSON.parse(data) : defaultValue;
+  try {
+    const data = localStorage.getItem(`docgen_${key}`);
+    return data ? JSON.parse(data) : defaultValue;
+  } catch (err) {
+    console.warn(`[dbService] Corrupt localStorage cache for docgen_${key}, falling back to default:`, err);
+    return defaultValue;
+  }
 };
 
 const setLocal = <T>(key: string, value: T): void => {
-  localStorage.setItem(`docgen_${key}`, JSON.stringify(value));
+  try {
+    localStorage.setItem(`docgen_${key}`, JSON.stringify(value));
+  } catch (err) {
+    console.error(`[dbService] Failed to write localStorage for docgen_${key}:`, err);
+    throw err;
+  }
 };
 
 // Shared payload builder for Google Sheets sync (Phase B4) - used by both
@@ -299,8 +321,7 @@ export const dbService = {
     };
 
     if (isCloudActive() && supabase) {
-      const userStr = localStorage.getItem('supabase_user');
-      const userId = userStr ? JSON.parse(userStr).id : null;
+      const userId = getStoredUserId();
       
       const payload: any = { ...cleanProfile, user_id: userId };
       if (isIntl) {
@@ -375,8 +396,7 @@ export const dbService = {
       customer.id = crypto.randomUUID();
     }
     if (isCloudActive() && supabase) {
-      const userStr = localStorage.getItem('supabase_user');
-      const userId = userStr ? JSON.parse(userStr).id : null;
+      const userId = getStoredUserId();
       const payload = { ...customer, user_id: userId };
       
       const { data: existing } = await supabase.from('customers').select('id').eq('id', customer.id).maybeSingle();
@@ -532,8 +552,7 @@ export const dbService = {
     const cleanService = { ...service, name: trimmedName };
 
     if (isCloudActive() && supabase) {
-      const userStr = localStorage.getItem('supabase_user');
-      const userId = userStr ? JSON.parse(userStr).id : null;
+      const userId = getStoredUserId();
       let payload = { ...cleanService, user_id: userId };
 
       // Check if service already exists by ID
