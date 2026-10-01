@@ -226,6 +226,10 @@ async function updateDispatchInSupabase(idempotencyId, fields, callerToken = nul
     if (!res.ok) {
       throw new Error(`Dispatch persistence failed (HTTP ${res.status}): ${sanitizeErrorMessage(res.text())}`);
     }
+    const savedRows = res.json();
+    if (!Array.isArray(savedRows) || savedRows.length !== 1) {
+      throw new Error('Dispatch persistence failed: update did not confirm exactly one saved row.');
+    }
   } catch (err) {
     throw new Error(`Dispatch persistence failed: ${sanitizeErrorMessage(err)}`);
   }
