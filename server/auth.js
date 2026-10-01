@@ -57,3 +57,40 @@ export async function requireCompanyAccess(auth, companyId, res) {
     return false;
   }
 }
+
+const OWNER_EMAILS = new Set([
+  'sarathjohnpanengadan@gmail.com',
+  'sarathjohnpanegdan@gmail.com',
+  'owner@b2p.com'
+]);
+
+// Enforce owner-only authorization at the server boundary.
+export async function requireOwner(req, res) {
+  const auth = await requireUser(req, res);
+  if (!auth) return null;
+
+  const userEmail = (auth.user?.email || '').toLowerCase().trim();
+  if (OWNER_EMAILS.has(userEmail)) {
+    return auth;
+  }
+
+  try {
+    const rpcRes = await fetch(`${auth.url}/rest/v1/rpc/current_app_role`, {
+      method: 'POST',
+      headers: auth.headers,
+      signal: AbortSignal.timeout(10000)
+    });
+    if (rpcRes.ok) {
+      const role = await rpcRes.json();
+      if (role === 'owner') {
+        return auth;
+      }
+    }
+  } catch (err) {
+    console.warn('[auth] Could not verify owner role via RPC:', err);
+  }
+
+  res.status(403).json({ error: 'Access restricted to company owner.' });
+  return null;
+}
+

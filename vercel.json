@@ -1,14 +1,45 @@
 {
   "rewrites": [
-    { "source": "/api/daily-report", "destination": "/api/daily-report" },
-    { "source": "/api/whatsapp", "destination": "/api/whatsapp" },
-    { "source": "/api/bizylead-webhook", "destination": "/api/bizylead-webhook" },
-    { "source": "/doc/:id/send-push", "destination": "/api/doc?id=:id&action=send-push" },
-    { "source": "/doc/:id", "destination": "/api/doc?id=:id" },
-    { "source": "/doc/:id/:path*", "destination": "/api/doc?id=:id" },
-    { "source": "/billing/assets/:path*", "destination": "/billing/assets/:path*" },
-    { "source": "/billing/:path*", "destination": "/billing/index.html" },
-    { "source": "/", "destination": "/billing/index.html" }
+    {
+      "source": "/api/detailed-staff-report",
+      "destination": "/api/detailed-staff-report"
+    },
+    {
+      "source": "/api/daily-report",
+      "destination": "/api/daily-report"
+    },
+    {
+      "source": "/api/whatsapp",
+      "destination": "/api/whatsapp"
+    },
+    {
+      "source": "/api/bizylead-webhook",
+      "destination": "/api/bizylead-webhook"
+    },
+    {
+      "source": "/doc/:id/send-push",
+      "destination": "/api/doc?id=:id&action=send-push"
+    },
+    {
+      "source": "/doc/:id",
+      "destination": "/api/doc?id=:id"
+    },
+    {
+      "source": "/doc/:id/:path*",
+      "destination": "/api/doc?id=:id"
+    },
+    {
+      "source": "/billing/assets/:path*",
+      "destination": "/billing/assets/:path*"
+    },
+    {
+      "source": "/billing/:path*",
+      "destination": "/billing/index.html"
+    },
+    {
+      "source": "/",
+      "destination": "/billing/index.html"
+    }
   ],
   "headers": [
     {
@@ -36,11 +67,26 @@
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.googleapis.com https://script.google.com https://script.googleusercontent.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
         },
-        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()" }
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=()"
+        }
       ]
     }
   ],
@@ -51,13 +97,8 @@
   },
   "crons": [
     {
-      "path": "/api/daily-report?action=cron&slot=day",
-      "schedule": "0 13 * * *"
-    },
-    {
-      "path": "/api/daily-report?action=cron&slot=night",
-      "schedule": "0 18 * * *"
+      "path": "/api/detailed-staff-report?action=cron",
+      "schedule": "30 14 * * *"
     }
   ]
 }
-

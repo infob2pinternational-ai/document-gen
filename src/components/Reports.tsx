@@ -6,8 +6,10 @@ import { metricsService } from '../services/metricsService';
 import { getAvailableStaffList } from '../utils/staffUtils';
 import { 
   BarChart3, 
-  Users
+  Users,
+  FileCheck2
 } from 'lucide-react';
+import { DetailedStaffReport } from './DetailedStaffReport';
 
 interface ReportsProps {
   userRole?: string;
@@ -18,6 +20,12 @@ export const Reports: React.FC<ReportsProps> = ({
   userRole = 'owner',
   userEmail = 'owner@b2p.com'
 }) => {
+  const isOwner = userRole === 'owner' ||
+    userEmail.toLowerCase().trim() === 'sarathjohnpanengadan@gmail.com' ||
+    userEmail.toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' ||
+    userEmail.toLowerCase().trim() === 'owner@b2p.com';
+
+  const [activeSection, setActiveSection] = useState<'analytics' | 'detailed-staff-report'>('analytics');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
   const [staffFilter, setStaffFilter] = useState<string>(userRole === 'telecaller' ? userEmail : 'all');
@@ -87,49 +95,107 @@ export const Reports: React.FC<ReportsProps> = ({
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       
-      {/* Header */}
-      <div className="glass-panel" style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '1rem 1.5rem',
-        flexWrap: 'wrap',
-        gap: '1rem'
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Operational & Conversion Analytics
-            </h1>
-            <span className="badge badge-neutral">
-              Executive View
-            </span>
-          </div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>
-            Cross-departmental telemetry on inquiry channels, conversion rates, and staff velocity.
-          </p>
+      {/* Top Tab Bar for Owner */}
+      {isOwner && (
+        <div className="glass-panel no-print" style={{
+          display: 'flex',
+          gap: '0.5rem',
+          padding: '0.4rem 0.6rem'
+        }}>
+          <button
+            type="button"
+            className={`tab-btn ${activeSection === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveSection('analytics')}
+            style={{
+              padding: '0.45rem 1rem',
+              borderRadius: '6px',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: activeSection === 'analytics' ? 'var(--brand-blue)' : 'transparent',
+              color: activeSection === 'analytics' ? '#ffffff' : 'var(--text-secondary)',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <BarChart3 size={15} />
+            <span>Operational & Conversion Analytics</span>
+          </button>
+
+          <button
+            type="button"
+            className={`tab-btn ${activeSection === 'detailed-staff-report' ? 'active' : ''}`}
+            onClick={() => setActiveSection('detailed-staff-report')}
+            style={{
+              padding: '0.45rem 1rem',
+              borderRadius: '6px',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: activeSection === 'detailed-staff-report' ? 'var(--brand-blue)' : 'transparent',
+              color: activeSection === 'detailed-staff-report' ? '#ffffff' : 'var(--text-secondary)',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <FileCheck2 size={15} />
+            <span>Detailed Staff Report</span>
+            <span className="badge badge-warning" style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem' }}>Owner</span>
+          </button>
         </div>
+      )}
 
-        {!isRestrictedStaff && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>STAFF SCOPE:</span>
-            <select
-              value={staffFilter}
-              onChange={(e) => setStaffFilter(e.target.value)}
-              style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', minWidth: '220px' }}
-            >
-              <option value="all">All Telecallers & Staff</option>
-              {availableStaff.map(s => (
-                <option key={s.email} value={s.email}>{s.label}</option>
-              ))}
-            </select>
+      {activeSection === 'detailed-staff-report' ? (
+        <DetailedStaffReport userRole={userRole} userEmail={userEmail} />
+      ) : (
+        <>
+          {/* Header */}
+          <div className="glass-panel" style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '1rem 1.5rem',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  Operational & Conversion Analytics
+                </h1>
+                <span className="badge badge-neutral">
+                  Executive View
+                </span>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>
+                Cross-departmental telemetry on inquiry channels, conversion rates, and staff velocity.
+              </p>
+            </div>
+
+            {!isRestrictedStaff && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>STAFF SCOPE:</span>
+                <select
+                  value={staffFilter}
+                  onChange={(e) => setStaffFilter(e.target.value)}
+                  style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', minWidth: '220px' }}
+                >
+                  <option value="all">All Telecallers & Staff</option>
+                  {availableStaff.map(s => (
+                    <option key={s.email} value={s.email}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Financial Conversion KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-        <div className="glass-panel" style={{ padding: '1rem 1.25rem' }}>
+          {/* Financial Conversion KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+            <div className="glass-panel" style={{ padding: '1rem 1.25rem' }}>
           <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Total Quoted Value</span>
           <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--brand-blue)', marginTop: '0.15rem' }}>
             ₹{totalQuotedValue.toLocaleString('en-IN')}
@@ -298,7 +364,9 @@ export const Reports: React.FC<ReportsProps> = ({
           </table>
         </div>
       </div>
+    </>
+  )}
 
-    </div>
-  );
+</div>
+);
 };
