@@ -558,6 +558,8 @@ test('Atomic claim operation ensures only one of two concurrent executions acqui
         RETURN jsonb_build_object('acquired', false, 'reason', 'conflict_lost');
     END;
     $$;
+    ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+    REVOKE ALL ON FUNCTION claim_owner_report_dispatch(TEXT, TEXT, DATE, TEXT, BOOLEAN) FROM PUBLIC;
   `);
 
   const idempotencyId = `detailed_staff_report_${TARGET_STAFF_EMAIL}_2026-09-29`;
@@ -608,28 +610,69 @@ test('Atomic claim operation ensures only one of two concurrent executions acqui
   assert.equal(claimForce.rows[0].res.acquired, true, 'Force=true must allow re-claim');
 });
 
-// ─── 11. Supabase Unavailable Halts Sending (No In-Memory Fallback) ─────────────
-test('Stops sending immediately if Supabase is unavailable and does not fall back to in-memory', async () => {
+// ─── 11. Supabase Unavailable or Missing Service Role Key Halts Sending ─────────────
+test('Stops sending immediately if Supabase or service role key is unavailable (no fallback to in-memory)', async () => {
   const origUrl = process.env.SUPABASE_URL;
   const origCron = process.env.CRON_SECRET;
+  const origServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   process.env.CRON_SECRET = 'test-storage-fail-cron';
-  delete process.env.SUPABASE_URL; // Simulate storage completely unavailable
 
   try {
-    const req = {
+    // 1. Missing SUPABASE_SERVICE_ROLE_KEY halts sending
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_URL = 'https://mock.supabase.co';
+
+    const reqNoKey = {
       method: 'POST',
       query: { action: 'cron' },
       headers: { authorization: 'Bearer test-storage-fail-cron' },
-      body: { date: '2026-09-29' } // Real execution mode (not dry-run)
+      body: { date: '2026-09-29' }
     };
-    const res = createMockRes();
-    await handler(req, res);
+    const resNoKey = createMockRes();
+    await handler(reqNoKey, resNoKey);
 
-    assert.equal(res.statusCode, 503, 'Must halt and return 503 Service Unavailable when persistent storage is unavailable');
-    assert.match(res.body.error, /Persistent storage unavailable/);
+    assert.equal(resNoKey.statusCode, 503);
+    assert.match(resNoKey.body.error, /Persistent storage unavailable/);
+    assert.match(resNoKey.body.details, /requires SUPABASE_SERVICE_ROLE_KEY/);
+
+    // 2. Missing SUPABASE_URL halts sending
+    delete process.env.SUPABASE_URL;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-service-role-key';
+
+    const reqNoUrl = {
+      method: 'POST',
+      query: { action: 'cron' },
+      headers: { authorization: 'Bearer test-storage-fail-cron' },
+      body: { date: '2026-09-29' }
+    };
+    const resNoUrl = createMockRes();
+    await handler(reqNoUrl, resNoUrl);
+
+    assert.equal(resNoUrl.statusCode, 503);
+    assert.match(resNoUrl.body.error, /Persistent storage unavailable/);
+
+    // 3. PostgreSQL RPC failure halts sending immediately with an error (no fallback locking attempted)
+    process.env.SUPABASE_URL = 'https://mock.supabase.co';
+    const oldFetch = globalThis.fetch;
+    // Mock httpsRequest by intercepting or setting invalid URL
+    // Since handler uses httpsRequest, an invalid port/host will throw and halt with 503
+    process.env.SUPABASE_URL = 'https://127.0.0.1:9'; // unreachable port
+
+    const reqRpcFail = {
+      method: 'POST',
+      query: { action: 'cron' },
+      headers: { authorization: 'Bearer test-storage-fail-cron' },
+      body: { date: '2026-09-29' }
+    };
+    const resRpcFail = createMockRes();
+    await handler(reqRpcFail, resRpcFail);
+
+    assert.equal(resRpcFail.statusCode, 503);
+    assert.match(resRpcFail.body.error, /Persistent storage unavailable/);
   } finally {
     process.env.SUPABASE_URL = origUrl;
     process.env.CRON_SECRET = origCron;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = origServiceKey;
   }
 });
 

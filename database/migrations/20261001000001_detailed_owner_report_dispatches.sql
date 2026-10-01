@@ -141,5 +141,5 @@ CREATE POLICY owner_report_dispatches_update ON public.owner_report_dispatches
     lower(auth.jwt() ->> 'email') IN ('sarathjohnpanengadan@gmail.com', 'sarathjohnpanegdan@gmail.com', 'owner@b2p.com')
   );
 
-REVOKE ALL ON FUNCTION public.claim_owner_report_dispatch(TEXT, TEXT, DATE, TEXT, BOOLEAN) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.claim_owner_report_dispatch(TEXT, TEXT, DATE, TEXT, BOOLEAN) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.claim_owner_report_dispatch(TEXT, TEXT, DATE, TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_owner_report_dispatch(TEXT, TEXT, DATE, TEXT, BOOLEAN) TO service_role;

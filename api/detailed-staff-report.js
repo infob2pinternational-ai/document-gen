@@ -146,147 +146,49 @@ async function loadDispatchesFromSupabase(callerToken = null) {
 
 /**
  * Executes an atomic PostgreSQL claim operation for the report dispatch.
- * Guarantees that only the execution that acquires the claim can send messages.
- * If Supabase is unavailable, throws immediately without falling back to memory.
+ * Calls public.claim_owner_report_dispatch RPC using SUPABASE_SERVICE_ROLE_KEY.
+ * Restricts claim execution to service_role only.
+ * If the PostgreSQL RPC fails or is unavailable, halts immediately with an error (no fallback locking methods).
  */
-async function acquireAtomicClaimInPostgres(idempotencyId, staffEmail, targetDate, recipientPhone, force = false, callerToken = null) {
+async function acquireAtomicClaimInPostgres(idempotencyId, staffEmail, targetDate, recipientPhone, force = false) {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    throw new Error('Persistent storage unavailable: server-side claim operation requires SUPABASE_SERVICE_ROLE_KEY.');
+  }
   if (!SUPABASE_URL) {
     throw new Error('Persistent storage unavailable: SUPABASE_URL not configured.');
   }
-  const token = callerToken || await getAdminToken(false);
-  if (!token) {
-    throw new Error('Persistent storage unavailable: cannot authenticate with Supabase.');
-  }
 
-  // 1. First, attempt atomic stored procedure RPC: claim_owner_report_dispatch
-  try {
-    const rpcUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/claim_owner_report_dispatch`;
-    const rpcRes = await httpsRequest(rpcUrl, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    }, JSON.stringify({
-      p_id: idempotencyId,
-      p_staff_email: staffEmail,
-      p_report_date: targetDate,
-      p_recipient: recipientPhone,
-      p_force: Boolean(force)
-    }));
-
-    if (rpcRes.ok) {
-      const claimResult = rpcRes.json();
-      if (claimResult && typeof claimResult.acquired === 'boolean') {
-        return {
-          acquired: claimResult.acquired,
-          reason: claimResult.reason,
-          dispatch: normalizeDbRowToHistory(claimResult.dispatch)
-        };
-      }
-    }
-  } catch (rpcErr) {
-    console.warn('[Detailed Staff Report] RPC claim error, trying atomic table operation:', sanitizeErrorMessage(rpcErr));
-  }
-
-  // 2. Direct atomic PostgreSQL INSERT operation against owner_report_dispatches
-  const tableUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/owner_report_dispatches`;
-  const insertRes = await httpsRequest(tableUrl, {
+  const rpcUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/claim_owner_report_dispatch`;
+  const rpcRes = await httpsRequest(rpcUrl, {
     method: 'POST',
     headers: {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
+      'apikey': serviceRoleKey,
+      'Authorization': `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json'
     }
   }, JSON.stringify({
-    id: idempotencyId,
-    report_type: 'detailed_staff_report',
-    staff_email: staffEmail,
-    report_date: targetDate,
-    recipient: recipientPhone,
-    status: 'in_progress',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+    p_id: idempotencyId,
+    p_staff_email: staffEmail,
+    p_report_date: targetDate,
+    p_recipient: recipientPhone,
+    p_force: Boolean(force)
   }));
 
-  // Atomic INSERT succeeded: Claim acquired!
-  if (insertRes.ok) {
-    const rows = insertRes.json();
-    return {
-      acquired: true,
-      reason: 'new_claim',
-      dispatch: normalizeDbRowToHistory(rows?.[0])
-    };
+  if (!rpcRes.ok) {
+    throw new Error(`claim_owner_report_dispatch RPC failed with HTTP ${rpcRes.status}: ${sanitizeErrorMessage(rpcRes.text())}`);
   }
 
-  // If INSERT failed due to duplicate primary key (409 Conflict or 400 unique constraint)
-  if (insertRes.status === 409 || insertRes.status === 400) {
-    // Read the existing record to inspect its current status
-    const getRes = await httpsRequest(`${tableUrl}?id=eq.${encodeURIComponent(idempotencyId)}&select=*`, {
-      method: 'GET',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!getRes.ok) {
-      throw new Error(`Failed to query existing dispatch: HTTP ${getRes.status}`);
-    }
-
-    const rows = getRes.json();
-    const existing = normalizeDbRowToHistory(rows?.[0]);
-
-    if (!existing) {
-      return { acquired: false, reason: 'conflict_lost', dispatch: null };
-    }
-
-    // Already sent or delivered and not force: Claim rejected
-    if ((existing.status === 'sent' || existing.status === 'delivered') && !force) {
-      return { acquired: false, reason: 'already_sent', dispatch: existing };
-    }
-
-    // Active in_progress lock within 5 minutes: Claim rejected (another container running)
-    if (existing.status === 'in_progress' && !force) {
-      const lastUpdate = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-      if (Date.now() - lastUpdate < 5 * 60 * 1000) {
-        return { acquired: false, reason: 'in_progress_locked', dispatch: existing };
-      }
-    }
-
-    // Existing record is failed, partially_sent, expired in_progress, or forced:
-    // Atomically reclaim via PATCH
-    const patchRes = await httpsRequest(`${tableUrl}?id=eq.${encodeURIComponent(idempotencyId)}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      }
-    }, JSON.stringify({
-      status: 'in_progress',
-      recipient: recipientPhone,
-      updated_at: new Date().toISOString()
-    }));
-
-    if (patchRes.ok) {
-      const patchedRows = patchRes.json();
-      return {
-        acquired: true,
-        reason: 'reclaimed',
-        dispatch: normalizeDbRowToHistory(patchedRows?.[0] || existing)
-      };
-    }
-
-    return { acquired: false, reason: 'claim_failed', dispatch: existing };
+  const claimResult = rpcRes.json();
+  if (!claimResult || typeof claimResult.acquired !== 'boolean') {
+    throw new Error('claim_owner_report_dispatch RPC returned invalid or unparseable response.');
   }
 
-  // Any other error indicates database failure; strictly do NOT fall back to memory
-  throw new Error(`Persistent storage operation failed (HTTP ${insertRes.status}): ${sanitizeErrorMessage(insertRes.text())}`);
+  return {
+    acquired: claimResult.acquired,
+    reason: claimResult.reason,
+    dispatch: normalizeDbRowToHistory(claimResult.dispatch)
+  };
 }
 
 /**
@@ -466,7 +368,7 @@ export default async function handler(req, res) {
   let claimResult = null;
   if ((action === 'send' || action === 'cron') && !isDryRun) {
     try {
-      claimResult = await acquireAtomicClaimInPostgres(idempotencyId, staffEmail, targetDate, cleanPhone, force, callerToken);
+      claimResult = await acquireAtomicClaimInPostgres(idempotencyId, staffEmail, targetDate, cleanPhone, force);
     } catch (claimErr) {
       // If Supabase is unavailable or claim cannot be persisted, STOP SENDING.
       // Do NOT fall back to in-memory storage.
