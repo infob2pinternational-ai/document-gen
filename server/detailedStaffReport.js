@@ -190,12 +190,17 @@ export function buildDetailedStaffReport({
     const reasonText = nameMatch ? nameMatch[1] : '';
 
     // Check if there is an active future follow-up for this lead created on or after this event
-    const hasReplacement = followups.some(f =>
-      f.lead_id === leadId &&
-      f.status !== 'CANCELLED' &&
-      f.status !== 'cancelled' &&
-      new Date(f.created_at).getTime() >= new Date(act.created_at).getTime() - 60000
-    );
+    const hasReplacement = followups.some(f => {
+      const matchLead = Boolean(leadId) && f.lead_id === leadId;
+      const matchName = Boolean(act.company_name) && (f.company_name === act.company_name || f.customer_name === act.company_name);
+      const isTarget = matchLead || matchName;
+      return (
+        isTarget &&
+        f.status !== 'CANCELLED' &&
+        f.status !== 'cancelled' &&
+        new Date(f.created_at).getTime() >= new Date(act.created_at).getTime() - 60000
+      );
+    });
 
     return {
       activity: act,

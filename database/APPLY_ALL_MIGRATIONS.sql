@@ -1871,3 +1871,59 @@ BEGIN
   END;
 END $$;
 
+-- =====================================================================
+-- 20261001000001_detailed_owner_report_dispatches.sql
+-- Owner Report Dispatches & At-Most-Once Idempotency Ledger
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS public.owner_report_dispatches (
+  id TEXT PRIMARY KEY,
+  report_type TEXT NOT NULL DEFAULT 'detailed_staff_report',
+  staff_email TEXT NOT NULL,
+  report_date DATE NOT NULL,
+  recipient TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('in_progress', 'sent', 'delivered', 'failed', 'skipped')),
+  sent_at TIMESTAMPTZ,
+  sent_count INT DEFAULT 0,
+  message_ids JSONB DEFAULT '[]'::jsonb,
+  summary JSONB DEFAULT '{}'::jsonb,
+  owner_attention JSONB DEFAULT '[]'::jsonb,
+  error TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc', NOW())
+);
+
+CREATE INDEX IF NOT EXISTS idx_owner_report_dispatches_lookup 
+  ON public.owner_report_dispatches (report_type, staff_email, report_date, status);
+
+CREATE INDEX IF NOT EXISTS idx_owner_report_dispatches_updated 
+  ON public.owner_report_dispatches (updated_at DESC);
+
+ALTER TABLE public.owner_report_dispatches ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY owner_report_dispatches_select ON public.owner_report_dispatches
+  FOR SELECT TO authenticated
+  USING (
+    public.current_app_role() = 'owner' OR
+    lower(auth.jwt() ->> 'email') IN ('sarathjohnpanengadan@gmail.com', 'sarathjohnpanegdan@gmail.com', 'owner@b2p.com')
+  );
+
+CREATE POLICY owner_report_dispatches_insert ON public.owner_report_dispatches
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    public.current_app_role() = 'owner' OR
+    lower(auth.jwt() ->> 'email') IN ('sarathjohnpanengadan@gmail.com', 'sarathjohnpanegdan@gmail.com', 'owner@b2p.com')
+  );
+
+CREATE POLICY owner_report_dispatches_update ON public.owner_report_dispatches
+  FOR UPDATE TO authenticated
+  USING (
+    public.current_app_role() = 'owner' OR
+    lower(auth.jwt() ->> 'email') IN ('sarathjohnpanengadan@gmail.com', 'sarathjohnpanegdan@gmail.com', 'owner@b2p.com')
+  )
+  WITH CHECK (
+    public.current_app_role() = 'owner' OR
+    lower(auth.jwt() ->> 'email') IN ('sarathjohnpanengadan@gmail.com', 'sarathjohnpanegdan@gmail.com', 'owner@b2p.com')
+  );
+

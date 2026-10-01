@@ -1,5 +1,4 @@
 import https from 'https';
-import fs from 'fs';
 import { requireOwner } from '../server/auth.js';
 import {
   TARGET_STAFF_EMAIL,
@@ -11,42 +10,43 @@ import {
   email
 } from '../server/detailedStaffReport.js';
 
-const HISTORY_FILE = '/tmp/b2p_detailed_reports_history.json';
 let inMemoryHistory = [];
 
-function loadHistory() {
-  if (inMemoryHistory.length > 0) return inMemoryHistory;
-  try {
-    if (fs.existsSync(HISTORY_FILE)) {
-      const data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
-      if (Array.isArray(data)) {
-        inMemoryHistory = data;
-        return inMemoryHistory;
-      }
+function sanitizeErrorMessage(raw) {
+  if (!raw) return '';
+  let str = typeof raw === 'string' ? raw : (raw.message || String(raw));
+  const secrets = [
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.SUPABASE_ANON_KEY,
+    process.env.BIZYLEAD_API_KEY,
+    process.env.CRON_SECRET,
+    process.env.SUPABASE_ADMIN_REFRESH_TOKEN
+  ].filter(Boolean);
+  for (const secret of secrets) {
+    if (secret && secret.length > 5) {
+      str = str.split(secret).join('[REDACTED]');
     }
-  } catch (e) {
-    console.warn('[Detailed Staff Report] Failed to load history file:', e);
   }
-  return inMemoryHistory;
+  return str;
 }
 
-function saveHistoryEntry(entry) {
-  const history = loadHistory();
-  const existingIdx = history.findIndex(h => h.id === entry.id);
-  if (existingIdx >= 0) {
-    history[existingIdx] = { ...history[existingIdx], ...entry, updatedAt: new Date().toISOString() };
-  } else {
-    history.unshift({ ...entry, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-  }
-  // Keep last 100 entries
-  if (history.length > 100) history.length = 100;
-  inMemoryHistory = history;
-  try {
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
-  } catch (e) {
-    console.warn('[Detailed Staff Report] Failed to write history file:', e);
-  }
-  return entry;
+function normalizeDbRowToHistory(row) {
+  return {
+    id: row.id,
+    reportType: row.report_type || 'detailed_staff_report',
+    staffEmail: row.staff_email,
+    date: row.report_date,
+    recipient: row.recipient,
+    status: row.status,
+    sentAt: row.sent_at,
+    sentCount: row.sent_count,
+    messageIds: row.message_ids || [],
+    summary: row.summary || {},
+    ownerAttention: row.owner_attention || [],
+    error: row.error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
 }
 
 function httpsRequest(url, options, bodyContent) {
@@ -112,9 +112,139 @@ async function getAdminToken(forceRefresh = false) {
       return cachedAdminToken;
     }
   } catch (err) {
-    console.warn('[Detailed Staff Report] Failed to refresh admin token:', err);
+    console.warn('[Detailed Staff Report] Failed to refresh admin token:', sanitizeErrorMessage(err));
   }
   return cachedAdminToken || SUPABASE_ANON_KEY;
+}
+
+/**
+ * Loads recent dispatches from persistent Supabase table owner_report_dispatches.
+ * Falls back to in-memory history if table is not yet migrated or unreachable.
+ */
+async function loadDispatchesFromSupabase(callerToken = null) {
+  if (!SUPABASE_URL) return inMemoryHistory;
+  try {
+    const token = callerToken || await getAdminToken(false);
+    const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/owner_report_dispatches?report_type=eq.detailed_staff_report&order=updated_at.desc&limit=50`;
+    const res = await httpsRequest(url, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (res.ok) {
+      const rows = res.json();
+      if (Array.isArray(rows)) {
+        const mapped = rows.map(normalizeDbRowToHistory);
+        inMemoryHistory = mapped;
+        return mapped;
+      }
+    }
+  } catch (err) {
+    console.warn('[Detailed Staff Report] Supabase dispatches load failed, using fallback:', sanitizeErrorMessage(err));
+  }
+  return inMemoryHistory;
+}
+
+/**
+ * Looks up existing dispatch for the given idempotency key from Supabase.
+ */
+async function findExistingDispatchInSupabase(idempotencyId, callerToken = null) {
+  // Check in-memory first for fast hit
+  const mem = inMemoryHistory.find(h => h.id === idempotencyId);
+  if (mem && (mem.status === 'sent' || mem.status === 'delivered')) {
+    return mem;
+  }
+
+  if (!SUPABASE_URL) return mem || null;
+
+  try {
+    const token = callerToken || await getAdminToken(false);
+    const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/owner_report_dispatches?id=eq.${encodeURIComponent(idempotencyId)}&select=*`;
+    const res = await httpsRequest(url, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (res.ok) {
+      const rows = res.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        const found = normalizeDbRowToHistory(rows[0]);
+        const idx = inMemoryHistory.findIndex(h => h.id === idempotencyId);
+        if (idx >= 0) inMemoryHistory[idx] = found;
+        else inMemoryHistory.unshift(found);
+        return found;
+      }
+    }
+  } catch (err) {
+    console.warn('[Detailed Staff Report] Supabase dispatch lookup failed:', sanitizeErrorMessage(err));
+  }
+  return mem || null;
+}
+
+/**
+ * Persists a dispatch record to Supabase table owner_report_dispatches.
+ * Uses atomic UPSERT (resolution=merge-duplicates) to guarantee at-most-once delivery.
+ */
+async function saveDispatchToSupabase(entry, callerToken = null) {
+  const existingIdx = inMemoryHistory.findIndex(h => h.id === entry.id);
+  const normalized = {
+    ...entry,
+    updatedAt: new Date().toISOString()
+  };
+  if (existingIdx >= 0) {
+    inMemoryHistory[existingIdx] = { ...inMemoryHistory[existingIdx], ...normalized };
+  } else {
+    inMemoryHistory.unshift({ ...normalized, createdAt: new Date().toISOString() });
+  }
+  if (inMemoryHistory.length > 100) inMemoryHistory.length = 100;
+
+  if (!SUPABASE_URL) return normalized;
+
+  const dbRow = {
+    id: entry.id,
+    report_type: entry.reportType || 'detailed_staff_report',
+    staff_email: entry.staffEmail,
+    report_date: entry.date,
+    recipient: entry.recipient,
+    status: entry.status || 'sent',
+    sent_at: entry.sentAt || null,
+    sent_count: entry.sentCount || 0,
+    message_ids: entry.messageIds || [],
+    summary: entry.summary || {},
+    owner_attention: entry.ownerAttention || [],
+    error: entry.error ? sanitizeErrorMessage(entry.error) : null,
+    updated_at: new Date().toISOString()
+  };
+
+  try {
+    const token = callerToken || await getAdminToken(false);
+    const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/owner_report_dispatches`;
+    const res = await httpsRequest(url, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      }
+    }, JSON.stringify(dbRow));
+
+    if (!res.ok) {
+      console.warn(`[Detailed Staff Report] Failed to persist dispatch to Supabase (HTTP ${res.status}):`, sanitizeErrorMessage(res.text()));
+    }
+  } catch (err) {
+    console.warn('[Detailed Staff Report] Exception persisting dispatch to Supabase:', sanitizeErrorMessage(err));
+  }
+
+  return normalized;
 }
 
 /**
@@ -157,7 +287,7 @@ async function supabaseFetchAll(endpoint, callerToken = null) {
       }
       offset += pageSize;
     } catch (err) {
-      console.warn(`[Detailed Staff Report] Error fetching page on ${endpoint}:`, err);
+      console.warn(`[Detailed Staff Report] Error fetching page on ${endpoint}:`, sanitizeErrorMessage(err));
       throw err;
     }
   }
@@ -193,19 +323,35 @@ export default async function handler(req, res) {
   const isCron = action === 'cron' || Boolean(req.headers['x-vercel-cron']);
 
   // Enforce server-side authorization:
-  // Cron is authorized via header/cron mechanism.
-  // Interactive requests MUST be authenticated and verified as Owner.
-  let auth = null;
-  if (!isCron) {
-    auth = await requireOwner(req, res);
-    if (!auth) return; // 401 or 403 sent by requireOwner
-  }
+  // 1. Cron requests MUST provide valid CRON_SECRET via Authorization: Bearer <CRON_SECRET>
+  // 2. Interactive requests MUST be authenticated and verified as Owner via requireOwner
+  let callerToken = null;
+  if (isCron) {
+    const cronSecret = process.env.CRON_SECRET;
+    const authHeader = req.headers.authorization || '';
 
-  const callerToken = auth?.headers?.Authorization ? auth.headers.Authorization.replace(/^Bearer\s+/i, '') : null;
+    if (!cronSecret) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: CRON_SECRET is not configured on the server.'
+      });
+    }
+
+    if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Missing or invalid CRON_SECRET authorization.'
+      });
+    }
+  } else {
+    const auth = await requireOwner(req, res);
+    if (!auth) return; // 401 or 403 sent by requireOwner
+    callerToken = auth?.headers?.Authorization ? auth.headers.Authorization.replace(/^Bearer\s+/i, '') : null;
+  }
 
   // Handle history inquiry
   if (action === 'history') {
-    const history = loadHistory();
+    const history = await loadDispatchesFromSupabase(callerToken);
     return res.status(200).json({ success: true, history });
   }
 
@@ -224,21 +370,35 @@ export default async function handler(req, res) {
     });
   }
 
-  // Idempotency Key
+  // Persistent Idempotency Key (staff + date)
   const idempotencyId = `detailed_staff_report_${staffEmail}_${targetDate}`;
-
-  // Check existing dispatch if action is send/cron and not force
   const force = req.query.force === 'true' || req.body?.force === true;
-  const history = loadHistory();
-  const existingDispatch = history.find(h => h.id === idempotencyId && (h.status === 'sent' || h.status === 'delivered'));
+
+  // Check persistent Supabase storage for existing dispatch
+  const existingDispatch = await findExistingDispatchInSupabase(idempotencyId, callerToken);
 
   if ((action === 'send' || action === 'cron') && existingDispatch && !force) {
-    return res.status(200).json({
-      success: true,
-      skipped: true,
-      reason: `Detailed report for ${staffEmail} on ${targetDate} was already dispatched at ${existingDispatch.sentAt || existingDispatch.updatedAt}.`,
-      historyEntry: existingDispatch
-    });
+    if (existingDispatch.status === 'sent' || existingDispatch.status === 'delivered') {
+      return res.status(200).json({
+        success: true,
+        skipped: true,
+        reason: `Detailed report for ${staffEmail} on ${targetDate} was already dispatched at ${existingDispatch.sentAt || existingDispatch.updatedAt}.`,
+        historyEntry: existingDispatch
+      });
+    }
+
+    // Microsecond concurrency protection: check if another container claimed it within the last 3 minutes
+    if (existingDispatch.status === 'in_progress') {
+      const lastUpdate = new Date(existingDispatch.updatedAt || existingDispatch.createdAt || 0).getTime();
+      if (Date.now() - lastUpdate < 3 * 60 * 1000) {
+        return res.status(200).json({
+          success: true,
+          skipped: true,
+          reason: `Detailed report for ${staffEmail} on ${targetDate} is currently being dispatched by another process.`,
+          historyEntry: existingDispatch
+        });
+      }
+    }
   }
 
   // Query CRM Data
@@ -263,8 +423,6 @@ export default async function handler(req, res) {
 
   // Query Supabase with pagination & error recording
   try {
-    const { startIso, endIso } = getIstDayBoundariesUtc(targetDate);
-
     // 1. Telecalling entries
     try {
       const tcRows = await supabaseFetchAll(`telecalling_entries?order=created_at.asc`, callerToken);
@@ -273,7 +431,7 @@ export default async function handler(req, res) {
         tcRows.forEach(r => { if (!existingIds.has(r.id)) telecalling.push(r); });
       }
     } catch (e) {
-      queryErrors.push(`Failed to query telecalling_entries: ${e.message}`);
+      queryErrors.push(`Failed to query telecalling_entries: ${sanitizeErrorMessage(e)}`);
     }
 
     // 2. Leads
@@ -284,7 +442,7 @@ export default async function handler(req, res) {
         leadRows.forEach(r => { if (!existingIds.has(r.id)) leads.push(r); });
       }
     } catch (e) {
-      queryErrors.push(`Failed to query leads: ${e.message}`);
+      queryErrors.push(`Failed to query leads: ${sanitizeErrorMessage(e)}`);
     }
 
     // 3. Lead activities
@@ -295,7 +453,7 @@ export default async function handler(req, res) {
         actRows.forEach(r => { if (!existingIds.has(r.id)) activities.push(r); });
       }
     } catch (e) {
-      queryErrors.push(`Failed to query lead_activities: ${e.message}`);
+      queryErrors.push(`Failed to query lead_activities: ${sanitizeErrorMessage(e)}`);
     }
 
     // 4. Follow-ups
@@ -306,7 +464,7 @@ export default async function handler(req, res) {
         fuRows.forEach(r => { if (!existingIds.has(r.id)) followups.push(r); });
       }
     } catch (e) {
-      queryErrors.push(`Failed to query follow_ups: ${e.message}`);
+      queryErrors.push(`Failed to query follow_ups: ${sanitizeErrorMessage(e)}`);
     }
 
     // 5. CRM Quotations
@@ -317,7 +475,7 @@ export default async function handler(req, res) {
         qRows.forEach(r => { if (!existingIds.has(r.id)) quotations.push(r); });
       }
     } catch (e) {
-      queryErrors.push(`Failed to query crm_quotations: ${e.message}`);
+      queryErrors.push(`Failed to query crm_quotations: ${sanitizeErrorMessage(e)}`);
     }
 
     // 6. Documents
@@ -328,11 +486,11 @@ export default async function handler(req, res) {
         docRows.forEach(r => { if (!existingIds.has(r.id)) documents.push(r); });
       }
     } catch (e) {
-      queryErrors.push(`Failed to query documents: ${e.message}`);
+      queryErrors.push(`Failed to query documents: ${sanitizeErrorMessage(e)}`);
     }
 
   } catch (outerErr) {
-    queryErrors.push(`General database exception: ${outerErr.message}`);
+    queryErrors.push(`General database exception: ${sanitizeErrorMessage(outerErr)}`);
   }
 
   // Generate Report
@@ -382,6 +540,17 @@ export default async function handler(req, res) {
     });
   }
 
+  // Atomic in-progress claim before dispatch
+  await saveDispatchToSupabase({
+    id: idempotencyId,
+    reportType: 'detailed_staff_report',
+    staffEmail,
+    date: targetDate,
+    recipient: cleanPhone,
+    status: 'in_progress',
+    summary: reportResult.counts
+  }, callerToken);
+
   // Official Bizylead WhatsApp Dispatch
   const bizyleadApiKey = process.env.BIZYLEAD_API_KEY;
   let bizyleadPhoneId = process.env.BIZYLEAD_PHONE_NUMBER_ID;
@@ -400,7 +569,7 @@ export default async function handler(req, res) {
       error: 'Bizylead WhatsApp credentials (BIZYLEAD_API_KEY / BIZYLEAD_PHONE_NUMBER_ID) not configured in environment.',
       summary: reportResult.counts
     };
-    saveHistoryEntry(failureEntry);
+    await saveDispatchToSupabase(failureEntry, callerToken);
     return res.status(503).json({
       success: false,
       error: failureEntry.error,
@@ -436,8 +605,8 @@ export default async function handler(req, res) {
 
       const resData = response.json();
       if (!response.ok) {
-        dispatchError = resData?.error?.message || resData?.message || `HTTP ${response.status}: Bizylead error`;
-        console.error(`[Detailed Staff Report] Bizylead error on message ${i + 1}:`, resData);
+        dispatchError = sanitizeErrorMessage(resData?.error?.message || resData?.message || `HTTP ${response.status}: Bizylead error`);
+        console.error(`[Detailed Staff Report] Bizylead error on message ${i + 1}:`, sanitizeErrorMessage(resData));
         break;
       } else {
         const msgId = resData?.messageId || resData?.messages?.[0]?.id || `bizy_detailed_${Date.now()}_${i}`;
@@ -460,7 +629,7 @@ export default async function handler(req, res) {
         error: dispatchError,
         summary: reportResult.counts
       };
-      saveHistoryEntry(failureEntry);
+      await saveDispatchToSupabase(failureEntry, callerToken);
       return res.status(500).json({
         success: false,
         error: dispatchError,
@@ -478,9 +647,10 @@ export default async function handler(req, res) {
       sentAt: new Date().toISOString(),
       messageIds: sentResults.map(s => s.messageId),
       sentCount: sentResults.length,
-      summary: reportResult.counts
+      summary: reportResult.counts,
+      ownerAttention: reportResult.ownerAttention
     };
-    saveHistoryEntry(successEntry);
+    await saveDispatchToSupabase(successEntry, callerToken);
 
     return res.status(200).json({
       success: true,
@@ -493,7 +663,8 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('[Detailed Staff Report] Exception sending WhatsApp:', err);
+    const sanitizedMsg = sanitizeErrorMessage(err);
+    console.error('[Detailed Staff Report] Exception sending WhatsApp:', sanitizedMsg);
     const failureEntry = {
       id: idempotencyId,
       reportType: 'detailed_staff_report',
@@ -501,13 +672,13 @@ export default async function handler(req, res) {
       date: targetDate,
       recipient: cleanPhone,
       status: 'failed',
-      error: String(err),
+      error: sanitizedMsg,
       summary: reportResult.counts
     };
-    saveHistoryEntry(failureEntry);
+    await saveDispatchToSupabase(failureEntry, callerToken);
     return res.status(500).json({
       success: false,
-      error: String(err),
+      error: sanitizedMsg,
       historyEntry: failureEntry
     });
   }
