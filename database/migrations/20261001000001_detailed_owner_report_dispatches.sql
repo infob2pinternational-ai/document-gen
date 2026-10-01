@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public.owner_report_dispatches (
   staff_email TEXT NOT NULL,
   report_date DATE NOT NULL,
   recipient TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'sent', 'delivered', 'failed', 'partially_sent', 'skipped')),
+  status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'sent', 'delivered', 'failed', 'partially_sent', 'skipped', 'requires_manual_review')),
   sent_at TIMESTAMPTZ,
   sent_count INT DEFAULT 0,
   message_ids JSONB DEFAULT '[]'::jsonb,
@@ -60,6 +60,15 @@ BEGIN
       RETURN jsonb_build_object(
         'acquired', false,
         'reason', 'already_sent',
+        'dispatch', to_jsonb(v_existing)
+      );
+    END IF;
+
+    -- If flagged for manual review and not force, claim rejected to protect against automatic duplicates
+    IF v_existing.status = 'requires_manual_review' AND NOT p_force THEN
+      RETURN jsonb_build_object(
+        'acquired', false,
+        'reason', 'manual_review_required',
         'dispatch', to_jsonb(v_existing)
       );
     END IF;

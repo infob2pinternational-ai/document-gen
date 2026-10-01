@@ -11,6 +11,9 @@ import {
 import { requireOwner } from '../server/auth.js';
 import handler from '../api/detailed-staff-report.js';
 
+import https from 'https';
+import { EventEmitter } from 'events';
+
 const d = '2026-09-29';
 const stamp = '2026-09-29T10:12:40Z';
 
@@ -22,6 +25,37 @@ function createMockRes() {
     status(c) { this.statusCode = c; return this; },
     json(d) { this.body = d; return this; },
     end() { return this; }
+  };
+}
+
+function mockHttps(routerFn) {
+  const origRequest = https.request;
+  https.request = (url, options, callback) => {
+    const urlStr = typeof url === 'string' ? url : (url.href || url.toString());
+    const reqEmitter = new EventEmitter();
+    let body = '';
+    reqEmitter.write = (chunk) => { body += chunk; };
+    reqEmitter.end = () => {
+      process.nextTick(async () => {
+        try {
+          const resObj = await routerFn(urlStr, options, body);
+          const resEmitter = new EventEmitter();
+          resEmitter.statusCode = resObj.status || 200;
+          resEmitter.headers = resObj.headers || { 'content-type': 'application/json' };
+          callback(resEmitter);
+          const responseText = typeof resObj.data === 'string' ? resObj.data : JSON.stringify(resObj.data);
+          resEmitter.emit('data', responseText);
+          resEmitter.emit('end');
+        } catch (err) {
+          reqEmitter.emit('error', err);
+        }
+      });
+    };
+    return reqEmitter;
+  };
+
+  return () => {
+    https.request = origRequest;
   };
 }
 
@@ -535,6 +569,10 @@ test('Atomic claim operation ensures only one of two concurrent executions acqui
           RETURN jsonb_build_object('acquired', false, 'reason', 'already_sent');
         END IF;
 
+        IF v_existing.status = 'requires_manual_review' AND NOT p_force THEN
+          RETURN jsonb_build_object('acquired', false, 'reason', 'manual_review_required');
+        END IF;
+
         IF v_existing.status = 'in_progress' AND v_existing.updated_at > (NOW() - INTERVAL '5 minutes') AND NOT p_force THEN
           RETURN jsonb_build_object('acquired', false, 'reason', 'in_progress_locked');
         END IF;
@@ -600,7 +638,19 @@ test('Atomic claim operation ensures only one of two concurrent executions acqui
   assert.equal(res3.acquired, false, 'Subsequent execution must reject already_sent dispatch');
   assert.equal(res3.reason, 'already_sent');
 
-  // Force bypass allows re-claim
+  // Execution 4: Flagged for manual review (automatic run rejected)
+  await db.query(`UPDATE owner_report_dispatches SET status = 'requires_manual_review' WHERE id = $1;`, [idempotencyId]);
+  const claimManual = await db.query(`SELECT claim_owner_report_dispatch($1, $2, $3::date, $4, false) AS res;`, [
+    idempotencyId,
+    TARGET_STAFF_EMAIL,
+    '2026-09-29',
+    '918589909034'
+  ]);
+  const resManual = claimManual.rows[0].res;
+  assert.equal(resManual.acquired, false, 'Subsequent execution must reject dispatch flagged for manual review');
+  assert.equal(resManual.reason, 'manual_review_required');
+
+  // Force bypass allows re-claim even from manual review
   const claimForce = await db.query(`SELECT claim_owner_report_dispatch($1, $2, $3::date, $4, true) AS res;`, [
     idempotencyId,
     TARGET_STAFF_EMAIL,
@@ -880,4 +930,256 @@ test('Sensitive tokens and service role keys are never exposed in error response
     process.env.BIZYLEAD_API_KEY = origBizyKey;
     process.env.SUPABASE_SERVICE_ROLE_KEY = origServiceKey;
   }
+});
+
+// ─── 15. Database Failure During Multipart WhatsApp Delivery ─────────────────────
+test('Database failure during multipart WhatsApp delivery immediately stops sending further messages and flags report for manual review', async () => {
+  const origEnv = { ...process.env };
+  process.env.SUPABASE_URL = 'https://mock.supabase.co';
+  process.env.SUPABASE_ANON_KEY = 'mock-anon-key';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-service-role-key';
+  process.env.CRON_SECRET = 'test-cron-secret-12345';
+  process.env.BIZYLEAD_API_KEY = 'mock-bizylead-api-key';
+  process.env.BIZYLEAD_PHONE_NUMBER_ID = '992427143955673';
+
+  const bizyleadDispatches = [];
+  let patchCalls = 0;
+  const dispatchUpdates = [];
+
+  const restoreHttps = mockHttps(async (urlStr, options, body) => {
+    // 1. Claim RPC
+    if (urlStr.includes('/rpc/claim_owner_report_dispatch')) {
+      return {
+        status: 200,
+        data: {
+          acquired: true,
+          reason: 'new_claim',
+          dispatch: {
+            id: `detailed_staff_report_${TARGET_STAFF_EMAIL}_2026-09-29`,
+            status: 'in_progress',
+            message_results: []
+          }
+        }
+      };
+    }
+
+    // 2. Read queries
+    if (urlStr.includes('/rest/v1/')) {
+      if (options.method === 'GET') {
+        return { status: 200, data: [] };
+      }
+      if (options.method === 'PATCH') {
+        patchCalls++;
+        const parsed = JSON.parse(body || '{}');
+        dispatchUpdates.push(parsed);
+        // First PATCH is for part 1 progress - simulate database failure!
+        if (patchCalls === 1) {
+          return { status: 500, data: { message: 'Database connection error during progress update' } };
+        }
+        // Subsequent emergency PATCH to record manual review
+        return { status: 200, data: parsed };
+      }
+    }
+
+    // 3. Bizylead messages
+    if (urlStr.includes('/messages')) {
+      const payload = JSON.parse(body || '{}');
+      bizyleadDispatches.push(payload);
+      return { status: 200, data: { messageId: `bizy_msg_${bizyleadDispatches.length}` } };
+    }
+
+    return { status: 200, data: {} };
+  });
+
+  try {
+    // Create large client data so report exceeds 3200 chars and splits into 2 parts
+    const dummyLeads = [];
+    for (let i = 1; i <= 25; i++) {
+      dummyLeads.push({
+        lead_number: `B2P-LD-${1000 + i}`,
+        company_name: `Corporate Enterprise Client #${i} International Private Limited`,
+        customer_name: `Senior Manager Person #${i}`,
+        assigned_telecaller_email: TARGET_STAFF_EMAIL,
+        created_at: '2026-09-29T08:00:00Z',
+        updated_at: '2026-09-29T10:00:00Z'
+      });
+    }
+
+    const req = {
+      method: 'POST',
+      query: { action: 'cron' },
+      headers: { authorization: 'Bearer test-cron-secret-12345' },
+      body: {
+        date: '2026-09-29',
+        client_data: { leads: dummyLeads }
+      }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    // 1. System must immediately halt with HTTP 500 and status 'requires_manual_review'
+    assert.equal(res.statusCode, 500);
+    assert.equal(res.body.status, 'requires_manual_review');
+    assert.match(res.body.error, /Database error saving message progress after sending part 1/);
+    assert.equal(res.body.uncertainPart, 1);
+
+    // 2. Bizylead must ONLY have been called for part 1; part 2 was NEVER sent!
+    assert.equal(bizyleadDispatches.length, 1, 'Bizylead must ONLY be called for part 1; part 2 must not be sent');
+
+    // 3. Message part 1 must be flagged with status 'uncertain'
+    const part1 = res.body.messageResults.find(r => r.part === 1);
+    assert.ok(part1);
+    assert.equal(part1.status, 'uncertain');
+
+    // 4. Emergency database update must have attempted to flag status as requires_manual_review
+    const manualReviewUpdate = dispatchUpdates.find(u => u.status === 'requires_manual_review');
+    assert.ok(manualReviewUpdate, 'Must attempt emergency update with status requires_manual_review');
+
+  } finally {
+    restoreHttps();
+    process.env = origEnv;
+  }
+});
+
+// ─── 16. Retry Delivery Safety: Never Resend Uncertain Messages ───────────────────
+test('Retries never automatically resend a message whose delivery status is uncertain', async () => {
+  const origEnv = { ...process.env };
+  process.env.SUPABASE_URL = 'https://mock.supabase.co';
+  process.env.SUPABASE_ANON_KEY = 'mock-anon-key';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-service-role-key';
+  process.env.CRON_SECRET = 'test-cron-secret-12345';
+  process.env.BIZYLEAD_API_KEY = 'mock-bizylead-api-key';
+  process.env.BIZYLEAD_PHONE_NUMBER_ID = '992427143955673';
+
+  // Subtest A: Automated cron retry is rejected by claim RPC when status is requires_manual_review
+  {
+    const restoreHttps = mockHttps(async (urlStr) => {
+      if (urlStr.includes('/rpc/claim_owner_report_dispatch')) {
+        return {
+          status: 200,
+          data: {
+            acquired: false,
+            reason: 'manual_review_required',
+            dispatch: {
+              id: `detailed_staff_report_${TARGET_STAFF_EMAIL}_2026-09-29`,
+              status: 'requires_manual_review'
+            }
+          }
+        };
+      }
+      return { status: 200, data: [] };
+    });
+
+    try {
+      const req = {
+        method: 'POST',
+        query: { action: 'cron' },
+        headers: { authorization: 'Bearer test-cron-secret-12345' },
+        body: { date: '2026-09-29' }
+      };
+      const res = createMockRes();
+      await handler(req, res);
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.skipped, true);
+      assert.equal(res.body.claimReason, 'manual_review_required');
+      assert.match(res.body.reason, /flagged for manual review/);
+    } finally {
+      restoreHttps();
+    }
+  }
+
+  // Subtest B: Explicit forced retry skips uncertain part 1 and only sends part 2, maintaining manual review status
+  {
+    const bizyleadDispatches = [];
+    const dispatchUpdates = [];
+
+    const restoreHttps = mockHttps(async (urlStr, options, body) => {
+      if (urlStr.includes('/rpc/claim_owner_report_dispatch')) {
+        return {
+          status: 200,
+          data: {
+            acquired: true,
+            reason: 'reclaimed',
+            dispatch: {
+              id: `detailed_staff_report_${TARGET_STAFF_EMAIL}_2026-09-29`,
+              status: 'in_progress',
+              message_results: [
+                {
+                  part: 1,
+                  total: 2,
+                  status: 'uncertain',
+                  messageId: 'bizy_msg_1',
+                  error: 'Database progress persistence failed'
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (urlStr.includes('/rest/v1/')) {
+        if (options.method === 'GET') return { status: 200, data: [] };
+        if (options.method === 'PATCH') {
+          const parsed = JSON.parse(body || '{}');
+          dispatchUpdates.push(parsed);
+          return { status: 200, data: parsed };
+        }
+      }
+
+      if (urlStr.includes('/messages')) {
+        const payload = JSON.parse(body || '{}');
+        bizyleadDispatches.push(payload);
+        return { status: 200, data: { messageId: `bizy_msg_retry_${bizyleadDispatches.length}` } };
+      }
+
+      return { status: 200, data: {} };
+    });
+
+    try {
+      const dummyLeads = [];
+      for (let i = 1; i <= 25; i++) {
+        dummyLeads.push({
+          lead_number: `B2P-LD-${1000 + i}`,
+          company_name: `Corporate Enterprise Client #${i} International Private Limited`,
+          customer_name: `Senior Manager Person #${i}`,
+          assigned_telecaller_email: TARGET_STAFF_EMAIL,
+          created_at: '2026-09-29T08:00:00Z',
+          updated_at: '2026-09-29T10:00:00Z'
+        });
+      }
+
+      const req = {
+        method: 'POST',
+        query: { action: 'cron' },
+        headers: { authorization: 'Bearer test-cron-secret-12345' },
+        body: {
+          date: '2026-09-29',
+          force: true,
+          client_data: { leads: dummyLeads }
+        }
+      };
+      const res = createMockRes();
+
+      await handler(req, res);
+
+      // Part 1 must NOT be resent to Bizylead! Only Part 2 should be sent to Bizylead:
+      assert.equal(bizyleadDispatches.length, 1, 'Only part 2 should be dispatched to Bizylead; part 1 must NOT be resent');
+      assert.match(bizyleadDispatches[0].text, /\[2\/2\]/, 'Dispatched message must be part 2, never part 1');
+
+      // The overall report status must NOT become 'sent' because part 1 is uncertain; it must remain requires_manual_review
+      assert.equal(res.statusCode, 500);
+      assert.equal(res.body.status, 'requires_manual_review');
+      assert.match(res.body.error, /uncertain delivery status/);
+
+      // Verify that final saved status in database is requires_manual_review
+      const lastUpdate = dispatchUpdates[dispatchUpdates.length - 1];
+      assert.equal(lastUpdate.status, 'requires_manual_review');
+    } finally {
+      restoreHttps();
+    }
+  }
+
+  process.env = origEnv;
 });
