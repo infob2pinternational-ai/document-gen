@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/detailed-staff-report", "destination": "/api/detailed-staff-report" },
     { "source": "/api/daily-report", "destination": "/api/daily-report" },
     { "source": "/api/whatsapp", "destination": "/api/whatsapp" },
     { "source": "/api/bizylead-webhook", "destination": "/api/bizylead-webhook" },
@@ -57,6 +58,10 @@
     {
       "path": "/api/daily-report?action=cron&slot=night",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/detailed-staff-report?action=cron",
+      "schedule": "30 14 * * *"
     }
   ]
 }
