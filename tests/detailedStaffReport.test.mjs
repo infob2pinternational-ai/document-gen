@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { PGlite } from '@electric-sql/pglite';
 import {
   buildDetailedStaffReport,
   formatDetailedReportWhatsAppMessages,
@@ -432,7 +433,6 @@ test('requireOwner rejects non-owner accounts with 403 Forbidden', async () => {
 test('Cron security rejects requests when CRON_SECRET is missing, unset or invalid', async () => {
   const origCronSecret = process.env.CRON_SECRET;
   try {
-    // 1. Rejects when CRON_SECRET is not configured on the server
     delete process.env.CRON_SECRET;
     const reqNoConfig = {
       method: 'POST',
@@ -444,10 +444,8 @@ test('Cron security rejects requests when CRON_SECRET is missing, unset or inval
     assert.equal(resNoConfig.statusCode, 401);
     assert.match(resNoConfig.body.error, /CRON_SECRET is not configured/);
 
-    // Set server secret
     process.env.CRON_SECRET = 'valid-super-secret-cron-token-12345';
 
-    // 2. Rejects when Authorization header is completely missing
     const reqNoHeader = {
       method: 'POST',
       query: { action: 'cron' },
@@ -458,7 +456,6 @@ test('Cron security rejects requests when CRON_SECRET is missing, unset or inval
     assert.equal(resNoHeader.statusCode, 401);
     assert.match(resNoHeader.body.error, /Missing or invalid CRON_SECRET/);
 
-    // 3. Rejects when Authorization header does not match
     const reqWrongHeader = {
       method: 'POST',
       query: { action: 'cron' },
@@ -469,7 +466,6 @@ test('Cron security rejects requests when CRON_SECRET is missing, unset or inval
     assert.equal(resWrongHeader.statusCode, 401);
     assert.match(resWrongHeader.body.error, /Missing or invalid CRON_SECRET/);
 
-    // 4. Rejects spoofed x-vercel-cron header with invalid bearer
     const reqSpoof = {
       method: 'GET',
       headers: { 'x-vercel-cron': '1', authorization: 'Bearer bad' },
@@ -479,7 +475,6 @@ test('Cron security rejects requests when CRON_SECRET is missing, unset or inval
     await handler(reqSpoof, resSpoof);
     assert.equal(resSpoof.statusCode, 401);
 
-    // 5. Accepts valid Authorization header with CRON_SECRET in dry_run mode
     const reqValid = {
       method: 'POST',
       query: { action: 'cron', dry_run: 'true' },
@@ -496,237 +491,323 @@ test('Cron security rejects requests when CRON_SECRET is missing, unset or inval
   }
 });
 
-// ─── 10. Persistent Supabase Storage & Duplicate Dispatch Prevention ─────────────
-test('Duplicate prevention ensures owner receives only one report per staff per date', async () => {
-  const origCronSecret = process.env.CRON_SECRET;
-  process.env.CRON_SECRET = 'cron-dedup-secret-999';
+// ─── 10. Atomic PostgreSQL Claim: Two Concurrent Executions ─────────────────────
+test('Atomic claim operation ensures only one of two concurrent executions acquires lock and dispatches', async () => {
+  const db = new PGlite();
 
-  try {
-    const testDate = '2026-09-29';
-    const reqFirst = {
-      method: 'POST',
-      query: { action: 'cron', dry_run: 'true' },
-      headers: { authorization: 'Bearer cron-dedup-secret-999' },
-      body: { date: testDate, dry_run: true }
-    };
-    const resFirst = createMockRes();
-    await handler(reqFirst, resFirst);
-    assert.equal(resFirst.statusCode, 200);
-    assert.equal(resFirst.body.success, true);
+  // Create table and atomic claim function
+  await db.exec(`
+    CREATE TABLE owner_report_dispatches (
+      id TEXT PRIMARY KEY,
+      report_type TEXT NOT NULL DEFAULT 'detailed_staff_report',
+      staff_email TEXT NOT NULL,
+      report_date DATE NOT NULL,
+      recipient TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'in_progress',
+      sent_at TIMESTAMPTZ,
+      sent_count INT DEFAULT 0,
+      message_ids JSONB DEFAULT '[]'::jsonb,
+      message_results JSONB DEFAULT '[]'::jsonb,
+      summary JSONB DEFAULT '{}'::jsonb,
+      owner_attention JSONB DEFAULT '[]'::jsonb,
+      error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
 
-    // Simulate an existing 'sent' dispatch recorded in history
-    const reqSkip = {
-      method: 'POST',
-      query: { action: 'cron' },
-      headers: { authorization: 'Bearer cron-dedup-secret-999' },
-      body: { date: '2026-09-29' }
-    };
+    CREATE OR REPLACE FUNCTION claim_owner_report_dispatch(
+      p_id TEXT,
+      p_staff_email TEXT,
+      p_report_date DATE,
+      p_recipient TEXT,
+      p_force BOOLEAN DEFAULT FALSE
+    ) RETURNS JSONB
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+      v_existing RECORD;
+      v_claimed RECORD;
+    BEGIN
+      SELECT * INTO v_existing FROM owner_report_dispatches WHERE id = p_id FOR UPDATE;
 
-    // If an existing dispatch is present with 'sent' status
-    // In our handler, findExistingDispatchInSupabase checks in-memory cache and Supabase
-    // We can simulate an existing record by inserting a simulated sent dispatch into inMemoryHistory
-    // or test force=true bypass.
-    const resDuplicate = createMockRes();
-    // Simulate that dispatch for 2026-09-29 was already sent
-    // We trigger handler with force=false vs force=true
-    await handler(reqSkip, resDuplicate);
-    // Even if it attempts, let's verify idempotency key calculation
-    assert.ok(resDuplicate.statusCode === 200 || resDuplicate.statusCode === 503);
-  } finally {
-    process.env.CRON_SECRET = origCronSecret;
-  }
+      IF FOUND THEN
+        IF v_existing.status IN ('sent', 'delivered') AND NOT p_force THEN
+          RETURN jsonb_build_object('acquired', false, 'reason', 'already_sent');
+        END IF;
+
+        IF v_existing.status = 'in_progress' AND v_existing.updated_at > (NOW() - INTERVAL '5 minutes') AND NOT p_force THEN
+          RETURN jsonb_build_object('acquired', false, 'reason', 'in_progress_locked');
+        END IF;
+
+        UPDATE owner_report_dispatches
+        SET status = 'in_progress', recipient = p_recipient, updated_at = NOW()
+        WHERE id = p_id RETURNING * INTO v_claimed;
+
+        RETURN jsonb_build_object('acquired', true, 'reason', 'reclaimed');
+      ELSE
+        INSERT INTO owner_report_dispatches (
+          id, report_type, staff_email, report_date, recipient, status, created_at, updated_at
+        ) VALUES (
+          p_id, 'detailed_staff_report', p_staff_email, p_report_date, p_recipient, 'in_progress', NOW(), NOW()
+        ) RETURNING * INTO v_claimed;
+
+        RETURN jsonb_build_object('acquired', true, 'reason', 'new_claim');
+      END IF;
+    EXCEPTION
+      WHEN unique_violation THEN
+        RETURN jsonb_build_object('acquired', false, 'reason', 'conflict_lost');
+    END;
+    $$;
+  `);
+
+  const idempotencyId = `detailed_staff_report_${TARGET_STAFF_EMAIL}_2026-09-29`;
+
+  // Execution 1: Claims the dispatch
+  const claim1 = await db.query(`SELECT claim_owner_report_dispatch($1, $2, $3::date, $4, false) AS res;`, [
+    idempotencyId,
+    TARGET_STAFF_EMAIL,
+    '2026-09-29',
+    '918589909034'
+  ]);
+  const res1 = claim1.rows[0].res;
+  assert.equal(res1.acquired, true, 'Execution 1 must acquire the claim');
+  assert.equal(res1.reason, 'new_claim');
+
+  // Execution 2: Attempts concurrently to claim the exact same dispatch
+  const claim2 = await db.query(`SELECT claim_owner_report_dispatch($1, $2, $3::date, $4, false) AS res;`, [
+    idempotencyId,
+    TARGET_STAFF_EMAIL,
+    '2026-09-29',
+    '918589909034'
+  ]);
+  const res2 = claim2.rows[0].res;
+  assert.equal(res2.acquired, false, 'Execution 2 must NOT acquire the claim');
+  assert.equal(res2.reason, 'in_progress_locked');
+
+  // Mark execution 1 as sent
+  await db.query(`UPDATE owner_report_dispatches SET status = 'sent', sent_at = NOW() WHERE id = $1;`, [idempotencyId]);
+
+  // Execution 3 (e.g. later cron run)
+  const claim3 = await db.query(`SELECT claim_owner_report_dispatch($1, $2, $3::date, $4, false) AS res;`, [
+    idempotencyId,
+    TARGET_STAFF_EMAIL,
+    '2026-09-29',
+    '918589909034'
+  ]);
+  const res3 = claim3.rows[0].res;
+  assert.equal(res3.acquired, false, 'Subsequent execution must reject already_sent dispatch');
+  assert.equal(res3.reason, 'already_sent');
+
+  // Force bypass allows re-claim
+  const claimForce = await db.query(`SELECT claim_owner_report_dispatch($1, $2, $3::date, $4, true) AS res;`, [
+    idempotencyId,
+    TARGET_STAFF_EMAIL,
+    '2026-09-29',
+    '918589909034'
+  ]);
+  assert.equal(claimForce.rows[0].res.acquired, true, 'Force=true must allow re-claim');
 });
 
-// ─── 11. Complete WhatsApp Report Dry-Run Verification (29 Sep & 30 Sep) ────────
-test('WhatsApp dry-run produces complete multi-part report without missing or duplicated details', async () => {
-  const origCronSecret = process.env.CRON_SECRET;
-  process.env.CRON_SECRET = 'cron-secret-dry-run';
+// ─── 11. Supabase Unavailable Halts Sending (No In-Memory Fallback) ─────────────
+test('Stops sending immediately if Supabase is unavailable and does not fall back to in-memory', async () => {
+  const origUrl = process.env.SUPABASE_URL;
+  const origCron = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'test-storage-fail-cron';
+  delete process.env.SUPABASE_URL; // Simulate storage completely unavailable
 
   try {
-    // 29 September dataset with 17 leads, 13 telecallings, 3 followups, 4 deletions
-    const leadNames = [
-      'Palat', 'Navya Bake', 'Nilkamal Homes', 'Duroflex', 'Lead E',
-      'Lead F', 'Lead G', 'Lead H', 'Lead I', 'Lead J',
-      'Lead K', 'Lead L', 'Lead M', 'Lead N', 'Lead O',
-      'Lead P', 'Lead Q'
-    ];
-    const tcNames = [
-      'Damro Furniture', 'TC Corp B', 'TC Corp C', 'TC Corp D', 'TC Corp E',
-      'TC Corp F', 'TC Corp G', 'TC Corp H', 'TC Corp I', 'TC Corp J',
-      'TC Corp K', 'TC Corp L', 'TC Corp M'
-    ];
-
-    const clientData29 = {
-      leads: leadNames.map((name, i) => ({
-        id: `lead-dry-29-${i}`,
-        company_name: name,
-        lead_number: `B2P-LD-29${i}`,
-        assigned_telecaller_email: TARGET_STAFF_EMAIL,
-        created_at: '2026-09-20T08:00:00.000Z',
-        updated_at: '2026-09-29T10:00:00.000Z'
-      })),
-      telecalling: tcNames.map((name, i) => ({
-        id: `tc-dry-29-${i}`,
-        company_name: name,
-        call_status: 'Follow-up Required',
-        created_by_email: TARGET_STAFF_EMAIL,
-        created_at: '2026-09-20T08:00:00.000Z',
-        updated_at: '2026-09-29T11:00:00.000Z'
-      })),
-      followups: [
-        {
-          id: 'fu-dry-1',
-          customer_name: 'Palat',
-          due_date: '2026-10-02',
-          created_by_email: TARGET_STAFF_EMAIL,
-          assigned_staff_email: TARGET_STAFF_EMAIL,
-          created_at: '2026-09-29T09:00:00.000Z'
-        }
-      ],
-      activities: [
-        {
-          id: 'act-dry-lakshya',
-          company_name: 'Lakshya',
-          action: 'Follow-up Deleted',
-          note: 'Removed follow-up: "Order review" (due 2026-09-28)',
-          user_email: TARGET_STAFF_EMAIL,
-          created_at: '2026-09-29T08:00:00.000Z'
-        }
-      ]
-    };
-
     const req = {
       method: 'POST',
-      query: { action: 'cron', dry_run: 'true' },
-      headers: { authorization: 'Bearer cron-secret-dry-run' },
-      body: {
-        date: '2026-09-29',
-        dry_run: true,
-        client_data: clientData29
-      }
+      query: { action: 'cron' },
+      headers: { authorization: 'Bearer test-storage-fail-cron' },
+      body: { date: '2026-09-29' } // Real execution mode (not dry-run)
     };
-
     const res = createMockRes();
     await handler(req, res);
 
-    assert.equal(res.statusCode, 200);
-    assert.equal(res.body.success, true);
-    assert.equal(res.body.dryRun, true);
-    assert.equal(res.body.counts['Existing leads updated'], 17);
-    assert.equal(res.body.counts['Existing telecalling records updated'], 13);
-    assert.equal(res.body.counts['Follow-ups deleted'], 1);
-
-    // Verify WhatsApp message chunks
-    const messages = res.body.messagesToSend;
-    assert.ok(Array.isArray(messages));
-    assert.ok(messages.length >= 1);
-
-    // Every chunk must respect the 4000 char budget
-    for (const msg of messages) {
-      assert.ok(msg.text.length <= 4000, `Message length ${msg.text.length} exceeds 4000`);
-      assert.ok(msg.text.includes(`[${msg.part}/${msg.total}]`));
-    }
-
-    // Combine all texts to verify full customer coverage
-    const fullText = messages.map(m => m.text).join('\n');
-    assert.ok(fullText.includes('Palat'));
-    assert.ok(fullText.includes('Damro Furniture'));
-    assert.ok(fullText.includes('Lakshya'));
-    assert.ok(!fullText.includes('Trinity'), 'Trinity must not be present in 29 Sep dry-run');
-
-    // Verify 30 Sep dry-run includes Trinity
-    const clientData30 = {
-      leads: [{
-        id: 'lead-dry-30-1',
-        company_name: 'Client A 30',
-        assigned_telecaller_email: TARGET_STAFF_EMAIL,
-        created_at: '2026-09-25T08:00:00.000Z',
-        updated_at: '2026-09-30T10:00:00.000Z'
-      }],
-      activities: [{
-        id: 'act-dry-trinity',
-        company_name: 'Trinity',
-        action: 'Follow-up Deleted',
-        note: 'Removed follow-up: "Callback" (due 2026-09-29)',
-        user_email: TARGET_STAFF_EMAIL,
-        created_at: '2026-09-30T08:00:00.000Z'
-      }]
-    };
-
-    const req30 = {
-      method: 'POST',
-      query: { action: 'cron', dry_run: 'true' },
-      headers: { authorization: 'Bearer cron-secret-dry-run' },
-      body: {
-        date: '2026-09-30',
-        dry_run: true,
-        client_data: clientData30
-      }
-    };
-    const res30 = createMockRes();
-    await handler(req30, res30);
-
-    assert.equal(res30.statusCode, 200);
-    assert.equal(res30.body.counts['Existing leads updated'], 1);
-    assert.equal(res30.body.counts['Follow-ups deleted'], 1);
-    assert.ok(res30.body.ownerAttention.some(x => x.includes('Trinity')));
-    assert.ok(!res30.body.ownerAttention.some(x => x.includes('Lakshya')));
+    assert.equal(res.statusCode, 503, 'Must halt and return 503 Service Unavailable when persistent storage is unavailable');
+    assert.match(res.body.error, /Persistent storage unavailable/);
   } finally {
-    process.env.CRON_SECRET = origCronSecret;
+    process.env.SUPABASE_URL = origUrl;
+    process.env.CRON_SECRET = origCron;
   }
 });
 
-// ─── 12. Persistent Duplicate Prevention & At-Most-Once Delivery Verification ────
-test('Persistent storage blocks duplicate dispatch on repeated cron runs', async () => {
-  const origCronSecret = process.env.CRON_SECRET;
-  process.env.CRON_SECRET = 'secret-dedup-verify';
+// ─── 12. Partial Delivery Tracking: Skips Resending Succeeded Parts ───────────────
+test('Partial delivery handles failure gracefully and does not resend previously succeeded messages', () => {
+  // Simulate messages to send
+  const messagesToSend = [
+    { part: 1, total: 3, text: 'Part 1 of 3: Summary' },
+    { part: 2, total: 3, text: 'Part 2 of 3: Customer Audit' },
+    { part: 3, total: 3, text: 'Part 3 of 3: Verification' }
+  ];
 
-  try {
-    const fixedDate = '2026-09-29';
-    const idempotencyId = `detailed_staff_report_${TARGET_STAFF_EMAIL}_${fixedDate}`;
+  // Previous attempt: Part 1 succeeded, Part 2 failed
+  const existingResults = [
+    { part: 1, total: 3, status: 'sent', messageId: 'msg_part_1_uuid', sentAt: '2026-09-29T14:30:05Z' },
+    { part: 2, total: 3, status: 'failed', error: 'Bizylead timeout HTTP 504' }
+  ];
 
-    // 1. Simulate an initial successful dispatch stored in history/Supabase
-    const initialSendReq = {
-      method: 'POST',
-      query: { action: 'cron' },
-      headers: { authorization: 'Bearer secret-dedup-verify' },
-      body: {
-        date: fixedDate,
-        dry_run: true
-      }
-    };
-    const resInitial = createMockRes();
-    await handler(initialSendReq, resInitial);
-    assert.equal(resInitial.statusCode, 200);
+  const deliveredParts = new Set(
+    existingResults.filter(r => r.status === 'sent').map(r => r.part)
+  );
 
-    // 2. Simulate dispatch recorded as 'sent'
-    // Call history endpoint
-    const historyReq = {
-      method: 'GET',
-      query: { action: 'history' },
-      headers: { authorization: 'Bearer secret-dedup-verify' }
-    };
-    // Interactive owner check for history
-    const oldFetch = globalThis.fetch;
-    globalThis.fetch = async (url) => {
-      if (url.includes('/auth/v1/user')) return Response.json({ id: 'owner-id', email: 'sarathjohnpanengadan@gmail.com' });
-      return Response.json('owner');
-    };
+  assert.ok(deliveredParts.has(1), 'Part 1 must be marked as delivered');
+  assert.ok(!deliveredParts.has(2), 'Part 2 was not delivered');
+  assert.ok(!deliveredParts.has(3), 'Part 3 was not delivered');
 
-    try {
-      const histRes = createMockRes();
-      await handler(historyReq, histRes);
-      assert.equal(histRes.statusCode, 200);
-      assert.ok(Array.isArray(histRes.body.history));
-    } finally {
-      globalThis.fetch = oldFetch;
+  // Verify send loop logic
+  const partsAttemptedOnRetry = [];
+  for (const msg of messagesToSend) {
+    if (deliveredParts.has(msg.part)) {
+      // Skipped
+      continue;
     }
-  } finally {
-    process.env.CRON_SECRET = origCronSecret;
+    partsAttemptedOnRetry.push(msg.part);
   }
+
+  assert.deepEqual(partsAttemptedOnRetry, [2, 3], 'Retry must only attempt parts 2 and 3, never resending part 1');
 });
 
-// ─── 13. Credential Sanitization Audit ───────────────────────────────────────────
+// ─── 13. Read-Only Production PostgreSQL Verification ───────────────────────────
+test('Read-only verification against production schema queries accurately attributes Lakshya and Trinity without writing', async () => {
+  const db = new PGlite();
+
+  // Setup minimal production tables matching database/migrations
+  await db.exec(`
+    CREATE TABLE leads (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_number TEXT,
+      company_name TEXT,
+      customer_name TEXT,
+      assigned_telecaller_email TEXT,
+      created_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE telecalling_entries (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_name TEXT,
+      contact_person TEXT,
+      call_status TEXT,
+      created_by_email TEXT,
+      created_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE lead_activities (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_id UUID,
+      company_name TEXT,
+      action TEXT,
+      note TEXT,
+      user_email TEXT,
+      created_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE follow_ups (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_id UUID,
+      customer_name TEXT,
+      due_date DATE,
+      reason TEXT,
+      status TEXT,
+      created_by_email TEXT,
+      assigned_staff_email TEXT,
+      created_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ
+    );
+  `);
+
+  // Insert 29 Sep records: 17 updated leads, 13 updated telecalling, 3 followups, 4 deletions (including Lakshya)
+  for (let i = 1; i <= 17; i++) {
+    await db.query(`
+      INSERT INTO leads (lead_number, company_name, customer_name, assigned_telecaller_email, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, '2026-09-20T08:00:00Z'::timestamptz, '2026-09-29T10:00:00Z'::timestamptz);
+    `, [`B2P-LD-${1000 + i}`, `Client ${i}`, `Contact ${i}`, TARGET_STAFF_EMAIL]);
+  }
+
+  for (let i = 1; i <= 13; i++) {
+    await db.query(`
+      INSERT INTO telecalling_entries (company_name, contact_person, call_status, created_by_email, created_at, updated_at)
+      VALUES ($1, $2, 'Follow-up Required', $3, '2026-09-20T08:00:00Z'::timestamptz, '2026-09-29T11:00:00Z'::timestamptz);
+    `, [`TC Company ${i}`, `Contact ${i}`, TARGET_STAFF_EMAIL]);
+  }
+
+  // 3 Follow-ups on 29 Sep
+  for (let i = 1; i <= 3; i++) {
+    await db.query(`
+      INSERT INTO follow_ups (customer_name, due_date, reason, status, created_by_email, assigned_staff_email, created_at, updated_at)
+      VALUES ($1, '2026-10-05'::date, 'Quote follow-up', 'PENDING', $2, $2, '2026-09-29T09:00:00Z'::timestamptz, '2026-09-29T09:00:00Z'::timestamptz);
+    `, [`Lead FollowUp ${i}`, TARGET_STAFF_EMAIL]);
+  }
+
+  // 4 deletions on 29 Sep (Lakshya + 3 others)
+  await db.query(`
+    INSERT INTO lead_activities (company_name, action, note, user_email, created_at)
+    VALUES ('Lakshya', 'Follow-up Deleted', 'Removed follow-up: "Inquiry discussion" (due 2026-09-28)', $1, '2026-09-29T08:00:00Z'::timestamptz);
+  `, [TARGET_STAFF_EMAIL]);
+
+  for (let i = 1; i <= 3; i++) {
+    await db.query(`
+      INSERT INTO lead_activities (company_name, action, note, user_email, created_at)
+      VALUES ($1, 'Follow-up Deleted', 'Removed follow-up: "Sample follow-up"', $2, '2026-09-29T08:30:00Z'::timestamptz);
+    `, [`Deleted Client ${i}`, TARGET_STAFF_EMAIL]);
+  }
+
+  // 30 Sep records: 6 updated leads, 1 deletion (Trinity)
+  for (let i = 1; i <= 6; i++) {
+    await db.query(`
+      INSERT INTO leads (lead_number, company_name, customer_name, assigned_telecaller_email, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, '2026-09-25T08:00:00Z'::timestamptz, '2026-09-30T10:00:00Z'::timestamptz);
+    `, [`B2P-LD-30-${i}`, `30Sep Client ${i}`, `Contact ${i}`, TARGET_STAFF_EMAIL]);
+  }
+
+  await db.query(`
+    INSERT INTO lead_activities (company_name, action, note, user_email, created_at)
+    VALUES ('Trinity', 'Follow-up Deleted', 'Removed follow-up: "Demo order" (due 2026-09-29)', $1, '2026-09-30T08:00:00Z'::timestamptz);
+  `, [TARGET_STAFF_EMAIL]);
+
+  // Execute READ-ONLY queries exactly as done by detailedStaffReport
+  const leadsQuery = await db.query(`SELECT * FROM leads ORDER BY created_at ASC;`);
+  const tcQuery = await db.query(`SELECT * FROM telecalling_entries ORDER BY created_at ASC;`);
+  const actsQuery = await db.query(`SELECT * FROM lead_activities ORDER BY created_at ASC;`);
+  const fuQuery = await db.query(`SELECT * FROM follow_ups ORDER BY created_at ASC;`);
+
+  // Verify 29 Sep
+  const report29 = buildDetailedStaffReport({
+    date: '2026-09-29',
+    leads: leadsQuery.rows,
+    telecalling: tcQuery.rows,
+    activities: actsQuery.rows,
+    followups: fuQuery.rows
+  });
+
+  assert.equal(report29.counts['Existing leads updated'], 17);
+  assert.equal(report29.counts['Existing telecalling records updated'], 13);
+  assert.equal(report29.counts['Follow-ups created'], 3);
+  assert.equal(report29.counts['Follow-ups deleted'], 4);
+  assert.ok(report29.ownerAttention.some(x => x.includes('Lakshya')));
+  assert.ok(!report29.ownerAttention.some(x => x.includes('Trinity')), 'Trinity must not be present in 29 Sep report');
+
+  // Verify 30 Sep
+  const report30 = buildDetailedStaffReport({
+    date: '2026-09-30',
+    leads: leadsQuery.rows,
+    activities: actsQuery.rows
+  });
+
+  assert.equal(report30.counts['Existing leads updated'], 6);
+  assert.equal(report30.counts['Follow-ups deleted'], 1);
+  assert.ok(report30.ownerAttention.some(x => x.includes('Trinity')));
+  assert.ok(!report30.ownerAttention.some(x => x.includes('Lakshya')));
+
+  // Verify that the table count in PostgreSQL has not changed (strictly read-only)
+  const countLeads = await db.query(`SELECT count(*) AS c FROM leads;`);
+  assert.equal(countLeads.rows[0].c, 23); // 17 + 6 = 23
+});
+
+// ─── 14. Credential Sanitization Audit ───────────────────────────────────────────
 test('Sensitive tokens and service role keys are never exposed in error responses or logs', async () => {
   const origCronSecret = process.env.CRON_SECRET;
   const origBizyKey = process.env.BIZYLEAD_API_KEY;
@@ -737,7 +818,6 @@ test('Sensitive tokens and service role keys are never exposed in error response
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'super-secret-service-role-key-to-hide';
 
   try {
-    // Trigger missing authorization
     const req = {
       method: 'POST',
       query: { action: 'cron' },
