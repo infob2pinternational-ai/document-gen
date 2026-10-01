@@ -195,8 +195,9 @@ async function acquireAtomicClaimInPostgres(idempotencyId, staffEmail, targetDat
  * Updates dispatch state in Supabase table owner_report_dispatches.
  */
 async function updateDispatchInSupabase(idempotencyId, fields, callerToken = null) {
-  if (!SUPABASE_URL) return;
+  if (!SUPABASE_URL) throw new Error('Dispatch persistence unavailable: SUPABASE_URL is missing.');
   const token = callerToken || await getAdminToken(false);
+  if (!token) throw new Error('Dispatch persistence unavailable: no Supabase token.');
   const tableUrl = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/owner_report_dispatches?id=eq.${encodeURIComponent(idempotencyId)}`;
   
   const payload = {
@@ -223,10 +224,10 @@ async function updateDispatchInSupabase(idempotencyId, fields, callerToken = nul
     }, JSON.stringify(payload));
 
     if (!res.ok) {
-      console.warn(`[Detailed Staff Report] Failed to update dispatch (HTTP ${res.status}):`, sanitizeErrorMessage(res.text()));
+      throw new Error(`Dispatch persistence failed (HTTP ${res.status}): ${sanitizeErrorMessage(res.text())}`);
     }
   } catch (err) {
-    console.warn('[Detailed Staff Report] Exception updating dispatch:', sanitizeErrorMessage(err));
+    throw new Error(`Dispatch persistence failed: ${sanitizeErrorMessage(err)}`);
   }
 }
 
@@ -552,6 +553,12 @@ export default async function handler(req, res) {
       ? claimResult.dispatch.messageIds
       : []);
 
+  // A previously attempted part may have reached Bizylead even if its result was not saved.
+  // Require manual reconciliation rather than risking a duplicate on retry.
+  if (existingResults.some(r => r.status === 'attempting' || r.status === 'uncertain')) {
+    return res.status(409).json({ success: false, status: 'manual_review_required', error: 'A prior WhatsApp part has uncertain delivery. Reconcile with Bizylead before retrying.' });
+  }
+
   const deliveredPartNumbers = new Set(
     existingResults
       .filter(r => r.status === 'sent' || r.status === 'delivered')
@@ -583,6 +590,15 @@ export default async function handler(req, res) {
         text: msg.text
       };
 
+      // Persist intent BEFORE contacting Bizylead. If the process crashes after sending,
+      // a retry sees this marker and refuses to resend an uncertain part.
+      sentResults.push({ part: msg.part, total: msg.total, status: 'attempting', attemptedAt: new Date().toISOString() });
+      await updateDispatchInSupabase(idempotencyId, {
+        status: 'in_progress', message_results: sentResults,
+        message_ids: sentResults.map(r => r.messageId).filter(Boolean),
+        sent_count: sentResults.filter(r => r.status === 'sent').length
+      }, callerToken);
+
       const response = await httpsRequest(bizyUrl, {
         method: 'POST',
         headers: {
@@ -596,13 +612,13 @@ export default async function handler(req, res) {
         dispatchError = sanitizeErrorMessage(resData?.error?.message || resData?.message || `HTTP ${response.status}: Bizylead error`);
         console.error(`[Detailed Staff Report] Bizylead error on message ${msg.part}:`, sanitizeErrorMessage(resData));
 
-        sentResults.push({
+        sentResults[sentResults.length - 1] = {
           part: msg.part,
           total: msg.total,
-          status: 'failed',
+          status: 'uncertain',
           error: dispatchError,
           attemptedAt: new Date().toISOString()
-        });
+        };
 
         // Update incremental status immediately to record the partial state
         await updateDispatchInSupabase(idempotencyId, {
@@ -616,13 +632,13 @@ export default async function handler(req, res) {
         break;
       } else {
         const msgId = resData?.messageId || resData?.messages?.[0]?.id || `bizy_detailed_${Date.now()}_${msg.part}`;
-        sentResults.push({
+        sentResults[sentResults.length - 1] = {
           part: msg.part,
           total: msg.total,
           status: 'sent',
           messageId: msgId,
           sentAt: new Date().toISOString()
-        });
+        };
 
         // Update incremental status after each successful part
         await updateDispatchInSupabase(idempotencyId, {
@@ -686,14 +702,20 @@ export default async function handler(req, res) {
     const successfulParts = sentResults.filter(s => s.status === 'sent').length;
     const finalStatus = successfulParts > 0 ? 'partially_sent' : 'failed';
 
-    await updateDispatchInSupabase(idempotencyId, {
+    // If the last part remains 'attempting', delivery is uncertain. Never auto-resend it.
+    const lastPart = sentResults[sentResults.length - 1];
+    if (lastPart?.status === 'attempting') lastPart.status = 'uncertain';
+    try { await updateDispatchInSupabase(idempotencyId, {
       status: finalStatus,
       error: sanitizedMsg,
       message_results: sentResults,
       message_ids: sentResults.map(s => s.messageId).filter(Boolean),
       sent_count: successfulParts,
       summary: reportResult.counts
-    }, callerToken);
+    }, callerToken); } catch (persistErr) {
+      console.error('[Detailed Staff Report] Cannot persist dispatch failure; manual review required:', sanitizeErrorMessage(persistErr));
+      return res.status(503).json({ success: false, status: 'manual_review_required', error: 'WhatsApp delivery state could not be saved. Manual reconciliation required before retrying.' });
+    }
 
     return res.status(500).json({
       success: false,
