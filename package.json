@@ -26,6 +26,7 @@
     "@capacitor/core": "^8.5.0",
     "@capacitor/push-notifications": "^8.1.2",
     "@capacitor/status-bar": "^8.0.3",
+    "@sentry/react": "^11.1.0",
     "@supabase/supabase-js": "^2.110.0",
     "firebase": "^12.16.0",
     "jszip": "^3.10.1",
@@ -36,6 +37,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.63.0",
+    "@sentry/vite-plugin": "^5.4.0",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
