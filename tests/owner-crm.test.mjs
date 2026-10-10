@@ -50,7 +50,7 @@ test('shared lead save requires cloud confirmation and is visible from a fresh b
     export const isCloudActive = () => active;
     export const supabase = { from(table) { return {
       upsert(row) {
-        if (table !== 'leads') return Promise.resolve({ error: null });
+        if (table !== 'leads') return { select() { return { async single() { return failure ? { error: { message: failure } } : { data: { id: row.id }, error: null }; } }; } };
         return { select() { return { async single() {
           if (failure) return { error: { message: failure } };
           if (!['hot', 'warm', 'cold'].includes(row.priority)) return { error: { message: 'leads_priority_check' } };
@@ -76,6 +76,9 @@ test('shared lead save requires cloud confirmation and is visible from a fresh b
     const input = { company_id: company, customer_name: 'Shared enquiry', phone: '1234567890' };
     await assert.rejects(leadService.saveLead(input), /Permission denied/);
     assert.equal(leadService.getLeads(company).length, 0);
+    await assert.rejects(leadService.addLeadActivity({ lead_id: 'shared-lead', company_id: company,
+      user_email: 'creator@example.com', action: 'Note Logged', note: 'Unsaved call' }), /Permission denied/);
+    assert.equal(leadService.getLeadActivities('shared-lead').length, 0);
     db.setActive(false);
     await assert.rejects(leadService.saveLead(input), /sign in again/);
     db.setActive(true);
@@ -107,9 +110,11 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
   const dbUrl = asModule(`
     export const saved = {};
     export let failure = false;
+    export let migrationVersion = 0;
+    export function setMigrationVersion(value) { migrationVersion = value; }
     export function setFailure(value) { failure = value; }
     export const isCloudActive = () => true;
-    export const supabase = { from(table) { return {
+    export const supabase = { async rpc() { return { data: migrationVersion, error: null }; }, from(table) { return {
       upsert(row) { return { select() { return { async single() {
         if (failure) return { error: { message: 'permission denied' } };
         if (table === 'follow_ups' && !['pending','completed','cancelled','snoozed','overdue'].includes(row.status))
@@ -129,7 +134,7 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
     const db = await import(dbUrl);
     const { officeService, hydrateCrmFromCloud } = await load('../src/services/officeService.ts', {
       './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
-      './leadService': asModule('export const leadService = { getActiveCompany() { return null; }, async addLeadActivity() {}, async updateLeadStatus() {}, async updateLeadNextFollowUpAt() {} }; export async function hydrateLeadsFromCloud() {}'),
+      './leadService': asModule('export const leadService = { getActiveCompany() { return null; }, async refreshLeadActivities() {}, async addLeadActivity() {}, async updateLeadStatus() {}, async updateLeadNextFollowUpAt() {} }; export async function hydrateLeadsFromCloud() {}'),
       './db': dbUrl,
       '../utils/uuid': asModule('export const generateUUID = () => "33333333-3333-4333-8333-333333333333";'),
       '../utils/staffUtils': asModule(`export const normalizeStaffEmail = ${staff.normalizeStaffEmail.toString()};`),
@@ -137,6 +142,11 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
     });
     const company = '11111111-1111-4111-8111-111111111111';
     const lead = '22222222-2222-4222-8222-222222222222';
+    await assert.rejects(officeService.saveFollowUp({ company_id: company, lead_id: lead,
+      customer_name: 'Enquiry', due_date: '2026-09-21', reason: 'Call customer' }, 'staff@example.com'), /not saved.*migration/);
+    assert.equal(db.saved.follow_ups, undefined);
+    assert.equal(officeService.getFollowUps('all', company).length, 0);
+    db.setMigrationVersion(1);
     const follow = await officeService.saveFollowUp({ company_id: company, lead_id: lead, customer_name: 'Enquiry', due_date: '2026-09-21', due_time: '15:45', reason: 'Call customer' }, 'staff@example.com');
     assert.equal(db.saved.follow_ups.follow_up_time, '15:45');
     assert.equal(db.saved.follow_ups.lead_id, lead);

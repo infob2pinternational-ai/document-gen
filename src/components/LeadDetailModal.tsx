@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { Lead, LeadActivity, LeadStatus } from '../types';
 import { 
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { leadService } from '../services/leadService';
 import { officeService } from '../services/officeService';
+import { metricsService } from '../services/metricsService';
 import { formatStaffDisplayName } from '../utils/staffUtils';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { FollowUpModal } from './FollowUpModal';
@@ -67,6 +68,14 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [quotationModalOpen, setQuotationModalOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [, setTimelineRevision] = useState(0);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const noteSaveInProgress = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return metricsService.subscribe(() => setTimelineRevision(value => value + 1));
+  }, [isOpen, incomingLead?.id]);
 
   if (!isOpen || !incomingLead) return null;
 
@@ -103,21 +112,29 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
   const handleAddNoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newActivityNote.trim()) return;
+    if (!newActivityNote.trim() || noteSaveInProgress.current) return;
+    noteSaveInProgress.current = true;
+    setIsSavingNote(true);
+    try {
+      await leadService.addLeadActivity({
+        lead_id: lead.id,
+        company_id: lead.company_id,
+        user_email: userEmail,
+        action: 'Note Logged',
+        previous_status: lead.status,
+        new_status: lead.status,
+        note: newActivityNote.trim()
+      });
 
-    await leadService.addLeadActivity({
-      lead_id: lead.id,
-      company_id: lead.company_id,
-      user_email: userEmail,
-      action: 'Note Logged',
-      previous_status: lead.status,
-      new_status: lead.status,
-      note: newActivityNote.trim()
-    });
-
-    setNewActivityNote('');
-    const current = leadService.getLeadById(lead.id);
-    if (current) onUpdated(current);
+      setNewActivityNote('');
+      const current = leadService.getLeadById(lead.id);
+      if (current) onUpdated(current);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save the call remarks.');
+    } finally {
+      noteSaveInProgress.current = false;
+      setIsSavingNote(false);
+    }
   };
 
   const handleWhatsAppOpen = () => {
@@ -661,11 +678,12 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               />
               <button
                 type="submit"
+                disabled={isSavingNote}
                 className="btn-primary"
                 style={{ fontSize: '0.78rem', padding: '0.4rem 0.85rem', whiteSpace: 'nowrap' }}
               >
                 <Plus size={14} />
-                <span>Add Note</span>
+                <span>{isSavingNote ? 'Saving...' : 'Add Note'}</span>
               </button>
             </form>
 

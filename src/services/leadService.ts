@@ -194,6 +194,20 @@ function replaceCompanyScopedCache<T extends { id: string; company_id?: string |
 }
 
 async function persistCrmRow<T extends { id: string }>(storageKey: string, table: CrmLeadsTable, fullLocalArray: T[], changedRow: T): Promise<void> {
+  if (table === 'lead_activities' && supabase) {
+    if (!isCloudActive()) throw new Error('Please sign in again to save the activity to the shared CRM.');
+    const { data, error } = await supabase.from(table)
+      .upsert(sanitizeActivityForSupabase(changedRow)).select('id').single();
+    if (error) throw new Error(`Activity could not be saved: ${error.message}`);
+    if (data?.id !== changedRow.id) throw new Error('The server did not confirm the saved activity.');
+    const current = getStoredActivities();
+    const index = current.findIndex(row => row.id === changedRow.id);
+    if (index < 0) current.unshift(changedRow as unknown as LeadActivity);
+    else current[index] = changedRow as unknown as LeadActivity;
+    localStorage.setItem(storageKey, JSON.stringify(current));
+    metricsService.notifyChange();
+    return;
+  }
   // A configured shared CRM must not report a browser-only lead as saved.
   if (table === 'leads' && supabase) {
     if (!isCloudActive()) {
@@ -650,6 +664,22 @@ export const leadService = {
     return activities
       .filter(a => a.lead_id === leadId)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  },
+
+  async refreshLeadActivities(leadId: string, companyId: string): Promise<void> {
+    if (!supabase) return;
+    if (!isCloudActive()) throw new Error('Please sign in again to refresh the timeline.');
+    const { data, error } = await supabase.from('lead_activities').select('*')
+      .eq('company_id', companyId).eq('lead_id', leadId).order('created_at', { ascending: false });
+    if (error) throw new Error(`Unable to refresh the lead timeline: ${error.message}`);
+    const rows: LeadActivity[] = (data || []).map(row => ({
+      id: row.id, lead_id: row.lead_id, company_id: row.company_id,
+      action: row.type || row.action, note: row.notes ?? row.note ?? '',
+      user_email: row.performed_by || row.user_email || 'Staff', created_at: row.created_at
+    }));
+    const current = getStoredActivities().filter(row => row.lead_id !== leadId || row.company_id !== companyId);
+    localStorage.setItem(ACTIVITIES_KEY, JSON.stringify([...rows, ...current]));
+    metricsService.notifyChange();
   },
 
   async addLeadActivity(activity: Omit<LeadActivity, 'id' | 'created_at'>): Promise<LeadActivity> {

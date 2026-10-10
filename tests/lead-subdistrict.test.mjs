@@ -13,7 +13,7 @@ test('cleared sub-district remains cleared after hydration and missing schema is
     export function setMissingColumn(value){fail=value;}
     export const supabase={from(table){return {
       select(){return Promise.resolve({data:table==='leads' && row?[row]:[],error:null});},
-      upsert(payload){if(table!=='leads')return Promise.resolve({error:null});
+      upsert(payload){if(table!=='leads')return {select(){return {async single(){return {data:{id:payload.id},error:null};}};}};
         writes++;return {select(){return {async single(){
           if(fail && Object.hasOwn(payload,'sub_district'))return {error:{code:'PGRST204',message:'Missing sub_district column'}};
           row={...payload,lead_number:'B2P-LD-1042'};return {data:{id:row.id,lead_number:row.lead_number},error:null};

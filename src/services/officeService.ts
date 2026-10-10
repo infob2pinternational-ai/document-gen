@@ -364,6 +364,12 @@ async function persistOfficeRow<T extends { id: string }>(storageKey: string, ta
   }
   if (supabase) {
     if (!isCloudActive()) throw new Error('Please sign in again to save to the shared CRM.');
+    if (table === 'follow_ups') {
+      const { data: version, error: migrationError } = await supabase.rpc('followup_timeline_version');
+      if (migrationError || version !== 1) {
+        throw new Error('Follow-up was not saved. Apply the follow-up timeline database migration before retrying.');
+      }
+    }
     const { data, error } = await supabase.from(table)
       .upsert(sanitizeOfficeRowForSupabase(table, changedRow)).select('*').single();
     if (error) throw new Error(`Unable to save ${table}: ${error.message}`);
@@ -736,6 +742,16 @@ export const officeService = {
         list.unshift(followUpRecord);
       }
       await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, followUpRecord);
+      if (!supabase && followUpRecord.lead_id && followUpRecord.company_id && followUpRecord.notes?.trim() && existing?.notes !== followUpRecord.notes) {
+        await leadService.addLeadActivity({
+          lead_id: followUpRecord.lead_id, company_id: followUpRecord.company_id,
+          user_email: userEmail, action: 'Follow-up Call Remarks', note: followUpRecord.notes.trim()
+        });
+      }
+    }
+
+    if (supabase && followUpRecord.lead_id && followUpRecord.company_id) {
+      await leadService.refreshLeadActivities(followUpRecord.lead_id, followUpRecord.company_id);
     }
 
     if (followUpRecord.lead_id && followUpRecord.company_id) {
@@ -751,9 +767,18 @@ export const officeService = {
   async completeFollowUp(id: string, completionNote: string, userEmail: string): Promise<FollowUp | null> {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
     const idx = list.findIndex(f => f.id === id);
-    if (idx < 0) return null;
+    if (idx < 0) throw new Error('Follow-up was not found. Refresh the list and try again.');
 
     const current = list[idx];
+    const activeCompany = leadService.getActiveCompany();
+    if (activeCompany && activeCompany !== 'default' && current.company_id !== activeCompany) {
+      throw new Error('Cannot complete a follow-up belonging to another company.');
+    }
+    if (current.status === 'COMPLETED') {
+      if (current.lead_id && current.company_id) await this.syncLeadNextFollowUpAt(current.lead_id, current.company_id);
+      if (supabase && current.lead_id && current.company_id) await leadService.refreshLeadActivities(current.lead_id, current.company_id);
+      return current;
+    }
     current.status = 'COMPLETED';
     current.completed_at = new Date().toISOString();
     current.completion_note = completionNote;
@@ -773,8 +798,11 @@ export const officeService = {
       }
     }
 
-    // Log to lead activity if linked
-    if (current.lead_id) {
+    // Cloud activity is inserted by the database trigger in the task transaction.
+    if (supabase && current.lead_id && current.company_id) {
+      await leadService.refreshLeadActivities(current.lead_id, current.company_id);
+    }
+    if (!supabase && current.lead_id) {
       const activityCompanyId = (current.company_id && current.company_id !== 'default')
         ? current.company_id
         : (leadService.getActiveCompany() && leadService.getActiveCompany() !== 'default'
