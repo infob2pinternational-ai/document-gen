@@ -338,6 +338,11 @@ function App() {
         localStorage.removeItem('supabase_user');
       }
     }
+    leadService.invalidateActivityContext();
+    const invalidateActivityStorage = (event: StorageEvent) => {
+      if (event.key === 'supabase_user' || event.key === null) leadService.invalidateActivityContext();
+    };
+    window.addEventListener('storage', invalidateActivityStorage);
 
     // Listener
     const { data: { subscription } } = supabase!.auth.onAuthStateChange((event, session) => {
@@ -346,6 +351,7 @@ function App() {
       }
       if (session?.user) {
         localStorage.setItem('supabase_user', JSON.stringify(session.user));
+        leadService.invalidateActivityContext();
         setUser((prevUser: any) => {
           if (
             prevUser &&
@@ -359,12 +365,14 @@ function App() {
         });
       } else {
         localStorage.removeItem('supabase_user');
+        leadService.invalidateActivityContext();
         setUser(null);
       }
     });
 
     return () => {
       subscription.unsubscribe();
+      window.removeEventListener('storage', invalidateActivityStorage);
     };
   }, []);
 

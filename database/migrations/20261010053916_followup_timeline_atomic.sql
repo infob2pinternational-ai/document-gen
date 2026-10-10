@@ -18,8 +18,8 @@ BEGIN
     activity_type := 'Follow-up Completed';
     activity_note := 'Completed follow-up: "' || coalesce(NEW.reason, '') || '". Note: '
       || coalesce(nullif(btrim(NEW.completion_note), ''), nullif(btrim(NEW.notes), ''), 'No completion remarks.');
-  ELSIF nullif(btrim(NEW.notes), '') IS NOT NULL
-    AND (TG_OP = 'INSERT' OR NEW.notes IS DISTINCT FROM previous_row->>'notes') THEN
+  ELSIF TG_OP = 'UPDATE' AND nullif(btrim(NEW.notes), '') IS NOT NULL
+    AND NEW.notes IS DISTINCT FROM previous_row->>'notes' THEN
     activity_type := 'Follow-up Call Remarks';
     activity_note := btrim(NEW.notes);
   ELSE
@@ -42,6 +42,42 @@ GRANT EXECUTE ON FUNCTION public.log_followup_timeline_activity() TO authenticat
 DROP TRIGGER IF EXISTS followup_timeline_activity ON public.follow_ups;
 CREATE TRIGGER followup_timeline_activity AFTER INSERT OR UPDATE ON public.follow_ups
 FOR EACH ROW EXECUTE FUNCTION public.log_followup_timeline_activity();
+
+-- Old clients generate a second completion activity after saving the task.
+-- Reserve this activity type for the atomic task trigger. Its nested insert
+-- reaches this guard at depth 2; an API upsert reaches it at depth 1. Returning
+-- NULL skips that obsolete insert (including ON CONFLICT) without an error in
+-- the old client's best-effort upsert. No text/time heuristic or row deletion.
+CREATE OR REPLACE FUNCTION public.guard_followup_completion_activity()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+  IF lower(coalesce(to_jsonb(NEW)->>'type', to_jsonb(NEW)->>'action', '')) = 'follow-up completed'
+    AND pg_trigger_depth() = 1 THEN
+    RETURN NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_followup_completion_activity() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.guard_followup_completion_activity() TO authenticated, service_role;
+DROP TRIGGER IF EXISTS guard_followup_completion_activity ON public.lead_activities;
+CREATE TRIGGER guard_followup_completion_activity BEFORE INSERT ON public.lead_activities
+FOR EACH ROW EXECUTE FUNCTION public.guard_followup_completion_activity();
+
+CREATE OR REPLACE FUNCTION public.preserve_followup_completion_time()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+  IF lower(OLD.status) = 'completed' AND lower(NEW.status) = 'completed' THEN
+    NEW.completed_at := OLD.completed_at;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.preserve_followup_completion_time() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.preserve_followup_completion_time() TO authenticated, service_role;
+DROP TRIGGER IF EXISTS preserve_followup_completion_time ON public.follow_ups;
+CREATE TRIGGER preserve_followup_completion_time BEFORE UPDATE ON public.follow_ups
+FOR EACH ROW EXECUTE FUNCTION public.preserve_followup_completion_time();
 
 -- The client checks this before writing, so a missing migration cannot silently
 -- accept a task without its timeline activity.

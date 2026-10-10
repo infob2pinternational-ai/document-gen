@@ -6,6 +6,53 @@ import { normalizeStaffEmail } from '../utils/staffUtils';
 
 const LEADS_KEY = 'docgen_leads';
 const ACTIVITIES_KEY = 'docgen_lead_activities';
+const ACTIVITY_OWNER_KEY = 'docgen_activity_cache_user';
+let activityUser: string | undefined;
+let activityEpoch = 0;
+let activityReadSequence = 0;
+let activityRevision = 0;
+
+function activitySessionUser(): string {
+  try { return JSON.parse(localStorage.getItem('supabase_user') || 'null')?.id || ''; }
+  catch { return ''; }
+}
+
+function syncActivitySession(): void {
+  const user = activitySessionUser();
+  const changed = activityUser !== undefined && activityUser !== user;
+  const owner = localStorage.getItem(ACTIVITY_OWNER_KEY);
+  const foreignCache = Boolean((user || owner) && owner !== user);
+  activityUser = user;
+  if (changed || foreignCache) {
+    activityEpoch++;
+    activityReadSequence++;
+    activityRevision++;
+    localStorage.setItem(ACTIVITIES_KEY, '[]');
+    localStorage.setItem(ACTIVITY_OWNER_KEY, user);
+    metricsService.notifyChange();
+  }
+}
+
+function activityContext() {
+  syncActivitySession();
+  return { epoch: activityEpoch, user: activityUser, company: activeCompanyId };
+}
+
+function activityContextCurrent(context: ReturnType<typeof activityContext>): boolean {
+  syncActivitySession();
+  return context.epoch === activityEpoch && context.user === activityUser && context.company === activeCompanyId;
+}
+
+function beginActivityRead() {
+  const context = activityContext();
+  return { context, sequence: ++activityReadSequence, revision: activityRevision,
+    snapshot: localStorage.getItem(ACTIVITIES_KEY) };
+}
+
+function activityReadCurrent(read: ReturnType<typeof beginActivityRead>): boolean {
+  return activityContextCurrent(read.context) && read.sequence === activityReadSequence
+    && read.revision === activityRevision && read.snapshot === localStorage.getItem(ACTIVITIES_KEY);
+}
 
 // REMEDIATION (2026-08-24, CRM audit pass): this file used to seed a
 // full set of fictional leads/activities ("Arun Kumar", "Kerala Grand
@@ -196,8 +243,11 @@ function replaceCompanyScopedCache<T extends { id: string; company_id?: string |
 async function persistCrmRow<T extends { id: string }>(storageKey: string, table: CrmLeadsTable, fullLocalArray: T[], changedRow: T): Promise<void> {
   if (table === 'lead_activities' && supabase) {
     if (!isCloudActive()) throw new Error('Please sign in again to save the activity to the shared CRM.');
+    const context = activityContext();
+    activityRevision++;
     const { data, error } = await supabase.from(table)
       .upsert(sanitizeActivityForSupabase(changedRow)).select('id').single();
+    if (!activityContextCurrent(context)) throw new Error('Account or company changed during the activity save. Reopen the lead to check its saved timeline.');
     if (error) throw new Error(`Activity could not be saved: ${error.message}`);
     if (data?.id !== changedRow.id) throw new Error('The server did not confirm the saved activity.');
     const current = getStoredActivities();
@@ -205,6 +255,7 @@ async function persistCrmRow<T extends { id: string }>(storageKey: string, table
     if (index < 0) current.unshift(changedRow as unknown as LeadActivity);
     else current[index] = changedRow as unknown as LeadActivity;
     localStorage.setItem(storageKey, JSON.stringify(current));
+    activityRevision++;
     metricsService.notifyChange();
     return;
   }
@@ -284,13 +335,14 @@ async function persistCrmRowDeleted(storageKey: string, table: CrmLeadsTable, fu
 /** Replaces the active company's cache with the shared Supabase records. */
 export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = () => true): Promise<void> {
   if (!isCloudActive() || !supabase) return;
+  const activityRead = beginActivityRead();
   try {
     const [cloudLeads, cloudActivities] = await Promise.all([
       queryCrmTableFromCloud<Lead>('leads', companyId),
       queryCrmTableFromCloud<LeadActivity>('lead_activities', companyId)
     ]);
 
-    if (!shouldApply()) return;
+    if (!shouldApply() || !activityContextCurrent(activityRead.context)) return;
 
     if (cloudLeads) {
       const localLeads = getStoredLeads();
@@ -336,7 +388,7 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
       replaceCompanyScopedCache(LEADS_KEY, localLeads, merged, companyId);
     }
 
-    if (cloudActivities) {
+    if (cloudActivities && activityReadCurrent(activityRead)) {
       const localActs = getStoredActivities();
       const mappedCloud: LeadActivity[] = (cloudActivities as any[]).map(ca => ({
         id: ca.id,
@@ -348,6 +400,7 @@ export async function hydrateLeadsFromCloud(companyId?: string, shouldApply = ()
         created_at: ca.created_at
       }));
       replaceCompanyScopedCache(ACTIVITIES_KEY, localActs, mappedCloud, companyId);
+      activityRevision++;
     }
 
     metricsService.notifyChange();
@@ -397,6 +450,7 @@ function getStoredLeads(): Lead[] {
 }
 
 function getStoredActivities(): LeadActivity[] {
+  syncActivitySession();
   const raw = localStorage.getItem(ACTIVITIES_KEY);
   if (!raw) {
     localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(SEED_ACTIVITIES));
@@ -433,7 +487,17 @@ let leadSaveQueue: Promise<any> = Promise.resolve();
 let activeCompanyId: string | null = null;
 
 export const leadService = {
+  invalidateActivityContext(): void {
+    syncActivitySession();
+    activityEpoch++;
+    activityReadSequence++;
+  },
+
   setActiveCompany(companyId: string | null): void {
+    if (activeCompanyId !== companyId) {
+      activityEpoch++;
+      activityReadSequence++;
+    }
     activeCompanyId = companyId;
   },
 
@@ -662,15 +726,18 @@ export const leadService = {
   getLeadActivities(leadId: string): LeadActivity[] {
     const activities = getStoredActivities();
     return activities
-      .filter(a => a.lead_id === leadId)
+      .filter(a => a.lead_id === leadId && (!activeCompanyId || a.company_id === activeCompanyId))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   },
 
   async refreshLeadActivities(leadId: string, companyId: string): Promise<void> {
     if (!supabase) return;
     if (!isCloudActive()) throw new Error('Please sign in again to refresh the timeline.');
+    if (activeCompanyId && activeCompanyId !== companyId) return;
+    const read = beginActivityRead();
     const { data, error } = await supabase.from('lead_activities').select('*')
       .eq('company_id', companyId).eq('lead_id', leadId).order('created_at', { ascending: false });
+    if (!activityReadCurrent(read)) return;
     if (error) throw new Error(`Unable to refresh the lead timeline: ${error.message}`);
     const rows: LeadActivity[] = (data || []).map(row => ({
       id: row.id, lead_id: row.lead_id, company_id: row.company_id,
@@ -679,6 +746,7 @@ export const leadService = {
     }));
     const current = getStoredActivities().filter(row => row.lead_id !== leadId || row.company_id !== companyId);
     localStorage.setItem(ACTIVITIES_KEY, JSON.stringify([...rows, ...current]));
+    activityRevision++;
     metricsService.notifyChange();
   },
 
