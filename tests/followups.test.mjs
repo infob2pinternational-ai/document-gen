@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
+
 const asModule = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 
 function transpile(filePath) {
@@ -1316,4 +1317,22 @@ test('Step 8 - Test 10: Steps 1–7 regression verification intact', async () =>
   assert.equal(completedFu.status, 'COMPLETED');
   assert.equal(completedFu.completion_note, 'Finished callback');
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
+});
+
+test('saved call remarks survive rescheduling, completion and identical retries under the correct lead', async () => {
+  storage.clear();
+  const company = '11111111-1111-4111-8111-111111111111';
+  const task = await officeService.saveFollowUp({ company_id: company, lead_id: 'test-lead',
+    customer_name: 'Timeline Customer', due_date: '2026-10-10', reason: 'Call client' }, 'caller@example.test');
+  await officeService.saveFollowUp({ ...task, notes: 'Client requests Monday', due_date: '2026-10-12' }, 'caller@example.test');
+  await officeService.saveFollowUp({ ...task, notes: 'Client requests Monday', due_date: '2026-10-12' }, 'caller@example.test');
+  const remarks = leadService.getLeadActivities('test-lead').filter(a => a.action === 'Follow-up Call Remarks');
+  assert.equal(remarks.length, 1);
+  assert.equal(remarks[0].note, 'Client requests Monday');
+  assert.equal(leadService.getLeadActivities('other-lead').length, 0);
+  await officeService.completeFollowUp(task.id, 'Confirmed call', 'caller@example.test');
+  await officeService.completeFollowUp(task.id, 'Confirmed call', 'caller@example.test');
+  assert.equal(leadService.getLeadActivities('test-lead').filter(a => a.action === 'Follow-up Completed').length, 1);
+  assert.equal(officeService.getFollowUps('all', company)[0].due_date, '2026-10-12');
+  assert.equal(leadService.getLeadActivities('test-lead').find(a => a.action === 'Follow-up Call Remarks').note, 'Client requests Monday');
 });
