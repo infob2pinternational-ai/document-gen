@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import type { FollowUp } from '../types';
-import { officeService } from '../services/officeService';
+import { officeService, compareFollowUpsDeterministically } from '../services/officeService';
 import { metricsService, calculateFollowUpCounts } from '../services/metricsService';
 import { FollowUpModal } from './FollowUpModal';
 import { 
@@ -11,11 +11,48 @@ import {
   Phone, 
   MessageSquare, 
   Edit,
-  Trash2
+  Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { formatStaffDisplayName, getAvailableStaffList, normalizeStaffEmail } from '../utils/staffUtils';
 import { getKolkataToday, formatKolkataSnoozeUntil } from '../utils/dateUtils';
+
+function areFollowUpListsEqual(prev: FollowUp[], next: FollowUp[]): boolean {
+  if (prev === next) return true;
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const p = prev[i];
+    const n = next[i];
+    if (
+      p.id !== n.id ||
+      p.status !== n.status ||
+      p.due_date !== n.due_date ||
+      p.due_time !== n.due_time ||
+      p.customer_name !== n.customer_name ||
+      p.company_name !== n.company_name ||
+      p.phone !== n.phone ||
+      p.reason !== n.reason ||
+      p.notes !== n.notes ||
+      p.assigned_staff_email !== n.assigned_staff_email ||
+      p.completion_note !== n.completion_note ||
+      p.completed_at !== n.completed_at ||
+      p.snoozed_until !== n.snoozed_until ||
+      p.company_id !== n.company_id ||
+      p.lead_id !== n.lead_id
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const TAB_PREF_KEY = 'b2p_followup_tab_pref';
+const STAFF_PREF_KEY = 'b2p_followup_staff_pref';
+const SORT_FIELD_PREF_KEY = 'b2p_followup_sort_field';
+const SORT_DIR_PREF_KEY = 'b2p_followup_sort_dir';
 
 interface FollowUpsProps {
   role?: string;
@@ -30,18 +67,121 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
   companyId: propCompanyId,
   onOpenLead
 }) => {
-  const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all'>('today');
+  const [activeTab, setActiveTabState] = useState<'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all'>(() => {
+    try {
+      const saved = sessionStorage.getItem(TAB_PREF_KEY);
+      if (saved && ['today', 'upcoming', 'overdue', 'completed', 'snoozed', 'all'].includes(saved)) {
+        return saved as any;
+      }
+    } catch (e) {}
+    return 'today';
+  });
+
   const [allFollowUps, setAllFollowUps] = useState<FollowUp[]>([]);
-  const [staffFilter, setStaffFilter] = useState<string>('all');
+  const [staffFilter, setStaffFilterState] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(STAFF_PREF_KEY) || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  const [sortField, setSortField] = useState<'due' | 'customer' | 'status'>(() => {
+    try {
+      const saved = sessionStorage.getItem(SORT_FIELD_PREF_KEY);
+      if (saved && ['due', 'customer', 'status'].includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'due';
+  });
+
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
+    try {
+      const saved = sessionStorage.getItem(SORT_DIR_PREF_KEY);
+      if (saved === 'asc' || saved === 'desc') return saved;
+    } catch {}
+    return 'asc';
+  });
+
   const [searchTerm, setSearchTerm] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
   const [selectedFollowUpIds, setSelectedFollowUpIds] = useState<Set<string>>(new Set());
+  const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const allFollowUpsRef = useRef<FollowUp[]>([]);
+  allFollowUpsRef.current = allFollowUps;
+
+  const activeFollowUpIdRef = useRef<string | null>(null);
+  activeFollowUpIdRef.current = activeFollowUpId;
+
+  const scrollAnchorRef = useRef<{ container: HTMLElement | Window; top: number; activeId: string | null } | null>(null);
+  const lastKnownScrollTopRef = useRef<number>(0);
 
   const scopeId = propCompanyId || officeService.getActiveCompanyId() || undefined;
 
+  const getScrollContainer = (): HTMLElement | Window => {
+    if (!tableContainerRef.current) return window;
+    let parent = tableContainerRef.current.parentElement;
+    while (parent && parent !== document.body) {
+      const style = window.getComputedStyle(parent);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        return parent;
+      }
+      parent = parent.parentElement;
+    }
+    return window;
+  };
+
+  const saveScrollAnchor = () => {
+    const container = getScrollContainer();
+    const top = container === window
+      ? (window.scrollY || document.documentElement.scrollTop || 0)
+      : (container as HTMLElement).scrollTop;
+    lastKnownScrollTopRef.current = top;
+    scrollAnchorRef.current = {
+      container,
+      top,
+      activeId: activeFollowUpIdRef.current
+    };
+  };
+
+  const setActiveTab = (tab: typeof activeTab) => {
+    try { sessionStorage.setItem(TAB_PREF_KEY, tab); } catch {}
+    saveScrollAnchor();
+    setActiveTabState(tab);
+  };
+
+  const setStaffFilter = (staff: string) => {
+    try { sessionStorage.setItem(STAFF_PREF_KEY, staff); } catch {}
+    saveScrollAnchor();
+    setStaffFilterState(staff);
+  };
+
+  const handleToggleSort = (field: 'due' | 'customer' | 'status') => {
+    saveScrollAnchor();
+    if (sortField === field) {
+      const nextDir = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(nextDir);
+      try { sessionStorage.setItem(SORT_DIR_PREF_KEY, nextDir); } catch {}
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+      try {
+        sessionStorage.setItem(SORT_FIELD_PREF_KEY, field);
+        sessionStorage.setItem(SORT_DIR_PREF_KEY, 'asc');
+      } catch {}
+    }
+  };
+
   const refreshFollowUps = () => {
     const list = officeService.getFollowUps('all', scopeId);
+    if (allFollowUpsRef.current.length > 0 && areFollowUpListsEqual(allFollowUpsRef.current, list)) {
+      return; // Data has not changed: avoid unnecessary rerender and scroll movement
+    }
+    saveScrollAnchor();
     setAllFollowUps(list);
   };
 
@@ -51,20 +191,64 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
     return unsub;
   }, [scopeId]);
 
+  // Keep scroll container position tracked on user scroll
+  useEffect(() => {
+    const container = getScrollContainer();
+    const handleScroll = () => {
+      const top = container === window
+        ? (window.scrollY || document.documentElement.scrollTop || 0)
+        : (container as HTMLElement).scrollTop;
+      lastKnownScrollTopRef.current = top;
+    };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Restore scroll position and active row if returning from another browser tab
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const activeId = activeFollowUpIdRef.current;
+        if (activeId && tableContainerRef.current) {
+          const row = tableContainerRef.current.querySelector(`[data-followup-id="${activeId}"]`) as HTMLElement | null;
+          if (row) {
+            row.scrollIntoView({ block: 'nearest', behavior: 'instant' as ScrollBehavior });
+            return;
+          }
+        }
+        if (lastKnownScrollTopRef.current > 0) {
+          const container = getScrollContainer();
+          if (container === window) {
+            window.scrollTo({ top: lastKnownScrollTopRef.current, behavior: 'instant' as ScrollBehavior });
+          } else if ('scrollTop' in container) {
+            (container as HTMLElement).scrollTop = lastKnownScrollTopRef.current;
+          }
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
   const handleOpenAdd = () => {
+    saveScrollAnchor();
     setEditingFollowUp(null);
     setModalOpen(true);
   };
 
   const handleOpenEdit = (f: FollowUp) => {
+    setActiveFollowUpId(f.id);
+    saveScrollAnchor();
     setEditingFollowUp(f);
     setModalOpen(true);
   };
 
   const handleQuickComplete = async (f: FollowUp) => {
+    setActiveFollowUpId(f.id);
     const note = prompt(`Enter completion outcome for ${f.customer_name}:`, 'Client contacted. Requirement updated.');
     if (note !== null) {
       try {
+        saveScrollAnchor();
         await officeService.completeFollowUp(f.id, note, userEmail);
         refreshFollowUps();
       } catch (err: any) {
@@ -74,7 +258,9 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
   };
 
   const handleSnooze = async (f: FollowUp, minutes: number) => {
+    setActiveFollowUpId(f.id);
     try {
+      saveScrollAnchor();
       await officeService.snoozeFollowUp(f.id, minutes, userEmail);
       refreshFollowUps();
     } catch (err: any) {
@@ -83,9 +269,11 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
   };
 
   const handleDeleteFollowUp = async (f: FollowUp) => {
+    setActiveFollowUpId(f.id);
     const label = f.customer_name ? `${f.customer_name} - ${f.reason}` : f.reason;
     if (window.confirm(`Are you sure you want to delete this follow-up for "${label}"? This action cannot be undone.`)) {
       try {
+        saveScrollAnchor();
         await officeService.deleteFollowUp(f.id);
         setSelectedFollowUpIds(prev => {
           if (prev.has(f.id)) {
@@ -107,6 +295,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
     if (count === 0) return;
     if (window.confirm(`Are you sure you want to permanently delete ${count} selected follow-up task${count > 1 ? 's' : ''}? This action cannot be undone.`)) {
       try {
+        saveScrollAnchor();
         await officeService.deleteFollowUps(Array.from(selectedFollowUpIds));
         setSelectedFollowUpIds(new Set());
         refreshFollowUps();
@@ -117,6 +306,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
   };
 
   const toggleSelect = (id: string) => {
+    setActiveFollowUpId(id);
     setSelectedFollowUpIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -166,16 +356,57 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
     );
   }, [tabRecords, searchTerm]);
 
-  const allSelected = filtered.length > 0 && filtered.every(f => selectedFollowUpIds.has(f.id));
-  const someSelected = filtered.some(f => selectedFollowUpIds.has(f.id)) && !allSelected;
+  const displayedRecords = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'customer') {
+        cmp = (a.customer_name || '').localeCompare(b.customer_name || '');
+      } else if (sortField === 'status') {
+        cmp = (a.status || '').localeCompare(b.status || '');
+      } else {
+        cmp = compareFollowUpsDeterministically(a, b);
+      }
+      if (cmp !== 0) {
+        return sortDirection === 'desc' ? -cmp : cmp;
+      }
+      // Guaranteed deterministic unique ID tie-breaker
+      return compareFollowUpsDeterministically(a, b);
+    });
+  }, [filtered, sortField, sortDirection]);
+
+  // Restore scroll position after React renders list updates
+  useLayoutEffect(() => {
+    if (!scrollAnchorRef.current) return;
+    const { container, top, activeId } = scrollAnchorRef.current;
+
+    if (activeId && tableContainerRef.current) {
+      const activeRow = tableContainerRef.current.querySelector(`[data-followup-id="${activeId}"]`) as HTMLElement | null;
+      if (activeRow) {
+        activeRow.scrollIntoView({ block: 'nearest', behavior: 'instant' as ScrollBehavior });
+        scrollAnchorRef.current = null;
+        return;
+      }
+    }
+
+    if (container === window) {
+      window.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
+    } else if ('scrollTop' in container) {
+      (container as HTMLElement).scrollTop = top;
+    }
+    scrollAnchorRef.current = null;
+  }, [allFollowUps, activeTab, staffFilter, searchTerm, sortField, sortDirection]);
+
+  const allSelected = displayedRecords.length > 0 && displayedRecords.every(f => selectedFollowUpIds.has(f.id));
+  const someSelected = displayedRecords.some(f => selectedFollowUpIds.has(f.id)) && !allSelected;
 
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedFollowUpIds(new Set());
     } else {
-      setSelectedFollowUpIds(new Set(filtered.map(f => f.id)));
+      setSelectedFollowUpIds(new Set(displayedRecords.map(f => f.id)));
     }
   };
+
 
   const tabs: { key: typeof activeTab; label: string; count: number; alert?: boolean }[] = [
     { key: 'today', label: 'Due Today', count: counts.today },
@@ -204,7 +435,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
               Follow-ups & Client Reminders
             </h1>
             <span className="badge badge-neutral">
-              {filtered.length} Active Tasks
+              {displayedRecords.length} Active Tasks
             </span>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>
@@ -354,8 +585,8 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
       )}
 
       {/* Follow-up Tasks Table */}
-      <div className="table-container animate-fade-in">
-        {filtered.length > 0 ? (
+      <div className="table-container animate-fade-in" ref={tableContainerRef}>
+        {displayedRecords.length > 0 ? (
           <table>
             <thead>
               <tr>
@@ -371,17 +602,56 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
                     style={{ cursor: 'pointer' }}
                   />
                 </th>
-                <th>Customer / Company</th>
+                <th 
+                  onClick={() => handleToggleSort('customer')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by customer name"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <span>Customer / Company</span>
+                    {sortField === 'customer' ? (
+                      sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={11} style={{ opacity: 0.4 }} />
+                    )}
+                  </div>
+                </th>
                 <th>Phone / Contact</th>
-                <th>Due Date & Time</th>
-                <th>Urgency Status</th>
+                <th 
+                  onClick={() => handleToggleSort('due')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by due date & time"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <span>Due Date & Time</span>
+                    {sortField === 'due' ? (
+                      sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={11} style={{ opacity: 0.4 }} />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleToggleSort('status')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by urgency status"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <span>Urgency Status</span>
+                    {sortField === 'status' ? (
+                      sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={11} style={{ opacity: 0.4 }} />
+                    )}
+                  </div>
+                </th>
                 <th>Follow-up Purpose</th>
                 <th>Assigned Staff</th>
                 <th style={{ textAlign: 'right' }}>Quick Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(item => {
+              {displayedRecords.map(item => {
                 const isCompleted = item.status === 'COMPLETED' || item.status === 'CANCELLED';
                 const isSnoozed = item.status === 'SNOOZED';
                 const isOverdue = !isCompleted && !isSnoozed && item.due_date < today;
@@ -389,10 +659,19 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
 
                 return (
                   <tr 
-                    key={item.id} 
+                    key={item.id}
+                    data-followup-id={item.id}
+                    onClick={() => setActiveFollowUpId(item.id)}
                     style={{ 
                       opacity: isCompleted ? 0.85 : 1,
-                      backgroundColor: selectedFollowUpIds.has(item.id) ? 'rgba(59, 130, 246, 0.08)' : undefined
+                      backgroundColor: selectedFollowUpIds.has(item.id) 
+                        ? 'rgba(59, 130, 246, 0.08)' 
+                        : activeFollowUpId === item.id 
+                          ? 'rgba(30, 58, 138, 0.05)' 
+                          : undefined,
+                      borderLeft: activeFollowUpId === item.id ? '3px solid var(--brand-navy)' : '3px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'background-color var(--transition-fast)'
                     }}
                   >
                     

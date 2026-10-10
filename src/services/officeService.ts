@@ -128,6 +128,67 @@ export const SEED_RESOURCES: Resource[] = [
 // Helper to format date strings strictly in Asia/Kolkata
 const getTodayStr = () => getKolkataToday();
 
+/**
+ * Normalizes follow-up due time strings to zero-padded 24-hour "HH:mm".
+ * Handles: "9:00" -> "09:00", "9:30 AM" -> "09:30", "2:15 PM" -> "14:15",
+ * undefined / null / empty -> "10:00".
+ */
+export function normalizeDueTime(time?: string | null): string {
+  if (!time || typeof time !== 'string') return '10:00';
+  const trimmed = time.trim();
+  const match12 = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (match12) {
+    let hour = parseInt(match12[1], 10);
+    const minute = match12[2];
+    const meridiem = (match12[3] || '').toUpperCase();
+    if (meridiem === 'PM' && hour < 12) hour += 12;
+    if (meridiem === 'AM' && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, '0')}:${minute}`;
+  }
+  if (/^\d{1,2}:\d{2}/.test(trimmed)) {
+    const [h, m] = trimmed.split(':');
+    return `${String(parseInt(h, 10)).padStart(2, '0')}:${m.slice(0, 2)}`;
+  }
+  return trimmed || '10:00';
+}
+
+/**
+ * Deterministically sorts follow-ups to guarantee a stable, predictable order.
+ * Primary: due_date (ascending)
+ * Secondary: normalized due_time (ascending)
+ * Tertiary: created_at (ascending)
+ * Quaternary: customer_name (localeCompare)
+ * Tie-breaker: unique record id (localeCompare) - guarantees strict total order
+ */
+export function compareFollowUpsDeterministically(a: FollowUp, b: FollowUp): number {
+  const dateA = a.due_date || '';
+  const dateB = b.due_date || '';
+  if (dateA !== dateB) {
+    return dateA.localeCompare(dateB);
+  }
+
+  const timeA = normalizeDueTime(a.due_time);
+  const timeB = normalizeDueTime(b.due_time);
+  if (timeA !== timeB) {
+    return timeA.localeCompare(timeB);
+  }
+
+  const createdA = a.created_at || '';
+  const createdB = b.created_at || '';
+  if (createdA !== createdB) {
+    return createdA.localeCompare(createdB);
+  }
+
+  const nameA = a.customer_name || '';
+  const nameB = b.customer_name || '';
+  const nameCmp = nameA.localeCompare(nameB);
+  if (nameCmp !== 0) {
+    return nameCmp;
+  }
+
+  return String(a.id || '').localeCompare(String(b.id || ''));
+}
+
 // REMEDIATION (2026-08-24, CRM audit pass): this file used to seed six
 // fully fictional datasets (follow-ups, quotations, bookings, WhatsApp
 // conversations/messages, notifications - all cross-referencing the
@@ -338,6 +399,9 @@ function replaceCompanyScopedCache<T extends { id: string; company_id?: string |
   cloudRows: T[],
   companyId?: string | null
 ): T[] {
+  if (storageKey === FOLLOW_UPS_KEY) {
+    (cloudRows as any[]).sort(compareFollowUpsDeterministically);
+  }
   if (!companyId || !UUID_REGEX.test(companyId)) {
     localStorage.setItem(storageKey, JSON.stringify(cloudRows));
     return cloudRows;
@@ -448,6 +512,7 @@ export async function hydrateCrmFromCloud(companyId?: string, shouldApply = () =
           lead_number: fu.lead_number !== undefined ? fu.lead_number : existing?.lead_number
         };
       });
+      mappedCloud.sort(compareFollowUpsDeterministically);
       replaceCompanyScopedCache(FOLLOW_UPS_KEY, localFollowUps, mappedCloud, companyId);
     }
     if (quotations) {
@@ -586,7 +651,14 @@ export const officeService = {
       assigned_staff_email: normalizeStaffEmail(item.assigned_staff_email)
     }));
     const today = getTodayStr();
-    const scopeId = companyId && companyId !== 'default' ? companyId : leadService.getActiveCompany();
+
+    let effectiveFilter = filter;
+    let effectiveCompanyId = companyId;
+    if (filter && (filter as string) !== 'default' && UUID_REGEX.test(filter)) {
+      effectiveCompanyId = filter;
+      effectiveFilter = 'all';
+    }
+    const scopeId = effectiveCompanyId && effectiveCompanyId !== 'default' ? effectiveCompanyId : leadService.getActiveCompany();
 
     return list.filter(item => {
       if (scopeId && scopeId !== 'default' && UUID_REGEX.test(scopeId)) {
@@ -598,13 +670,13 @@ export const officeService = {
         const clean = normalizeStaffEmail(staffEmail);
         if (clean && normalizeStaffEmail(item.assigned_staff_email) !== clean) return false;
       }
-      if (filter === 'completed') return item.status === 'COMPLETED' || item.status === 'CANCELLED';
-      if (filter === 'snoozed') return item.status === 'SNOOZED';
-      if (filter === 'today') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date === today;
-      if (filter === 'upcoming') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date > today;
-      if (filter === 'overdue') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date < today;
+      if (effectiveFilter === 'completed') return item.status === 'COMPLETED' || item.status === 'CANCELLED';
+      if (effectiveFilter === 'snoozed') return item.status === 'SNOOZED';
+      if (effectiveFilter === 'today') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date === today;
+      if (effectiveFilter === 'upcoming') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date > today;
+      if (effectiveFilter === 'overdue') return item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'SNOOZED' && item.due_date < today;
       return true;
-    }).sort((a, b) => `${a.due_date} ${a.due_time}`.localeCompare(`${b.due_date} ${b.due_time}`));
+    }).sort(compareFollowUpsDeterministically);
   },
 
   async syncLeadNextFollowUpAt(leadId?: string, companyId?: string): Promise<string | null> {
@@ -619,11 +691,7 @@ export const officeService = {
       f.status !== 'SNOOZED'
     );
 
-    actionable.sort((a, b) => {
-      const dtA = `${a.due_date} ${(a.due_time || '10:00').slice(0, 5)}`;
-      const dtB = `${b.due_date} ${(b.due_time || '10:00').slice(0, 5)}`;
-      return dtA.localeCompare(dtB);
-    });
+    actionable.sort(compareFollowUpsDeterministically);
 
     const earliest = actionable[0];
     const nextFollowUpAt = earliest ? formatKolkataIsoDateTime(earliest.due_date, earliest.due_time) : null;
