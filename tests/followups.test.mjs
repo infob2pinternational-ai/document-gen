@@ -60,7 +60,7 @@ const leadServiceModule = asModule(
 );
 const { leadService } = await import(leadServiceModule);
 
-const { officeService } = await load('../src/services/officeService.ts', {
+const { officeService, normalizeDueTime, compareFollowUpsDeterministically } = await load('../src/services/officeService.ts', {
   '../utils/dateUtils': dateUtilsModule,
   '../utils/staffUtils': staffUtilsModule,
   './metricsService': asModule('export const metricsService = { notifyChange() {} };'),
@@ -1336,3 +1336,162 @@ test('saved call remarks survive rescheduling, completion and identical retries 
   assert.equal(officeService.getFollowUps('all', company)[0].due_date, '2026-10-12');
   assert.equal(leadService.getLeadActivities('test-lead').find(a => a.action === 'Follow-up Call Remarks').note, 'Client requests Monday');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step 9 — LIST STABILITY & SCROLL PRESERVATION REGRESSION TESTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('Step 9 - Test 11: normalizeDueTime canonicalizes 12h, 24h, and unpadded times deterministically', () => {
+  assert.equal(normalizeDueTime('9:00'), '09:00');
+  assert.equal(normalizeDueTime('09:00'), '09:00');
+  assert.equal(normalizeDueTime('10:00'), '10:00');
+  assert.equal(normalizeDueTime('9:30 AM'), '09:30');
+  assert.equal(normalizeDueTime('09:30 AM'), '09:30');
+  assert.equal(normalizeDueTime('2:15 PM'), '14:15');
+  assert.equal(normalizeDueTime('02:15 PM'), '14:15');
+  assert.equal(normalizeDueTime('12:00 AM'), '00:00');
+  assert.equal(normalizeDueTime('12:00 PM'), '12:00');
+  assert.equal(normalizeDueTime(''), '10:00');
+  assert.equal(normalizeDueTime(null), '10:00');
+  assert.equal(normalizeDueTime(undefined), '10:00');
+
+  // Verify that "9:00" sorts strictly before "10:00"
+  const itemA = { id: 'a', due_date: '2026-10-10', due_time: '9:00' };
+  const itemB = { id: 'b', due_date: '2026-10-10', due_time: '10:00' };
+  assert.ok(compareFollowUpsDeterministically(itemA, itemB) < 0, '"9:00" must sort before "10:00"');
+  assert.ok(compareFollowUpsDeterministically(itemB, itemA) > 0, '"10:00" must sort after "9:00"');
+});
+
+test('Step 9 - Test 12: Deterministic ordering with 50+ follow-ups with identical due_date and due_time across storage shuffling', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
+
+  // Create 60 follow-ups with identical due_date, due_time, and created_at
+  const items = [];
+  for (let i = 1; i <= 60; i++) {
+    items.push({
+      id: `task-${String(i).padStart(3, '0')}`,
+      company_id: companyA,
+      customer_name: `Customer ${String(i).padStart(3, '0')}`,
+      due_date: todayStr,
+      due_time: '10:00',
+      created_at: '2026-10-10T08:00:00.000Z',
+      status: 'PENDING',
+      reason: `Routine follow-up #${i}`
+    });
+  }
+
+  // Save to raw storage in arbitrary order
+  storage.set('docgen_follow_ups', JSON.stringify(items));
+
+  // Query follow-ups
+  const initialList = officeService.getFollowUps('today', companyA);
+  assert.equal(initialList.length, 60);
+  const baselineIds = initialList.map(r => r.id);
+
+  // 1. Reverse storage order to simulate PostgreSQL returning reverse heap order
+  const reversed = [...items].reverse();
+  storage.set('docgen_follow_ups', JSON.stringify(reversed));
+  const afterReverseList = officeService.getFollowUps('today', companyA);
+  assert.deepEqual(afterReverseList.map(r => r.id), baselineIds, 'Order must remain 100% stable after storage reverse');
+
+  // 2. Randomly shuffle storage 5 times and verify order remains invariant
+  for (let s = 0; s < 5; s++) {
+    const shuffled = [...items].sort(() => Math.random() - 0.5);
+    storage.set('docgen_follow_ups', JSON.stringify(shuffled));
+    const afterShuffle = officeService.getFollowUps('today', companyA);
+    assert.deepEqual(afterShuffle.map(r => r.id), baselineIds, `Order must remain invariant on shuffle #${s + 1}`);
+  }
+});
+
+test('Step 9 - Test 13: Completing, snoozing, and rescheduling preserves relative order of remaining items and updates counts', async () => {
+  storage.clear();
+  const companyA = '11111111-1111-4111-8111-111111111111';
+  const todayStr = dateUtils.getKolkataToday();
+  const tomorrowStr = getRelativeDate(1);
+
+  // Create 5 items with distinct IDs and identical times
+  const fuA = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Alpha Corp', due_date: todayStr, due_time: '11:00' }, 'staff@b2p.com');
+  const fuB = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Beta LLC', due_date: todayStr, due_time: '11:00' }, 'staff@b2p.com');
+  const fuC = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Gamma Inc', due_date: todayStr, due_time: '11:00' }, 'staff@b2p.com');
+  const fuD = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Delta Co', due_date: todayStr, due_time: '11:00' }, 'staff@b2p.com');
+  const fuE = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Epsilon Ltd', due_date: todayStr, due_time: '11:00' }, 'staff@b2p.com');
+
+  const initialToday = officeService.getFollowUps('today', companyA);
+  assert.equal(initialToday.length, 5);
+  const initialIds = initialToday.map(r => r.id);
+
+  // Complete the second item (index 1)
+  const targetToComplete = initialToday[1];
+  await officeService.completeFollowUp(targetToComplete.id, 'Done successfully', 'staff@b2p.com');
+
+  const afterCompleteToday = officeService.getFollowUps('today', companyA);
+  assert.equal(afterCompleteToday.length, 4);
+  const expectedRemaining1 = initialIds.filter(id => id !== targetToComplete.id);
+  assert.deepEqual(afterCompleteToday.map(r => r.id), expectedRemaining1, 'Relative order of remaining items must be preserved after completion');
+
+  let counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.today, 4);
+  assert.equal(counts.completed, 1);
+
+  // Snooze the next item
+  const targetToSnooze = afterCompleteToday[1];
+  await officeService.snoozeFollowUp(targetToSnooze.id, 60, 'staff@b2p.com');
+
+  const afterSnoozeToday = officeService.getFollowUps('today', companyA);
+  assert.equal(afterSnoozeToday.length, 3);
+  const expectedRemaining2 = expectedRemaining1.filter(id => id !== targetToSnooze.id);
+  assert.deepEqual(afterSnoozeToday.map(r => r.id), expectedRemaining2, 'Relative order of remaining items must be preserved after snooze');
+
+  counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.today, 3);
+  assert.equal(counts.snoozed, 1);
+
+  // Reschedule another item to tomorrow
+  const targetToReschedule = afterSnoozeToday[1];
+  await officeService.saveFollowUp({ id: targetToReschedule.id, due_date: tomorrowStr, due_time: '14:00' }, 'staff@b2p.com');
+
+  const afterRescheduleToday = officeService.getFollowUps('today', companyA);
+  assert.equal(afterRescheduleToday.length, 2);
+  const expectedRemaining3 = expectedRemaining2.filter(id => id !== targetToReschedule.id);
+  assert.deepEqual(afterRescheduleToday.map(r => r.id), expectedRemaining3, 'Relative order of remaining items must be preserved after reschedule');
+
+  const upcomingList = officeService.getFollowUps('upcoming', companyA);
+  assert.equal(upcomingList.length, 1);
+  assert.equal(upcomingList[0].id, targetToReschedule.id);
+
+  counts = metricsService.getFollowUpCounts(undefined, companyA);
+  assert.equal(counts.today, 2);
+  assert.equal(counts.upcoming, 1);
+  assert.equal(counts.snoozed, 1);
+  assert.equal(counts.completed, 1);
+});
+
+test('Step 9 - Test 14: Strict tie-breaker guarantees total order even with identical timestamps and names', () => {
+  const item1 = {
+    id: 'uuid-aaa',
+    customer_name: 'Identical Customer',
+    due_date: '2026-10-10',
+    due_time: '10:00',
+    created_at: '2026-10-10T05:00:00.000Z'
+  };
+  const item2 = {
+    id: 'uuid-bbb',
+    customer_name: 'Identical Customer',
+    due_date: '2026-10-10',
+    due_time: '10:00',
+    created_at: '2026-10-10T05:00:00.000Z'
+  };
+
+  // Compare item1 vs item2
+  const cmp12 = compareFollowUpsDeterministically(item1, item2);
+  const cmp21 = compareFollowUpsDeterministically(item2, item1);
+  assert.ok(cmp12 < 0, 'uuid-aaa must sort before uuid-bbb');
+  assert.ok(cmp21 > 0, 'uuid-bbb must sort after uuid-aaa');
+  assert.equal(cmp12, -cmp21, 'Comparison must be strictly antisymmetric');
+
+  // Compare identical item with itself
+  assert.equal(compareFollowUpsDeterministically(item1, item1), 0, 'Comparing item to itself must return 0');
+});
+
