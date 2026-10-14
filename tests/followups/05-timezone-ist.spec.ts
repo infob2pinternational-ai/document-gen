@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { setupApp, navigateToTab, COMPANY_A } from '../helpers/crm-test-helpers';
 
+// These dated fixtures model 26 September; keep Date deterministic without pausing timers.
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T06:00:00Z'));
+});
+
 test.describe('Follow-ups — Indian Standard Time (IST) & Timezone Accuracy', () => {
   test('persists exact IST date/time (26 September 2026, 10:30 AM) without UTC date-shift or off-by-one corruption', async ({ page }) => {
     await setupApp(page);

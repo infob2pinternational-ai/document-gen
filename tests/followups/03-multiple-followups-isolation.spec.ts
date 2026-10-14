@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { setupApp, navigateToTab, COMPANY_A } from '../helpers/crm-test-helpers';
 
+// These dated fixtures model 26 September; keep Date deterministic without pausing timers.
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T06:00:00Z'));
+});
+
 test.describe('Follow-ups — Multiple Follow-ups per Lead & Modification Isolation', () => {
   test('creating 2 follow-ups for same lead; completing #1 keeps #2 strictly pending and updates lead drawer next follow-up', async ({ page }) => {
     const today = '2026-09-26';

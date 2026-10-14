@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { setupApp, navigateToTab, switchCompanyProfile, COMPANY_A, COMPANY_B } from '../helpers/crm-test-helpers';
 
+// These dated fixtures model 26 September; keep Date deterministic without pausing timers.
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T06:00:00Z'));
+});
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 test.describe('Follow-ups — Multi-Company Scoping & Tenant Isolation', () => {

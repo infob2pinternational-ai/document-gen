@@ -2150,6 +2150,7 @@ function App() {
               <WhatsAppInbox
                 userRole={simulatedRole}
                 userEmail={currentUserEmail}
+                userId={user?.id || (!isSupabaseConfigured() ? `local:${currentUserEmail}` : undefined)}
                 companyId={activeProfile?.id}
                 initialConversationId={selectedWhatsAppConvId}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import type { WhatsAppConversation, WhatsAppMessage } from '../types';
 import { whatsappService } from '../services/whatsappService';
 import { leadService } from '../services/leadService';
@@ -6,10 +6,10 @@ import { officeService } from '../services/officeService';
 import { normalizeIndianPhone } from '../utils/whatsappShare';
 import { FollowUpModal } from './FollowUpModal';
 import { SaveAsLeadModal } from './SaveAsLeadModal';
+import { whatsappDrafts, type WhatsAppDraftScope } from '../services/whatsappDrafts';
 import { 
   Search, 
   Send, 
-  Paperclip, 
   Clock, 
   FileText, 
   Eye, 
@@ -20,7 +20,6 @@ import {
   ExternalLink, 
   RotateCw, 
   UserPlus, 
-  CheckCircle2,
   ArrowLeft,
   Info,
   X,
@@ -30,9 +29,15 @@ import {
 interface WhatsAppInboxProps {
   userRole?: string;
   userEmail?: string;
+  userId?: string;
   companyId?: string;
   initialConversationId?: string | null;
   onOpenLead?: (leadId: string) => void;
+}
+
+function orderWhatsAppHistory(messages: WhatsAppMessage[]) {
+  const time = (message: WhatsAppMessage) => Date.parse(message.timestamp || message.created_at || '') || 0;
+  return [...messages].sort((a, b) => time(a) - time(b) || a.id.localeCompare(b.id));
 }
 
 const QUICK_TEMPLATES = [
@@ -57,6 +62,7 @@ const QUICK_TEMPLATES = [
 export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   userRole: _userRole,
   userEmail = '',
+  userId,
   companyId,
   initialConversationId,
   onOpenLead
@@ -70,6 +76,78 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageFeedRef = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const activeConversationRef = useRef(activeConvId);
+  activeConversationRef.current = activeConvId;
+  const sendLockRef = useRef(false);
+  const stickToBottomRef = useRef(true);
+  const [draftStorageError, setDraftStorageError] = useState(false);
+  const draftIdentity = JSON.stringify([userId, companyId]);
+  const draftIdentityRef = useRef(draftIdentity);
+  draftIdentityRef.current = draftIdentity;
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [newMessagesBelow, setNewMessagesBelow] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const lastMessageIdRef = useRef<string | undefined>(undefined);
+  const previousDraftIdentityRef = useRef(draftIdentity);
+  const currentCompanyRef = useRef(companyId);
+  currentCompanyRef.current = companyId;
+  const historyRequestRef = useRef(0);
+
+  useEffect(() => {
+    const update = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (previousDraftIdentityRef.current === draftIdentity) return;
+    previousDraftIdentityRef.current = draftIdentity;
+    ++historyRequestRef.current;
+    setActiveConvId(null);
+    setConversations([]);
+    setMessages([]);
+    setInputText('');
+    setMobileView('list');
+    setStatusFeedback(null);
+    setDraftStorageError(false);
+  }, [draftIdentity]);
+
+  // Fit the actual available area, including the mobile visual viewport/keyboard.
+  useLayoutEffect(() => {
+    const resize = () => {
+      const root = workspaceRef.current;
+      if (!root) return;
+      const viewport = window.visualViewport;
+      const bottom = (viewport?.height ?? window.innerHeight) + (viewport?.offsetTop ?? 0);
+      root.style.height = `${Math.max(180, bottom - root.getBoundingClientRect().top - 16)}px`;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('scroll', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('scroll', resize);
+    };
+  });
+
+  const loadHistory = useCallback(async (id: string) => {
+    const request = ++historyRequestRef.current;
+    try {
+      const history = await whatsappService.getMessages(id);
+      if (activeConversationRef.current !== id || request !== historyRequestRef.current) return;
+      setMessages(orderWhatsAppHistory(history));
+      setHistoryError(null);
+    } catch (error) {
+      if (activeConversationRef.current === id && request === historyRequestRef.current) setHistoryError(error instanceof Error ? error.message : 'Unable to load messages.');
+    } finally {
+      if (activeConversationRef.current === id && request === historyRequestRef.current) setHistoryLoading(false);
+    }
+  }, []);
 
   // Responsive state
   const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -115,14 +193,17 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
     setIsRefreshing(true);
     try {
       const list = await whatsappService.getConversations(companyId);
-      setConversations(list);
-      if (!activeConvId && !initialConversationId && list.length > 0 && !isMobile) {
-        setActiveConvId(list[0].id);
+      if (currentCompanyRef.current !== companyId || draftIdentityRef.current !== draftIdentity) return;
+      setConversations(list.filter(c => !!companyId && c.company_id === companyId));
+      if (!activeConvId && !initialConversationId && list.some(c => c.company_id === companyId) && !isMobile) {
+        setActiveConvId(list.find(c => c.company_id === companyId)!.id);
       }
+    } catch (error) {
+      setStatusFeedback(error instanceof Error ? error.message : 'Unable to load conversations.');
     } finally {
       setIsRefreshing(false);
     }
-  }, [activeConvId, companyId, initialConversationId, isMobile]);
+  }, [activeConvId, companyId, initialConversationId, isMobile, draftIdentity]);
 
   useEffect(() => {
     refreshConversations();
@@ -131,35 +212,49 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   // Periodic background polling (every 5 seconds) to ensure inbound webhook messages appear live
   useEffect(() => {
     const timer = setInterval(async () => {
-      const list = await whatsappService.getConversations(companyId);
-      setConversations(list);
+      try {
+        const list = await whatsappService.getConversations(companyId);
+        if (currentCompanyRef.current !== companyId || draftIdentityRef.current !== draftIdentity) return;
+        setConversations(list.filter(c => !!companyId && c.company_id === companyId));
+      } catch (error) {
+        setStatusFeedback(error instanceof Error ? error.message : 'Unable to refresh conversations.');
+      }
       if (activeConvId) {
-        const msgs = await whatsappService.getMessages(activeConvId);
-        setMessages(msgs);
+        await loadHistory(activeConvId);
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [activeConvId, companyId]);
+  }, [activeConvId, companyId, loadHistory, draftIdentity]);
 
   useEffect(() => {
     if (activeConvId) {
-      whatsappService.getMessages(activeConvId).then(setMessages);
+      setMessages([]);
+      setHistoryLoading(true);
+      setHistoryError(null);
+      const restored = userId && companyId ? whatsappDrafts.load({userId, companyId, conversationId: activeConvId}) : {text: '', storageOK: true};
+      setInputText(restored.text);
+      setDraftStorageError(!restored.storageOK);
+      stickToBottomRef.current = true;
+      lastMessageIdRef.current = undefined;
+      setNewMessagesBelow(false);
+      loadHistory(activeConvId);
       whatsappService.markAsRead(activeConvId).then(() => {
         setConversations(prev => prev.map(c => c.id === activeConvId ? { ...c, unread_count: 0 } : c));
       });
     }
-  }, [activeConvId]);
+  }, [activeConvId, loadHistory, userId, companyId]);
 
   // Real-time incoming messages & status updates subscription
   useEffect(() => {
     const unsubscribe = whatsappService.subscribeToLiveInbox(
       (newMsg) => {
-        if (newMsg.conversation_id === activeConvId) {
+        if (newMsg.conversation_id === activeConversationRef.current) {
+          ++historyRequestRef.current;
           setMessages(prev => {
             if (prev.some(m => m.id === newMsg.id || (m.wa_message_id && m.wa_message_id === newMsg.wa_message_id))) {
               return prev;
             }
-            return [...prev, newMsg];
+            return orderWhatsAppHistory([...prev, newMsg]);
           });
         }
         refreshConversations();
@@ -179,25 +274,41 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
     };
   }, [activeConvId, refreshConversations]);
 
-  // Scroll internal message feed to bottom when messages change without moving outer parent containers
+  // Polling/status updates must not pull the reader away from older messages.
   useEffect(() => {
-    if (messageFeedRef.current) {
+    if (messageFeedRef.current && stickToBottomRef.current) {
       messageFeedRef.current.scrollTop = messageFeedRef.current.scrollHeight;
+      setNewMessagesBelow(false);
+    } else if (messages.length && lastMessageIdRef.current !== messages.at(-1)?.id) {
+      setNewMessagesBelow(true);
     }
+    lastMessageIdRef.current = messages.at(-1)?.id;
   }, [messages]);
 
   const activeConv = conversations.find(c => c.id === activeConvId);
   const linkedLead = activeConv?.lead_id ? leadService.getLeadById(activeConv.lead_id) : null;
+  const draftScope: WhatsAppDraftScope | null = userId && companyId && activeConvId
+    ? {userId, companyId, conversationId: activeConvId} : null;
+  const updateDraft = (text: string) => {
+    setInputText(text);
+    if (draftScope) setDraftStorageError(!whatsappDrafts.save(draftScope, text));
+  };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() || !activeConvId || !activeConv || isSending) return;
+    if (!inputText.trim() || !activeConvId || !activeConv || sendLockRef.current || historyLoading || !navigator.onLine) return;
 
     const textToSend = inputText.trim();
-    setInputText('');
+    const submittedDraft = inputText;
+    const sendingIdentity = draftIdentity;
+    const sendingScope = draftScope;
+    const sendingConversationId = activeConvId;
+    sendLockRef.current = true;
     setIsSending(true);
 
     try {
+      if (!sendingScope) throw new Error('Sign in and select a company before sending. Your draft is kept.');
+      setDraftStorageError(false);
       const newMsg = await whatsappService.sendMessage({
         conversationId: activeConvId,
         phone: activeConv.phone,
@@ -207,50 +318,38 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         senderEmail: userEmail,
         companyId: activeConv.company_id || companyId
       });
-      if (newMsg.status === 'failed') {
-        setStatusFeedback(newMsg.error_message || 'Failed to dispatch message via WhatsApp.');
-        setTimeout(() => setStatusFeedback(null), 6000);
+      const sameIdentity = draftIdentityRef.current === sendingIdentity;
+      if (newMsg.status !== 'sent' || !newMsg.wa_message_id || newMsg.error_message) {
+        if (sameIdentity) setStatusFeedback(newMsg.error_message || 'Failed to dispatch message via WhatsApp.');
+      } else {
+        const stored = whatsappDrafts.confirmSend(sendingScope, submittedDraft);
+        if (sameIdentity) {
+          setStatusFeedback(null);
+          setDraftStorageError(!stored);
+          if (activeConversationRef.current === sendingConversationId) {
+            setInputText(whatsappDrafts.load(sendingScope).text);
+          }
+        }
       }
-      setMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
-      refreshConversations();
+      if (sameIdentity && activeConversationRef.current === sendingConversationId) {
+        ++historyRequestRef.current;
+        stickToBottomRef.current = true;
+        setMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
+      }
+      if (sameIdentity) refreshConversations();
     } catch (err) {
-      console.error('[WhatsAppInbox] Failed to send message:', err);
-      setStatusFeedback(err instanceof Error ? err.message : 'Unable to send message');
-      setTimeout(() => setStatusFeedback(null), 6000);
+      if (draftIdentityRef.current === sendingIdentity) {
+        setDraftStorageError(sendingScope ? !whatsappDrafts.load(sendingScope).storageOK : false);
+        setStatusFeedback(err instanceof Error ? err.message : 'Unable to send message');
+      }
     } finally {
+      sendLockRef.current = false;
       setIsSending(false);
     }
   };
 
   const handleSelectTemplate = (text: string) => {
-    setInputText(text);
-  };
-
-  const handleSendSimulatedAttachment = async () => {
-    if (!activeConvId || !activeConv || isSending) return;
-    setIsSending(true);
-    try {
-      const newMsg = await whatsappService.sendMessage({
-        conversationId: activeConvId,
-        phone: activeConv.phone,
-        text: 'Formal Quotation PDF attached for your review.',
-        senderType: 'staff',
-        senderName: userEmail.split('@')[0],
-        senderEmail: userEmail,
-        companyId: activeConv.company_id || companyId,
-        attachment: {
-          type: 'pdf',
-          name: 'Quotation-B2P.pdf',
-          url: '#'
-        }
-      });
-      setMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
-      refreshConversations();
-    } catch (err) {
-      console.error('[WhatsAppInbox] Failed to send attachment:', err);
-    } finally {
-      setIsSending(false);
-    }
+    updateDraft(text);
   };
 
   const handleStartNewChat = async (e: React.FormEvent) => {
@@ -291,17 +390,17 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
   const getGridTemplateColumns = () => {
     if (isMobile) return '1fr';
     if (isTablet) {
-      return showClientContext ? '280px 1fr 260px' : '300px 1fr';
+      return '280px minmax(0, 1fr)';
     }
-    return showClientContext ? '300px 1fr 280px' : '340px 1fr';
+    return showClientContext ? '300px minmax(0, 1fr) 280px' : '340px minmax(0, 1fr)';
   };
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div ref={workspaceRef} data-testid="whatsapp-workspace" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: 0, overflow: 'hidden', position: isMobile ? 'fixed' : 'relative', ...(isMobile ? { top: 56, left: 0, right: 0, padding: '0.5rem', background: '#f8fafc', zIndex: 20 } : {}) }}>
       
       {/* Header Bar */}
       <div style={{
-        display: 'flex',
+        display: isMobile && mobileView === 'chat' ? 'none' : 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         background: '#ffffff',
@@ -310,7 +409,8 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         padding: '0.875rem 1.25rem',
         boxShadow: 'var(--shadow-sm)',
         flexWrap: 'wrap',
-        gap: '0.75rem'
+        gap: '0.75rem',
+        flexShrink: 0
       }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
@@ -318,7 +418,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
               WhatsApp Business Workspace
             </h1>
             <span className="badge badge-success" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}>
-              Connected: +91 81390 09034
+              WhatsApp Business API
             </span>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0.2rem 0 0 0' }}>
@@ -350,7 +450,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             onClick={() => {
               refreshConversations();
               if (activeConvId) {
-                whatsappService.getMessages(activeConvId).then(setMessages);
+                loadHistory(activeConvId);
               }
             }}
             disabled={isRefreshing}
@@ -375,14 +475,15 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
           display: 'flex',
           alignItems: 'center',
           gap: '0.5rem',
-          background: '#f0fdf4',
-          border: '1px solid #bbf7d0',
+          background: '#fff7ed',
+          border: '1px solid #fed7aa',
           borderRadius: 'var(--radius-sm)',
           padding: '0.55rem 0.85rem',
-          color: '#15803d',
+          color: '#9a3412',
+          flexShrink: 0,
           fontSize: '0.8125rem'
         }}>
-          <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+          <AlertCircle size={16} style={{ flexShrink: 0 }} />
           <span>{statusFeedback}</span>
         </div>
       )}
@@ -391,12 +492,13 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
       <div style={{
         display: 'grid',
         gridTemplateColumns: getGridTemplateColumns(),
+        gridTemplateRows: 'minmax(0, 1fr)',
         background: 'var(--border-color)',
         border: '1px solid var(--border-color)',
         borderRadius: 'var(--radius-md)',
         overflow: 'hidden',
-        height: 'min(calc(100vh - 170px), 820px)',
-        minHeight: '560px',
+        flex: 1,
+        minHeight: 0,
         boxShadow: 'var(--shadow-sm)'
       }}>
         
@@ -408,6 +510,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             flexDirection: 'column',
             borderRight: '1px solid var(--border-color)',
             minWidth: 0,
+            minHeight: 0,
             height: '100%'
           }}>
             {/* Search Box */}
@@ -434,7 +537,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             </div>
 
             {/* Conversations List */}
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <div data-testid="whatsapp-conversations" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column' }}>
               {filteredConversations.length === 0 ? (
                 <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                   No conversations found.
@@ -446,12 +549,23 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                   return (
                     <div
                       key={c.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open conversation with ${c.customer_name}`}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setActiveConvId(c.id);
+                          setMobileView('chat');
+                        }
+                      }}
                       onClick={() => {
                         setActiveConvId(c.id);
                         if (isMobile) setMobileView('chat');
                       }}
                       style={{
                         padding: '0.65rem 0.85rem',
+                        flexShrink: 0,
                         borderBottom: '1px solid var(--border-color)',
                         background: isSelected ? '#f0fdf4' : 'transparent',
                         cursor: 'pointer',
@@ -531,6 +645,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
               display: 'flex',
               flexDirection: 'column',
               minWidth: 0,
+              minHeight: 0,
               height: '100%'
             }}>
               
@@ -594,6 +709,10 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
 
                 {/* Header Action Buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  {isMobile && <button type="button" className="btn-secondary" disabled={isRefreshing} onClick={() => {
+                    refreshConversations();
+                    if (activeConvId) loadHistory(activeConvId);
+                  }} style={{ padding: '0.3rem 0.55rem', fontSize: '0.72rem' }}>Refresh</button>}
                   {activeConv.lead_id ? (
                     <span
                       className="badge badge-info"
@@ -676,8 +795,17 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
               {/* Message Feed */}
               <div
                 ref={messageFeedRef}
+                data-testid="whatsapp-message-feed"
+                onScroll={() => {
+                  const feed = messageFeedRef.current;
+                  if (!feed) return;
+                  stickToBottomRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
+                  if (stickToBottomRef.current) setNewMessagesBelow(false);
+                }}
                 style={{
                   flex: 1,
+                  minHeight: 0,
+                  overscrollBehavior: 'contain',
                   padding: '0.85rem 1rem',
                   overflowY: 'auto',
                   display: 'flex',
@@ -685,7 +813,8 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                   gap: '0.65rem'
                 }}
               >
-                {messages.length === 0 ? (
+                {historyError && <div role="alert">{historyError} <button type="button" onClick={() => activeConvId && loadHistory(activeConvId)}>Retry loading</button></div>}
+                {historyLoading ? <div role="status">Loading messages…</div> : messages.length === 0 ? (
                   <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', margin: 'auto' }}>
                     No messages yet in this conversation.
                   </div>
@@ -698,6 +827,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                         key={msg.id}
                         style={{
                           alignSelf: isStaff ? 'flex-end' : 'flex-start',
+                          flexShrink: 0,
                           maxWidth: isMobile ? '90%' : '75%',
                           background: isStaff ? '#dcfce7' : '#ffffff',
                           border: isStaff ? '1px solid #bbf7d0' : '1px solid var(--border-color)',
@@ -740,6 +870,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                         }}>
                           {msg.text}
                         </p>
+                        {(msg.status === 'failed') && <span role="status" style={{ color: '#b91c1c', fontSize: '0.75rem' }}>{msg.error_message || 'Send failed.'} Check delivery before manually retrying.</span>}
 
                         {msg.attachment_name && (
                           <div style={{
@@ -763,6 +894,11 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 )}
                 <div ref={messagesEndRef} />
               </div>
+              {newMessagesBelow && <button type="button" onClick={() => {
+                stickToBottomRef.current = true;
+                if (messageFeedRef.current) messageFeedRef.current.scrollTop = messageFeedRef.current.scrollHeight;
+                setNewMessagesBelow(false);
+              }}>Jump to latest messages</button>}
 
               {/* Quick Templates Selector */}
               <div style={{
@@ -782,7 +918,8 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => handleSelectTemplate(tmpl.text)}
+                  onClick={() => handleSelectTemplate(tmpl.text)}
+                  disabled={isSending}
                     className="btn-secondary"
                     style={{ fontSize: '0.6875rem', padding: '0.2rem 0.45rem', whiteSpace: 'nowrap', flexShrink: 0 }}
                   >
@@ -792,7 +929,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
               </div>
 
               {/* Chat Input Bar */}
-              <form onSubmit={handleSendMessage} style={{
+              <form data-testid="whatsapp-composer" onSubmit={handleSendMessage} style={{
                 padding: '0.55rem 0.75rem',
                 borderTop: '1px solid var(--border-color)',
                 display: 'flex',
@@ -801,34 +938,40 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                 background: '#ffffff',
                 flexShrink: 0
               }}>
-                <button
-                  type="button"
-                  onClick={handleSendSimulatedAttachment}
-                  className="btn-secondary"
-                  style={{ padding: '0.45rem', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
-                  title="Attach Quotation PDF"
-                >
-                  <Paperclip size={15} />
-                </button>
-
-                <input
-                  type="text"
+                <textarea
+                  aria-label="Message"
+                  rows={2}
+                  disabled={isSending}
                   placeholder="Type message or select response template..."
                   value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
+                  onChange={(e) => {
+                    updateDraft(e.target.value);
+                  }}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
                   style={{
                     flex: 1,
                     fontSize: '0.8125rem',
                     padding: '0.45rem 0.65rem',
                     borderRadius: 'var(--radius-sm)',
                     border: '1px solid var(--border-color)',
-                    minWidth: 0
+                    minWidth: 0,
+                    resize: 'none', maxHeight: '96px'
                   }}
                 />
 
+                <button type="button" aria-label="Discard draft" title="Discard draft" disabled={isSending || !inputText}
+                  onClick={() => {
+                    if (draftScope) setDraftStorageError(!whatsappDrafts.discard(draftScope));
+                    setInputText('');
+                  }} style={{flexShrink: 0, padding: '0.35rem'}}><X size={14}/></button>
                 <button
                   type="submit"
-                  disabled={isSending || !inputText.trim()}
+                  disabled={isSending || !inputText.trim() || !isOnline || historyLoading}
                   className="btn-primary"
                   style={{
                     background: '#16a34a',
@@ -836,13 +979,17 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                     padding: '0.45rem 0.85rem',
                     fontSize: '0.78rem',
                     flexShrink: 0,
-                    opacity: (isSending || !inputText.trim()) ? 0.6 : 1
+                    opacity: (isSending || !inputText.trim() || !isOnline) ? 0.6 : 1
                   }}
                 >
                   <Send size={13} />
-                  <span>Send</span>
+                  <span>{isSending ? 'Sending…' : 'Send'}</span>
                 </button>
               </form>
+              {draftStorageError && <div role="status" style={{padding: '0.25rem 0.75rem', color: '#b91c1c', fontSize: '0.75rem'}}>Draft storage is unavailable. Your text is kept in this view; keep the page open until storage is restored.</div>}
+              <div style={{ flexShrink: 0, padding: '0.25rem 0.75rem', background: '#fff', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {!isOnline ? 'Offline — your draft is kept in this conversation.' : 'Enter to send · Shift+Enter for a new line. File uploads are not available in this release.'}
+              </div>
 
             </div>
           ) : (
@@ -871,7 +1018,9 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
             gap: '0.75rem',
             overflowY: 'auto',
             minWidth: 0,
-            height: '100%'
+            minHeight: 0,
+            height: '100%',
+            ...(windowWidth < 1150 ? { position: 'absolute' as const, top: 0, right: 0, bottom: 0, width: 'min(280px, 100%)', zIndex: 5, boxShadow: 'var(--shadow-sm)' } : {})
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>

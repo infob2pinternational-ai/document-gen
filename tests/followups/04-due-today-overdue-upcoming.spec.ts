@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { setupApp, navigateToTab, COMPANY_A } from '../helpers/crm-test-helpers';
 
+// These dated fixtures model 26 September; keep Date deterministic without pausing timers.
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T06:00:00Z'));
+});
+
 test.describe('Follow-ups — Urgency Classification: Today, Overdue, Upcoming', () => {
   test('correctly categorizes follow-ups into Overdue, Today, and Upcoming tabs with accurate status badges', async ({ page }) => {
     // Current IST date in test run: 2026-09-26
