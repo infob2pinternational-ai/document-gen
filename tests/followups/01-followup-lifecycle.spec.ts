@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { setupApp, navigateToTab } from '../helpers/crm-test-helpers';
 
+// These dated fixtures model 26 September; keep Date deterministic without pausing timers.
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T06:00:00Z'));
+});
+
 test.describe('Follow-ups — Creation, Persistence, and Editing', () => {
   test('creates a follow-up task, verifies table display, refreshes for persistence, and edits task', async ({ page }) => {
     await setupApp(page);

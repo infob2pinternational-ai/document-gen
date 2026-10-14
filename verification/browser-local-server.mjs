@@ -1,0 +1,13 @@
+import {createLoopbackProxy} from './browser-loopback-proxy.mjs';
+import {spawn} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {dirname,resolve} from 'node:path';
+const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const env={...process.env};
+for(const key of Object.keys(env)) if(/^(SUPABASE_|VITE_SUPABASE_|WHATSAPP_|BIZYLEAD_|META_|OPENAI_API_KEY$)/.test(key)) delete env[key];
+Object.assign(env,{SUPABASE_URL:'',SUPABASE_ANON_KEY:'',VITE_SUPABASE_URL:'',VITE_SUPABASE_ANON_KEY:''});
+const proxy=createLoopbackProxy();
+proxy.listen(5195,'127.0.0.1');
+const vite=spawn(process.execPath,[resolve(repo,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port','5193','--strictPort'],{cwd:repo,env,stdio:'inherit',windowsHide:true});
+const stop=()=>{vite.kill();proxy.close();};process.on('SIGINT',stop);process.on('SIGTERM',stop);
+vite.on('exit',code=>{proxy.close();process.exitCode=code || 0;});

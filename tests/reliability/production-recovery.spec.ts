@@ -173,6 +173,8 @@ test.describe('Step 15: Production Reliability, Failure Recovery & Data Preserva
 
   // Test D: Follow-up create/edit → refresh → verify lifecycle
   test('Test D: Follow-up create/edit → refresh → verify lifecycle', async ({ page }) => {
+    // The lifecycle fixture schedules today on 27 September.
+    await page.clock.setFixedTime(new Date('2026-09-27T06:00:00Z'));
     await setupApp(page, {
       profiles: [RECOVERY_COMPANY, COMPANY_B],
       activeProfileId: RECOVERY_COMPANY.id
