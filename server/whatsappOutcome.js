@@ -6,7 +6,9 @@ export function providerOutcome(response, body) {
   if (body?.success === false || body?.error || body?.simulated) {
     return { success: false, outcome: 'rejected' };
   }
-  const id = body?.messageId || body?.messages?.[0]?.id || body?.id || body?.data?.id;
+  // Generic record IDs are not evidence of a message acceptance. Until a
+  // provider-owned response schema says otherwise, keep those unresolved.
+  const id = body?.messageId || body?.messages?.[0]?.id;
   if (typeof id !== 'string' || !id.trim()) return { success: false, outcome: 'uncertain' };
   return { success: true, outcome: 'accepted', messageId: id };
 }
