@@ -63,6 +63,9 @@ export async function sendOfficialWhatsAppMessage(
 
     if (response.ok) {
       const data = await response.json();
+      if (!data.success || data.simulated || typeof data.messageId !== 'string' || !data.messageId.trim()) {
+        return { success: false, error: 'Provider acceptance is uncertain. Do not resend until delivery has been checked.' };
+      }
       return {
         success: true,
         messageId: data.messageId,
@@ -70,7 +73,7 @@ export async function sendOfficialWhatsAppMessage(
       };
     } else {
       const errData = await response.json().catch(() => ({}));
-      const errorMsg = errData.error || `HTTP ${response.status}: Failed to send WhatsApp message`;
+      const errorMsg = errData.error || (response.status >= 500 ? 'Provider acceptance is uncertain. Check delivery before retrying.' : `HTTP ${response.status}: Failed to send WhatsApp message`);
       console.warn('[bizyleadService] API send failed:', errorMsg);
       return {
         success: false,
@@ -112,7 +115,7 @@ export async function sendDocumentViaOfficialWhatsApp(
   });
 
   // Log send record to database if successful or in progress
-  if (userEmail) {
+  if (userEmail && result.success) {
     dbService.logWhatsAppSend(doc.id, userEmail).then(() => {
       if (onLogged) onLogged();
     }).catch(err => console.error('[bizyleadService] Failed to log document send:', err));

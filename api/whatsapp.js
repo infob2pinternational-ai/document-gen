@@ -1,6 +1,7 @@
 import { requireUser, requireCompanyAccess } from '../server/auth.js';
 import https from 'https';
 import crypto from 'crypto';
+import { providerOutcome } from '../server/whatsappOutcome.js';
 
 
 // Read the original bytes through Vercel's restored request stream. Do not
@@ -47,6 +48,7 @@ function httpsRequest(url, options, bodyContent) {
     });
 
     req.on('error', (err) => reject(err));
+    req.setTimeout(15000, () => req.destroy(new Error('Provider response timeout')));
 
     if (bodyContent) {
       req.write(bodyContent);
@@ -89,10 +91,13 @@ async function supabaseRest(endpoint, method = 'GET', body = null) {
 }
 
 export default async function handler(req, res) {
+  const suppliedRequestId = req.headers?.['x-request-id'];
+  const requestId = typeof suppliedRequestId === 'string' && /^[0-9a-f-]{36}$/i.test(suppliedRequestId) ? suppliedRequestId : crypto.randomUUID();
+  res.setHeader('X-Request-ID', requestId);
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method === 'OPTIONS') {
@@ -228,30 +233,26 @@ export default async function handler(req, res) {
 
         const resData = response.json();
 
-        if (!response.ok) {
-          console.error('[WhatsApp API] Bizylead API returned error:', resData);
-          return res.status(response.status || 500).json({
-            success: false,
-            error: resData?.error?.message || resData?.message || resData?.error || 'Bizylead API error',
-            details: resData
+        const result = providerOutcome(response, resData);
+        if (!result.success) {
+          console.warn('[WhatsApp API] Bizylead outcome:', result.outcome, 'HTTP', response.status);
+          return res.status(response.ok ? 502 : response.status).json({
+            ...result, provider: 'bizylead',
+            error: result.outcome === 'uncertain'
+              ? 'Provider acceptance is uncertain. Do not resend until delivery has been checked.'
+              : 'Bizylead rejected the request. Check the provider request log.',
           });
         }
-
-        const waMsgId = resData?.messageId || resData?.messages?.[0]?.id || resData?.id || resData?.data?.id || `bizy_${Date.now()}`;
-        return res.status(200).json({
-          success: true,
-          messageId: waMsgId,
-          provider: 'bizylead'
-        });
-      } catch (err) {
-        console.error('[WhatsApp API] Exception sending via Bizylead:', err);
-        return res.status(500).json({ error: 'Internal server error with Bizylead', details: String(err) });
+        return res.status(200).json({ ...result, provider: 'bizylead' });
+      } catch {
+        console.error('[WhatsApp API] Bizylead response unavailable; acceptance uncertain.');
+        return res.status(502).json({ success: false, outcome: 'uncertain', provider: 'bizylead', error: 'Provider acceptance is uncertain. Do not resend until delivery has been checked.' });
       }
     }
 
     // 2. Secondary Fallback: Meta Cloud API directly
     if (!phoneNumberId || !accessToken) {
-      return res.status(503).json({ success: false, error: 'WhatsApp API credentials are not configured.' });
+      return res.status(503).json({ success: false, outcome: 'rejected', error: 'WhatsApp API credentials are not configured.' });
     }
 
     // Build Meta Graph API message payload
