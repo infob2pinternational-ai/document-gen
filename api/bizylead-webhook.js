@@ -113,6 +113,13 @@ export default async function handler(req, res) {
     });
   }
 
+  // Fail closed before reading, logging or persisting callbacks. The provider's
+  // authenticated callback specification has not been established. Do not
+  // replace this with an invented signature/header or expose it as functional.
+  if (req.method === 'POST') {
+    return res.status(503).json({ error: 'Bizylead callback verification is not configured.' });
+  }
+
   // 3. POST: Inbound Webhook Event from Bizylead
   if (req.method === 'POST') {
     let payload;

@@ -15,7 +15,8 @@ test('network failure is failed in response and persisted local history', async 
   const message = await service.sendMessage(params);
   assert.equal(message.status, 'failed');
   assert.equal(cachedMessage().status, 'failed');
-  assert.equal(cachedMessage().error_message, 'Offline');
+  assert.match(cachedMessage().error_message, /Delivery outcome uncertain.*Offline/);
+  assert.equal(message.dispatch_outcome, 'uncertain');
 });
 test('accepted send records one final sent message with authorization', async () => {
   const transport = mock.method(globalThis, 'fetch', async () => Response.json({ success: true, messageId: 'wamid.test' }));
