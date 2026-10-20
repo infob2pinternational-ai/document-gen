@@ -730,14 +730,16 @@ export const leadService = {
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   },
 
-  async refreshLeadActivities(leadId: string, companyId: string): Promise<void> {
-    if (!supabase) return;
+  async refreshLeadActivities(leadId: string, companyId: string): Promise<
+    { status: 'loaded'; activities: LeadActivity[] } | { status: 'discarded' }
+  > {
+    if (activeCompanyId && activeCompanyId !== companyId) return { status: 'discarded' };
+    if (!supabase) throw new Error('The shared CRM is not configured. Unable to verify the lead timeline.');
     if (!isCloudActive()) throw new Error('Please sign in again to refresh the timeline.');
-    if (activeCompanyId && activeCompanyId !== companyId) return;
     const read = beginActivityRead();
     const { data, error } = await supabase.from('lead_activities').select('*')
       .eq('company_id', companyId).eq('lead_id', leadId).order('created_at', { ascending: false });
-    if (!activityReadCurrent(read)) return;
+    if (!activityReadCurrent(read)) return { status: 'discarded' };
     if (error) throw new Error(`Unable to refresh the lead timeline: ${error.message}`);
     const rows: LeadActivity[] = (data || []).map(row => ({
       id: row.id, lead_id: row.lead_id, company_id: row.company_id,
@@ -748,6 +750,7 @@ export const leadService = {
     localStorage.setItem(ACTIVITIES_KEY, JSON.stringify([...rows, ...current]));
     activityRevision++;
     metricsService.notifyChange();
+    return { status: 'loaded', activities: rows };
   },
 
   async addLeadActivity(activity: Omit<LeadActivity, 'id' | 'created_at'>): Promise<LeadActivity> {

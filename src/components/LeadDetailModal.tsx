@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { Lead, LeadActivity, LeadStatus } from '../types';
+import type { Lead, LeadStatus } from '../types';
+import { useLeadActivities } from '../hooks/useLeadActivities';
 import { 
   X, 
   Phone, 
@@ -77,6 +78,9 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     return metricsService.subscribe(() => setTimelineRevision(value => value + 1));
   }, [isOpen, incomingLead?.id]);
 
+  const timelineCompanyId = leadService.getActiveCompany() || incomingLead?.company_id || '';
+  const timeline = useLeadActivities(incomingLead?.id || '', timelineCompanyId, userEmail, isOpen);
+
   if (!isOpen || !incomingLead) return null;
 
   const freshLead = (incomingLead.id ? leadService.getLeadById(incomingLead.id) : null) || incomingLead;
@@ -85,7 +89,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     sub_district: freshLead.sub_district !== undefined ? freshLead.sub_district : (freshLead.id ? leadService.getSubDistrict?.(freshLead.id) : undefined)
   };
 
-  const activities: LeadActivity[] = leadService.getLeadActivities(lead.id);
+  const activities = timeline.activities;
   const actionableFollowUps = officeService.getFollowUps('all', lead.company_id).filter(f =>
     f.lead_id === lead.id &&
     f.status !== 'COMPLETED' &&
@@ -688,6 +692,17 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             </form>
 
             {/* Timeline Stream */}
+            {timeline.status === 'loading' && (
+              <div role="status" style={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                {activities.length ? 'Refreshing activity records...' : 'Loading activity records...'}
+              </div>
+            )}
+            {timeline.status === 'error' && (
+              <div role="alert" style={{ color: '#b91c1c', fontSize: '0.8125rem' }}>
+                {timeline.error}
+                <button type="button" className="btn-secondary" onClick={() => void timeline.retry()} style={{ marginLeft: '0.5rem' }}>Retry</button>
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '320px', overflowY: 'auto' }}>
               {activities.length > 0 ? (
                 activities.map(act => (
@@ -724,11 +739,11 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     )}
                   </div>
                 ))
-              ) : (
+              ) : timeline.status === 'loaded' ? (
                 <div style={{ textAlign: 'center', padding: '1.5rem', color: '#94a3b8', fontSize: '0.8125rem' }}>
                   No activity records logged yet. Use the field above to record a note.
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
 

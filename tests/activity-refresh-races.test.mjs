@@ -43,8 +43,10 @@ test('older targeted responses cannot replace newer results',async()=>{
   const {leadService,requests}=await setup();
   const older=leadService.refreshLeadActivities('lead-a',company); await tick();
   const newer=leadService.refreshLeadActivities('lead-a',company); await tick();
-  requests[1].finish({data:[row('newer')],error:null}); await newer;
-  requests[0].finish({data:[row('older')],error:null}); await older;
+  requests[1].finish({data:[row('newer')],error:null});
+  assert.equal((await newer).status,'loaded');
+  requests[0].finish({data:[row('older')],error:null});
+  assert.deepEqual(await older,{status:'discarded'});
   assert.deepEqual(leadService.getLeadActivities('lead-a').map(a=>a.id),['newer']);
 });
 
@@ -79,7 +81,23 @@ test('a company change rejects pending reads and hides another company cache',as
   const {leadService,requests}=await setup();
   const pending=leadService.refreshLeadActivities('lead-a',company); await tick();
   leadService.setActiveCompany('22222222-2222-4222-8222-222222222222');
-  requests[0].finish({data:[row('old-company')],error:null}); await pending;
+  requests[0].finish({data:[row('old-company')],error:null});
+  assert.deepEqual(await pending,{status:'discarded'});
+  assert.deepEqual(leadService.getLeadActivities('lead-a'),[]);
+});
+
+test('targeted failure preserves cached records and retry returns an explicit empty success',async()=>{
+  const {leadService,storage,requests}=await setup();
+  storage.set('docgen_lead_activities',JSON.stringify([{...row('cached'),action:'Note Logged'}]));
+  const pending=leadService.refreshLeadActivities('lead-a',company);
+  const rejected=assert.rejects(pending,/Unable to refresh the lead timeline/);
+  await tick();
+  assert.deepEqual(requests[0].filters,{company_id:company,lead_id:'lead-a'});
+  requests[0].finish({data:null,error:{message:'temporary failure'}}); await rejected;
+  assert.equal(leadService.getLeadActivities('lead-a')[0].id,'cached');
+  const retry=leadService.refreshLeadActivities('lead-a',company); await tick();
+  requests[1].finish({data:[],error:null});
+  assert.deepEqual(await retry,{status:'loaded',activities:[]});
   assert.deepEqual(leadService.getLeadActivities('lead-a'),[]);
 });
 
