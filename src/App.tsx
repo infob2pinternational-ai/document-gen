@@ -5,6 +5,7 @@ import type { CompanyProfile, Document, Customer, Service, AppTheme } from './ty
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
 import { Sidebar } from './components/Sidebar';
+import EmailWorkspace from './components/email/EmailWorkspace';
 import { Dashboard } from './components/Dashboard';
 import { Documents } from './components/Documents';
 import { GoogleSyncDashboard } from './components/GoogleSyncDashboard';
@@ -1584,6 +1585,7 @@ function App() {
 
       {/* Navigation Sidebar */}
       <Sidebar
+        canUseEmail={isOwner}
         currentTab={currentTab}
         setCurrentTab={(tab) => {
           setCurrentTab(tab);
@@ -2162,6 +2164,10 @@ function App() {
                 userRole={simulatedRole}
                 userEmail={currentUserEmail}
               />
+            )}
+
+            {currentTab === 'email' && isOwner && (
+              <EmailWorkspace key={`${user?.id}:${activeProfile?.id}`} activeProfile={activeProfile} />
             )}
 
             {currentTab === 'telecalling-entry' && (

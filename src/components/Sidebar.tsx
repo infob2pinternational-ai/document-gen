@@ -32,7 +32,8 @@ import {
   Coffee,
   Sparkles,
   PhoneCall,
-  CalendarCheck
+  CalendarCheck,
+  Mail
 } from 'lucide-react';
 import type { CompanyProfile, AppTheme } from '../types';
 import { metricsService } from '../services/metricsService';
@@ -55,6 +56,7 @@ interface SidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   userRole?: string;
+  canUseEmail?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -72,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse,
   userRole = 'owner',
+  canUseEmail = false,
   user,
   onLogout
 }) => {
@@ -159,7 +162,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'COMMUNICATION',
       items: [
-        { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, badge: whatsAppUnreadCount > 0 ? whatsAppUnreadCount : undefined }
+        { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, badge: whatsAppUnreadCount > 0 ? whatsAppUnreadCount : undefined },
+        ...(canUseEmail ? [{ id: 'email', label: 'Email', icon: Mail }] : [])
       ]
     },
     {
