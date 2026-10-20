@@ -163,3 +163,27 @@ export function shiftKolkataWeek(startDate: string, weekOffset: number): string 
   return `${y}-${m}-${dt}`;
 }
 
+
+/** Calendar month boundaries, independent of the browser's local timezone. */
+export function getKolkataMonthRange(referenceDate = getKolkataToday()) {
+  const [year, month] = referenceDate.split('-').map(Number);
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = new Date(Date.UTC(year, month, 0, 12)).toISOString().slice(0, 10);
+  return { startDate, endDate, label: `${formatKolkataDisplayDate(startDate)} — ${formatKolkataDisplayDate(endDate)}` };
+}
+
+export function shiftKolkataMonth(referenceDate: string, offset: number): string {
+  const [year, month] = referenceDate.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1 + offset, 1, 12)).toISOString().slice(0, 10);
+}
+
+export function getCalendarDays(startDate: string, endDate: string) {
+  const days: { date: string; dayName: string }[] = [];
+  const current = new Date(`${startDate}T12:00:00Z`);
+  const end = new Date(`${endDate}T12:00:00Z`);
+  while (current <= end) {
+    days.push({ date: current.toISOString().slice(0, 10), dayName: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][current.getUTCDay()] });
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  return days;
+}

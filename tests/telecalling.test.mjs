@@ -475,3 +475,14 @@ test('Form reset contract wipes all inputs after any save to prevent payload re-
   assert.equal(formState.callStatus, 'Interested / Details Shared');
 });
 
+
+
+test('monthly WhatsApp summary uses the monthly label and complete date range', () => {
+  const message = buildWeeklyReportWhatsAppMessage('B2P', {
+    startDate: '2026-10-01', endDate: '2026-10-31', totalCalls: 0,
+    uniqueCompanies: 0, followUpsCount: 0, statusCounts: {}, dailyBreakdown: [], telecallerBreakdown: {}
+  }, 'monthly');
+  assert.match(message, /TELECALLING MONTHLY REPORT/);
+  assert.match(message, /Month:\n2026-10-01 - 2026-10-31/);
+  assert.doesNotMatch(message, /WEEKLY|this week/);
+});

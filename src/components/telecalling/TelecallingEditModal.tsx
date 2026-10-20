@@ -9,13 +9,15 @@ interface TelecallingEditModalProps {
   onClose: () => void;
   entry: TelecallingEntry | null;
   onSaved: (updated: TelecallingEntry) => void;
+  readOnly?: boolean;
 }
 
 export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
   isOpen,
   onClose,
   entry,
-  onSaved
+  onSaved,
+  readOnly = false
 }) => {
   const [companyName, setCompanyName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
@@ -46,6 +48,7 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (readOnly) return;
     if (!companyName.trim()) {
       setErrorMsg('Company Name is required.');
       return;
@@ -118,7 +121,7 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
         }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>
-              Edit Call Record
+              {readOnly ? 'View Call Record' : 'Edit Call Record'}
             </h3>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
               Date: {entry.entry_date} | Telecaller: {entry.created_by_name || entry.created_by_email || 'Staff'}
@@ -149,6 +152,7 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
             </div>
           )}
 
+          <fieldset disabled={readOnly || saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.85rem', marginBottom: '1rem' }}>
             {/* Company Name */}
             <div>
@@ -276,6 +280,8 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
             />
           </div>
 
+          </fieldset>
+
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid var(--border-color, #e2e8f0)', paddingTop: '0.75rem' }}>
             <button
@@ -285,9 +291,9 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
               disabled={saving}
               style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
             >
-              Cancel
+              {readOnly ? 'Close' : 'Cancel'}
             </button>
-            <button
+            {!readOnly && <button
               type="submit"
               className="btn-primary"
               disabled={saving}
@@ -303,7 +309,7 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
             >
               {saving ? <Loader2 className="spin" size={15} /> : <Save size={15} />}
               <span>Save Changes</span>
-            </button>
+            </button>}
           </div>
         </form>
       </div>

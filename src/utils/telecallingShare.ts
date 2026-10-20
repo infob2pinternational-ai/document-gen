@@ -717,7 +717,8 @@ export function buildDailyReportWhatsAppMessage(
  */
 export function buildWeeklyReportWhatsAppMessage(
   companyName: string,
-  report: TelecallingWeeklyReportData
+  report: TelecallingWeeklyReportData,
+  period: 'weekly' | 'monthly' = 'weekly'
 ): string {
   const headerCompany = (companyName || 'B2P INTERNATIONAL').toUpperCase();
   const weekLabel = `${formatKolkataDisplayDate(report.startDate)} - ${formatKolkataDisplayDate(report.endDate)}`;
@@ -740,13 +741,13 @@ export function buildWeeklyReportWhatsAppMessage(
 
   return (
     `*${headerCompany}*\n` +
-    `*TELECALLING WEEKLY REPORT*\n\n` +
-    `Week:\n${weekLabel}\n\n` +
+    `*TELECALLING ${period.toUpperCase()} REPORT*\n\n` +
+    `${period === 'monthly' ? 'Month' : 'Week'}:\n${weekLabel}\n\n` +
     `Total Calls: ${report.totalCalls}\n` +
     `Unique Companies: ${report.uniqueCompanies}\n` +
     `Follow-ups Required: ${report.followUpsCount}\n\n` +
     `*Status Breakdown:*\n` +
-    (statusLines || 'No calls recorded this week.') +
+    (statusLines || `No calls recorded this ${period === 'monthly' ? 'month' : 'week'}.`) +
     `\n\n` +
     `*Daily Breakdown:*\n` +
     (dailyLines || 'None') +

@@ -75,6 +75,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
 
   // Modals & Notifications
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
+  const [viewingEntry, setViewingEntry] = useState<TelecallingEntry | null>(null);
   const [editingEntry, setEditingEntry] = useState<TelecallingEntry | null>(null);
   const [shareError, setShareError] = useState('');
   const [shareSuccess, setShareSuccess] = useState('');
@@ -1334,6 +1335,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                                 Call Again
                               </button>
 
+                              <button type="button" className="btn-ghost" onClick={() => setViewingEntry(e)} title="View call record">View</button>
                               {/* Edit Modal */}
                               <button
                                 type="button"
@@ -1369,6 +1371,9 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
         />
       )}
 
+      {viewingEntry && viewingEntry.company_id === companyId && (
+        <TelecallingEditModal isOpen entry={viewingEntry} readOnly onClose={() => setViewingEntry(null)} onSaved={() => {}} />
+      )}
       {/* Edit Entry Modal */}
       {editingEntry && (
         <TelecallingEditModal

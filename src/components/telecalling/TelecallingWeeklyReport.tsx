@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Calendar, 
   ChevronLeft, 
@@ -12,11 +12,13 @@ import {
   Settings,
   Loader2
 } from 'lucide-react';
-import type { CompanyProfile, TelecallingStatus, TelecallingWeeklyReportData } from '../../types';
+import type { CompanyProfile, TelecallingEntry, TelecallingStatus, TelecallingWeeklyReportData } from '../../types';
 import { telecallingService } from '../../services/telecallingService';
 import { 
   getKolkataToday, 
-  getKolkataWeekRange, 
+  getKolkataWeekRange,
+  getKolkataMonthRange,
+  shiftKolkataMonth,
   shiftKolkataWeek, 
   formatKolkataDisplayDate 
 } from '../../utils/dateUtils';
@@ -25,10 +27,11 @@ import {
   openWhatsAppShare, 
   getOwnerWhatsAppNumber 
 } from '../../utils/telecallingShare';
+import { TelecallingEditModal } from './TelecallingEditModal';
 import { OwnerWhatsAppModal } from './OwnerWhatsAppModal';
 
 const KPI_FILTERS: { id: string; label: string; description: string; color: string; statuses: TelecallingStatus[] }[] = [
-  { id: 'all', label: 'Weekly Calls', description: '', color: '#3b82f6', statuses: [] },
+  { id: 'all', label: 'All Calls', description: '', color: '#3b82f6', statuses: [] },
   { id: 'appointments', label: 'Appointments', description: 'Meetings scheduled', color: '#16a34a', statuses: ['Appointment Confirmed'] },
   { id: 'interested', label: 'Interested / Sent', description: 'Details shared', color: '#2563eb', statuses: ['Interested / Details Shared'] },
   { id: 'follow-ups', label: 'Follow-ups', description: 'Active pipeline', color: '#d97706', statuses: ['Follow-up Required', 'Call Back'] },
@@ -41,73 +44,89 @@ interface TelecallingWeeklyReportProps {
   user: any;
   userRole?: string;
   onNavigateToDailyReport?: () => void;
+  period?: 'weekly' | 'monthly';
 }
 
 export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = ({
   activeProfile,
-  onNavigateToDailyReport
+  onNavigateToDailyReport,
+  period = 'weekly'
 }) => {
   const companyId = activeProfile?.id || '';
+  const periodTitle = period === 'monthly' ? 'Monthly' : 'Weekly';
+  const periodUnit = period === 'monthly' ? 'Month' : 'Week';
 
-  // Current week state
-  const [currentWeekMonday, setCurrentWeekMonday] = useState<string>(() => {
-    return getKolkataWeekRange(getKolkataToday()).startDate;
+  // Selected calendar period
+  const [periodStart, setPeriodStart] = useState<string>(() => {
+    return (period === 'monthly' ? getKolkataMonthRange : getKolkataWeekRange)(getKolkataToday()).startDate;
   });
 
-  const weekInfo = getKolkataWeekRange(currentWeekMonday);
+  const periodInfo = (period === 'monthly' ? getKolkataMonthRange : getKolkataWeekRange)(periodStart);
 
-  const [reportData, setReportData] = useState<TelecallingWeeklyReportData | null>(null);
+  const requestId = useRef(0);
+  const [selectedEntry, setSelectedEntry] = useState<{ entry: TelecallingEntry; readOnly: boolean } | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [loadedReport, setReportData] = useState<(TelecallingWeeklyReportData & { companyId: string }) | null>(null);
+  const reportData = loadedReport?.companyId === companyId && loadedReport.startDate === periodInfo.startDate && loadedReport.endDate === periodInfo.endDate ? loadedReport : null;
   const [loading, setLoading] = useState(false);
   const [activeKpi, setActiveKpi] = useState('all');
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
   const [shareError, setShareError] = useState('');
 
-  const loadWeeklyReport = async () => {
-    if (!companyId) return;
+  const loadReport = useCallback(async () => {
+    const request = ++requestId.current;
+    setLoadError('');
+    if (!companyId) { setReportData(null); setLoading(false); return; }
     setLoading(true);
     setShareError('');
     try {
-      const entries = await telecallingService.getEntriesForWeek(
+      const entries = await telecallingService.getEntriesForPeriod(
         companyId,
-        weekInfo.startDate,
-        weekInfo.endDate
+        periodInfo.startDate,
+        periodInfo.endDate
       );
-      const computed = telecallingService.computeWeeklyReport(
+      const computed = telecallingService.computePeriodReport(
         entries,
-        weekInfo.startDate,
-        weekInfo.endDate
+        periodInfo.startDate,
+        periodInfo.endDate
       );
-      setReportData(computed);
+      if (request === requestId.current) setReportData({ ...computed, companyId });
     } catch (err) {
-      console.error('Failed to load weekly report:', err);
+      if (request === requestId.current) {
+        setReportData(null);
+        setLoadError(err instanceof Error ? err.message : 'Unable to load the report. Please retry.');
+      }
     } finally {
-      setLoading(false);
+      if (request === requestId.current) setLoading(false);
     }
-  };
+  }, [companyId, periodInfo.startDate, periodInfo.endDate]);
 
   useEffect(() => {
     setActiveKpi('all');
-    loadWeeklyReport();
-  }, [companyId, currentWeekMonday]);
+    setSelectedEntry(null);
+    setReportData(null);
+    void loadReport();
+    return () => { requestId.current++; };
+  }, [loadReport, period]);
 
-  const handlePrevWeek = () => {
-    setCurrentWeekMonday(prev => shiftKolkataWeek(prev, -1));
+  const handlePrevPeriod = () => {
+    setPeriodStart(prev => (period === 'monthly' ? shiftKolkataMonth : shiftKolkataWeek)(prev, -1));
   };
 
-  const handleNextWeek = () => {
-    setCurrentWeekMonday(prev => shiftKolkataWeek(prev, 1));
+  const handleNextPeriod = () => {
+    setPeriodStart(prev => (period === 'monthly' ? shiftKolkataMonth : shiftKolkataWeek)(prev, 1));
   };
 
-  const handleCurrentWeek = () => {
-    setCurrentWeekMonday(getKolkataWeekRange(getKolkataToday()).startDate);
+  const handleCurrentPeriod = () => {
+    setPeriodStart((period === 'monthly' ? getKolkataMonthRange : getKolkataWeekRange)(getKolkataToday()).startDate);
   };
 
   const selectedKpi = KPI_FILTERS.find(kpi => kpi.id === activeKpi) || KPI_FILTERS[0];
-  const filteredReport = reportData && (activeKpi === 'all' ? reportData : telecallingService.computeWeeklyReport(
+  const filteredReport = reportData && (activeKpi === 'all' ? reportData : telecallingService.computePeriodReport(
     reportData.entries.filter(entry => selectedKpi.statuses.includes(entry.call_status)),
-    weekInfo.startDate,
-    weekInfo.endDate
+    periodInfo.startDate,
+    periodInfo.endDate
   ));
 
   // WhatsApp Share
@@ -124,7 +143,8 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
 
     const message = (activeKpi === 'all' ? '' : `Filter: ${selectedKpi.label}\n\n`) + buildWeeklyReportWhatsAppMessage(
       activeProfile?.name || 'B2P International',
-      filteredReport
+      filteredReport,
+      period
     );
     const result = openWhatsAppShare(message, ownerPhone);
 
@@ -132,7 +152,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
       setShareSuccess(true);
       setTimeout(() => setShareSuccess(false), 3000);
     } else {
-      setShareError(result.error || 'Failed to share weekly report');
+      setShareError(result.error || 'Failed to share report');
     }
   };
 
@@ -155,7 +175,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Telecalling_Weekly_Report_${weekInfo.startDate}_to_${weekInfo.endDate}${activeKpi === 'all' ? '' : `_${activeKpi}`}.csv`);
+    link.setAttribute('download', `Telecalling_${periodTitle}_Report_${periodInfo.startDate}_to_${periodInfo.endDate}${activeKpi === 'all' ? '' : `_${activeKpi}`}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -183,10 +203,10 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
             gap: '0.5rem'
           }}>
             <TrendingUp size={24} color="#3b82f6" />
-            Telecalling Weekly Report
+            Telecalling {periodTitle} Report
           </h2>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted, #64748b)' }}>
-            Single-source aggregation for {weekInfo.label}
+            Single-source aggregation for {periodInfo.label}
           </p>
         </div>
 
@@ -266,7 +286,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
           fontSize: '0.85rem'
         }}>
           <CheckCircle2 size={16} />
-          <span>WhatsApp opened with pre-filled Weekly Report!</span>
+          <span>WhatsApp opened with pre-filled {periodTitle} Report!</span>
         </div>
       )}
 
@@ -288,7 +308,8 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
         </div>
       )}
 
-      {/* Week Selector Bar */}
+      {loadError && <div role="alert" style={{ marginBottom: '1rem', color: '#b91c1c' }}>{loadError} <button type="button" className="btn-secondary" onClick={() => void loadReport()}>Retry</button></div>}
+      {/* Period Selector Bar */}
       <div style={{
         background: 'var(--bg-primary, #ffffff)',
         border: '1px solid var(--border-color, #e2e8f0)',
@@ -302,25 +323,26 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
         gap: '0.75rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button onClick={handlePrevWeek} className="btn-secondary" style={{ padding: '0.4rem 0.6rem' }}>
+          <button onClick={handlePrevPeriod} className="btn-secondary" style={{ padding: '0.4rem 0.6rem' }}>
             <ChevronLeft size={16} />
-            <span>Prev Week</span>
+            <span>Prev {periodUnit}</span>
           </button>
 
-          <button onClick={handleCurrentWeek} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}>
-            Current Week
+          <button onClick={handleCurrentPeriod} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}>
+            Current {periodUnit}
           </button>
 
-          <button onClick={handleNextWeek} className="btn-secondary" style={{ padding: '0.4rem 0.6rem' }}>
-            <span>Next Week</span>
+          <button onClick={handleNextPeriod} className="btn-secondary" style={{ padding: '0.4rem 0.6rem' }}>
+            <span>Next {periodUnit}</span>
             <ChevronRight size={16} />
           </button>
         </div>
 
+        {period === 'monthly' && <input type="month" aria-label="Report month" value={periodInfo.startDate.slice(0, 7)} onChange={event => { if (event.target.value) setPeriodStart(`${event.target.value}-01`); }} />}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <Calendar size={18} color="#3b82f6" />
           <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
-            {weekInfo.label}
+            {periodInfo.label}
           </span>
         </div>
       </div>
@@ -328,7 +350,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <Loader2 className="spin" size={32} style={{ margin: '0 auto', color: '#3b82f6' }} />
-          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#64748b' }}>Computing weekly performance statistics...</p>
+          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#64748b' }}>Computing {period} performance statistics...</p>
         </div>
       ) : reportData && filteredReport ? (
         <>
@@ -348,8 +370,8 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
                   key={kpi.id}
                   type="button"
                   aria-pressed={selected}
-                  aria-controls="weekly-filtered-results"
-                  aria-label={`${kpi.label}: ${count} calls`}
+                  aria-controls="period-filtered-results"
+                  aria-label={`${kpi.id === 'all' ? `${periodTitle} Calls` : kpi.label}: ${count} calls`}
                   onClick={() => setActiveKpi(kpi.id)}
                   style={{
                     background: 'var(--bg-primary, #ffffff)',
@@ -371,7 +393,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
                     boxShadow: selected ? `0 0 0 2px ${kpi.color}` : 'none'
                   }}
                 >
-                  <span style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: kpi.color, textTransform: 'uppercase' }}>{kpi.label}</span>
+                  <span style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: kpi.color, textTransform: 'uppercase' }}>{kpi.id === 'all' ? `${periodTitle} Calls` : kpi.label}</span>
                   <span style={{ display: 'block', fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0.2rem 0' }}>{count}</span>
                   <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted, #64748b)' }}>
                     {kpi.id === 'all' ? `${reportData.uniqueCompanies} unique companies` : kpi.description}
@@ -381,10 +403,10 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
             })}
           </div>
 
-          <div id="weekly-filtered-results">
+          <div id="period-filtered-results">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
               <span role="status" style={{ color: 'var(--text-primary, #0f172a)' }}>
-                {selectedKpi.label}: showing {filteredReport?.totalCalls || 0} of {reportData.totalCalls} calls
+                {activeKpi === 'all' ? `${periodTitle} Calls` : selectedKpi.label}: showing {filteredReport?.totalCalls || 0} of {reportData.totalCalls} calls
               </span>
               {activeKpi !== 'all' && (
                 <button type="button" className="btn-secondary" onClick={() => setActiveKpi('all')}>Clear filter</button>
@@ -400,7 +422,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
               marginBottom: '1.25rem'
             }}>
               <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
-                Day-by-Day Activity Trend (Monday to Sunday):
+                Day-by-Day Activity Trend {period === 'weekly' ? '(Monday to Sunday)' : '(Full Month)'}:
               </h4>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
@@ -493,7 +515,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
               </div>
             </div>
 
-            {/* Full Activity Log for the Week */}
+            {/* Full Activity Log for the selected period */}
             <div style={{
               background: 'var(--bg-primary, #ffffff)',
               border: '1px solid var(--border-color, #e2e8f0)',
@@ -501,11 +523,11 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
               padding: '1rem'
             }}>
               <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
-                Weekly Call Activity Log ({filteredReport.entries.length} Calls):
+                {periodTitle} Call Activity Log ({filteredReport.entries.length} Calls):
               </h4>
               {filteredReport.entries.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-                  {activeKpi === 'all' ? 'No calls recorded during this week.' : `No ${selectedKpi.label.toLowerCase()} calls recorded during this week.`}
+                  {activeKpi === 'all' ? `No calls recorded during this ${periodUnit.toLowerCase()}.` : `No ${selectedKpi.label.toLowerCase()} calls recorded during this ${periodUnit.toLowerCase()}.`}
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
@@ -519,6 +541,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
                         <th style={{ padding: '8px 10px', textAlign: 'left' }}>Result / Status</th>
                         <th style={{ padding: '8px 10px', textAlign: 'left' }}>Feedback / Remarks</th>
                         <th style={{ padding: '8px 10px', textAlign: 'left' }}>Telecaller</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }} className="no-print">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -552,6 +575,12 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
                           <td style={{ padding: '8px 10px', fontSize: '0.8rem', color: '#64748b' }}>
                             {e.created_by_name || e.created_by_email?.split('@')[0] || 'Staff'}
                           </td>
+                          <td className="no-print" style={{ padding: '8px 10px' }}>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button type="button" className="btn-secondary" onClick={() => setSelectedEntry({ entry: e, readOnly: true })}>View</button>
+                              <button type="button" className="btn-secondary" onClick={() => setSelectedEntry({ entry: e, readOnly: false })}>Edit</button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -563,6 +592,10 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
         </>
       ) : null}
 
+      {selectedEntry && selectedEntry.entry.company_id === companyId && (
+        <TelecallingEditModal isOpen entry={selectedEntry.entry} readOnly={selectedEntry.readOnly}
+          onClose={() => setSelectedEntry(null)} onSaved={() => { void loadReport(); }} />
+      )}
       {/* Owner WhatsApp Configuration Modal */}
       {ownerModalOpen && (
         <OwnerWhatsAppModal

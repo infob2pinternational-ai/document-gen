@@ -2188,8 +2188,10 @@ function App() {
               />
             )}
 
-            {currentTab === 'telecalling-weekly-report' && (
+            {(currentTab === 'telecalling-weekly-report' || currentTab === 'telecalling-monthly-report') && (
               <TelecallingWeeklyReport
+                key={currentTab}
+                period={currentTab === 'telecalling-monthly-report' ? 'monthly' : 'weekly'}
                 activeProfile={activeProfile}
                 user={user}
                 userRole={simulatedRole}

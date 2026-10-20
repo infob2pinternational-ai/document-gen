@@ -8,7 +8,7 @@ import type {
 } from '../types';
 import { isUnresolvedStatus } from '../types';
 import { getSyncSettings, computeBackoffMs } from './sheetsSyncQueue';
-import { getKolkataToday, getKolkataWeekRange } from '../utils/dateUtils';
+import { getKolkataToday, getCalendarDays } from '../utils/dateUtils';
 
 export const DEFAULT_TELECALLING_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbysHw97D_vV3j0yIUI94fPN0ycj_pJCq_No0UGsRZlTaQgLo3sTb5vOON0yRz63idBRVQ/exec';
@@ -300,6 +300,22 @@ class TelecallingService {
     }
   }
 
+  /** Complete company-scoped report range; failures must not look like zero calls. */
+  async getEntriesForPeriod(companyId: string, startDate: string, endDate: string): Promise<TelecallingEntry[]> {
+    if (!isSupabaseConfigured() || !supabase || !companyId) throw new Error('Sign in and select a company to load the report.');
+    const entries: TelecallingEntry[] = [];
+    // Advance by the actual page length, including when the API caps pages below 500.
+    while (true) {
+      const { data, error } = await supabase.from('telecalling_entries').select('*')
+        .eq('company_id', companyId).gte('entry_date', startDate).lte('entry_date', endDate)
+        .order('entry_date', { ascending: true }).order('created_at', { ascending: true }).order('id', { ascending: true })
+        .range(entries.length, entries.length + 499);
+      if (error) throw new Error(`Unable to load the report: ${error.message}`);
+      if (!data?.length) return entries;
+      entries.push(...data as TelecallingEntry[]);
+    }
+  }
+
   /**
    * Fetches entries for a week range (startDate to endDate inclusive).
    */
@@ -406,10 +422,15 @@ class TelecallingService {
     startDate: string,
     endDate: string
   ): TelecallingWeeklyReportData {
-    const weekRange = getKolkataWeekRange(startDate);
+    return this.computePeriodReport(entries, startDate, endDate);
+  }
+
+  computePeriodReport(entries: TelecallingEntry[], startDate: string, endDate: string): TelecallingWeeklyReportData {
+    const days = getCalendarDays(startDate, endDate);
+    entries = entries.filter(entry => entry.entry_date >= startDate && entry.entry_date <= endDate);
     const dayMap: Record<string, { total: number; statusCounts: Record<TelecallingStatus, number> }> = {};
 
-    for (const day of weekRange.days) {
+    for (const day of days) {
       dayMap[day.date] = {
         total: 0,
         statusCounts: {
@@ -482,7 +503,7 @@ class TelecallingService {
       telecallerBreakdown[caller].statusCounts[st]++;
     }
 
-    const dailyBreakdown = weekRange.days.map(d => ({
+    const dailyBreakdown = days.map(d => ({
       date: d.date,
       dayName: d.dayName,
       totalCalls: dayMap[d.date]?.total || 0,

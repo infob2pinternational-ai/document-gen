@@ -167,7 +167,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'telecalling-entry', label: 'Daily Entry', icon: PhoneCall },
         { id: 'telecalling-daily-report', label: 'Daily Report', icon: CalendarCheck },
-        { id: 'telecalling-weekly-report', label: 'Weekly Report', icon: TrendingUp }
+        { id: 'telecalling-weekly-report', label: 'Weekly Report', icon: TrendingUp },
+        { id: 'telecalling-monthly-report', label: 'Monthly Report', icon: Calendar }
       ]
     }
   ];
