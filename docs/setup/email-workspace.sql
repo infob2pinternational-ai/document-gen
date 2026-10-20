@@ -31,7 +31,8 @@ CREATE INDEX IF NOT EXISTS crm_email_sends_company ON public.crm_email_sends(com
 ALTER TABLE public.crm_email_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.crm_email_sends ENABLE ROW LEVEL SECURITY;
 -- Password ciphertext and send claims are server-only. The API verifies the
--- existing CRM Owner session and company access before every service-role query.
+-- existing CRM Owner or authorized Franson session, then company access before
+-- every service-role query. Module access does not grant a broader CRM role.
 REVOKE ALL ON public.crm_email_accounts FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON public.crm_email_sends FROM PUBLIC,anon,authenticated;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.crm_email_accounts TO service_role;

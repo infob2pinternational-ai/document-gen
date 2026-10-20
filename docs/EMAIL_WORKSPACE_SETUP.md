@@ -2,7 +2,7 @@
 
 ## Implemented locally
 
-Communication → Email, visible only to the verified CRM Owner. Add/edit account connections, switch inboxes, paginate, open plain-text messages, compose, and reply from the selected account. The form records IMAP and SMTP settings; there is no campaign or bulk-send workflow.
+Communication → Email, visible to the verified CRM Owner and the explicitly authorized Franson account (`fransonputhukkara@gmail.com`). Add/edit account connections, switch inboxes, paginate, open plain-text messages, compose, and reply from the selected account. The form records IMAP and SMTP settings; there is no campaign or bulk-send workflow.
 
 The supplied ZIP only implemented outbound SMTP. Reading mail requires IMAP, so this module uses a native CRM interface with IMAP/SMTP server code rather than importing its campaign screens or unscoped APIs.
 
@@ -24,7 +24,7 @@ No live mailbox has been contacted and no email has been sent during implementat
 
 - TLS IMAP on 993. SMTP TLS on 465 or required STARTTLS on 587. Certificate verification stays enabled.
 - Supported where the provider permits IMAP/SMTP with a password or app password. Google/Microsoft OAuth is not included; accounts that require OAuth cannot connect yet.
-- Accounts and credentials are scoped to the selected company and access is Owner-only, following the existing server `requireOwner` / `requireCompanyAccess` checks. Shared staff access requires a separate permission decision.
+- Accounts and credentials are scoped to the selected company and access is limited to Owners and Franson’s explicitly authorized, confirmed email. The server verifies the Supabase Auth identity before the email-access decision, then applies the existing `requireCompanyAccess` check. This does not grant Franson the Owner role or change any other module’s permissions.
 - Passwords are encrypted with AES-256-GCM and bound to company/account IDs. Passwords and ciphertext never appear in account-list responses. No protocol logs are enabled.
 - Inbox pages contain 25 messages. Reading uses read-only IMAP and does not mark messages read, delete, or move them. UID validity protects against opening a recycled message identifier.
 - Plain-text display only, with a 2 MB source-message limit. Attachments, folders, search, OAuth, push synchronization and automatic Sent-folder copies are not included.

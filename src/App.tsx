@@ -6,6 +6,7 @@ import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './service
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
 import { Sidebar } from './components/Sidebar';
 import EmailWorkspace from './components/email/EmailWorkspace';
+import { isAdditionalEmailUser } from '../shared/emailAccess.js';
 import { Dashboard } from './components/Dashboard';
 import { Documents } from './components/Documents';
 import { GoogleSyncDashboard } from './components/GoogleSyncDashboard';
@@ -145,6 +146,7 @@ function App() {
 
   const verifiedAccess = useAppRole(user?.id);
   const isOwner = verifiedAccess.role === 'owner';
+  const canUseEmail = isOwner || (verifiedAccess.verified && isAdditionalEmailUser(user?.email));
   const isItAdmin = verifiedAccess.role === 'admin';
   const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('telecaller');
   const authRole: UserRole = isOwner ? 'owner' : isItAdmin ? 'admin' : 'telecaller';
@@ -1585,7 +1587,7 @@ function App() {
 
       {/* Navigation Sidebar */}
       <Sidebar
-        canUseEmail={isOwner}
+        canUseEmail={canUseEmail}
         currentTab={currentTab}
         setCurrentTab={(tab) => {
           setCurrentTab(tab);
@@ -2166,7 +2168,7 @@ function App() {
               />
             )}
 
-            {currentTab === 'email' && isOwner && (
+            {currentTab === 'email' && canUseEmail && (
               <EmailWorkspace key={`${user?.id}:${activeProfile?.id}`} activeProfile={activeProfile} />
             )}
 

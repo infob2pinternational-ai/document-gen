@@ -68,6 +68,11 @@ const OWNER_EMAILS = new Set([
 export async function requireOwner(req, res) {
   const auth = await requireUser(req, res);
   if (!auth) return null;
+  return requireOwnerSession(auth, res);
+}
+
+// Internal authorization for an identity already verified by requireUser().
+export async function requireOwnerSession(auth, res) {
 
   const userEmail = (auth.user?.email || '').toLowerCase().trim();
   if (OWNER_EMAILS.has(userEmail)) {

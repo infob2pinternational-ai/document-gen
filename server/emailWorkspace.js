@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { simpleParser } from 'mailparser';
-import { requireOwner, requireCompanyAccess } from './auth.js';
+import { requireCompanyAccess } from './auth.js';
+import { requireEmailAccess } from './emailAccess.js';
 import { EmailError, uuidPattern, emailPattern, encryptCredentials, decryptCredentials, accountSettings, resolveMailHost } from './emailSecurity.js';
 
 const publicFields = 'id,company_id,name,email,imap_host,imap_port,imap_user,smtp_host,smtp_port,smtp_user,created_at';
@@ -51,7 +52,7 @@ export function createEmailRepository(companyId, userId, env = process.env, fetc
 export function createEmailHandler(dependencies = {}) {
   const env = dependencies.env || process.env;
   const repository = dependencies.repository || createEmailRepository;
-  const authorize = dependencies.authorize || requireOwner;
+  const authorize = dependencies.authorize || requireEmailAccess;
   const companyAccess = dependencies.companyAccess || requireCompanyAccess;
   const resolveHost = dependencies.resolveHost || (host => resolveMailHost(host, env));
   const makeImap = dependencies.makeImap || (options => new ImapFlow(options));
