@@ -210,6 +210,13 @@ export interface LeadActivity {
 
 export type FollowUpStatus = 'PENDING' | 'COMPLETED' | 'SNOOZED' | 'CANCELLED' | 'OVERDUE';
 
+export type FollowUpOutcome = 'customer_callback' | 'no_answer' | 'not_contacted' | 'completed';
+export const FOLLOW_UP_OUTCOMES = [
+  { value: 'customer_callback', label: 'Customer requested another callback' },
+  { value: 'no_answer', label: 'Attempted contact — no answer' },
+  { value: 'not_contacted', label: 'Not contacted — postponed' }
+] as const;
+
 export interface FollowUp {
   id: string;
   // REMEDIATION (2026-08-24, full-project audit pass): company_id was
@@ -236,6 +243,9 @@ export interface FollowUp {
   completion_note?: string;
   snoozed_until?: string;
   next_follow_up_id?: string;
+  reschedule_reason?: string;
+  follow_up_outcome?: FollowUpOutcome;
+  follow_up_action_id?: string;
 }
 
 // =====================================================================

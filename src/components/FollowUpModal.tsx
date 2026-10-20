@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { FollowUp, Lead } from '../types';
+import type { FollowUp, Lead, FollowUpOutcome } from '../types';
+import { FOLLOW_UP_OUTCOMES } from '../types';
 import { X, Clock, CheckCircle2, Trash2 } from 'lucide-react';
-import { officeService } from '../services/officeService';
+import { officeService, normalizeDueTime } from '../services/officeService';
 import { leadService } from '../services/leadService';
 import { formatStaffDisplayName, getAvailableStaffList } from '../utils/staffUtils';
 import { getKolkataToday } from '../utils/dateUtils';
@@ -37,6 +38,8 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
   const [dueTime, setDueTime] = useState('11:00');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [contactOutcome, setContactOutcome] = useState<FollowUpOutcome | ''>('');
   const [isCompleting, setIsCompleting] = useState(false);
   const [completionNote, setCompletionNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -69,6 +72,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       return;
     }
 
+    setRescheduleReason(''); setContactOutcome('');
     if (followUp) {
       setCustomerName(followUp.customer_name);
       setCompanyName(followUp.company_name || '');
@@ -108,6 +112,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
     }
   }, [followUp, prefilledLead, userEmail, isOpen]);
 
+  const scheduleChanged = Boolean(followUp && (dueDate !== followUp.due_date || normalizeDueTime(dueTime) !== normalizeDueTime(followUp.due_time || '11:00')));
   if (!isOpen) return null;
 
   const handleLeadSelect = (leadId: string) => {
@@ -140,6 +145,8 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
       return;
     }
 
+    if (!isCompleting && scheduleChanged && (!rescheduleReason.trim() || !contactOutcome)) { alert('Select a contact outcome and give the reason for changing this follow-up.'); return; }
+    if (isCompleting && !completionNote.trim()) { alert('Record what happened before completing this follow-up.'); return; }
     if (saveInProgressRef.current) return;
     saveInProgressRef.current = true;
     setIsSaving(true);
@@ -179,6 +186,7 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
         due_time: dueTime,
         reason: reason.trim(),
         notes: notes.trim() || undefined,
+        ...(scheduleChanged ? { reschedule_reason: rescheduleReason.trim(), follow_up_outcome: contactOutcome as FollowUpOutcome } : {}),
         status: followUp?.status || 'PENDING'
       }, userEmail);
 
@@ -331,6 +339,19 @@ export const FollowUpModal: React.FC<FollowUpModalProps> = ({
                   />
                 </div>
               </div>
+
+              {scheduleChanged && <fieldset style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '0.75rem', display: 'grid', gap: '0.75rem' }}>
+                <legend>Change follow-up schedule</legend>
+                <label className="form-label">Contact outcome *
+                  <select required value={contactOutcome} onChange={event => setContactOutcome(event.target.value as FollowUpOutcome)}>
+                    <option value="">Select what happened</option>
+                    {FOLLOW_UP_OUTCOMES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="form-label">Reason for changing the date/time *
+                  <textarea required maxLength={2000} rows={3} value={rescheduleReason} onChange={event => setRescheduleReason(event.target.value)} placeholder="Explain the outcome and the next action." />
+                </label>
+              </fieldset>}
 
               <div>
                 <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 600 }}>Reason / Purpose *</label>

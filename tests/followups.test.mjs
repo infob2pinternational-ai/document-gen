@@ -102,7 +102,7 @@ test('Test 1 — Snooze a pending Follow-up: status becomes SNOOZED, snoozed_unt
   assert.equal(counts.snoozed, 0);
 
   // Snooze by 30 minutes
-  const snoozed = await officeService.snoozeFollowUp(task.id, 30, 'staff@b2p.com');
+  const snoozed = await officeService.snoozeFollowUp(task.id, 30, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   assert.ok(snoozed, 'snoozeFollowUp returned updated task');
   assert.equal(snoozed.status, 'SNOOZED', 'status must become SNOOZED');
@@ -132,9 +132,9 @@ test('Test 2 — Snoozed excluded from pending categories: does NOT appear/count
   const tUpcoming = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Task Upcoming', due_date: tomorrowStr, reason: 'R3' }, 'staff@b2p.com');
 
   // Snooze all 3
-  await officeService.snoozeFollowUp(tToday.id, 60, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(tOverdue.id, 60, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(tUpcoming.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tToday.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
+  await officeService.snoozeFollowUp(tOverdue.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
+  await officeService.snoozeFollowUp(tUpcoming.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   const counts = metricsService.getFollowUpCounts(undefined, companyA);
   assert.equal(counts.today, 0, 'Snoozed tasks must NOT count in Today');
@@ -165,8 +165,8 @@ test('Test 3 — Snoozed badge: Snoozed count === Snoozed records displayed (inc
   // Add 2 snoozed tasks
   const t1 = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'A', due_date: dateUtils.getKolkataToday(), reason: 'R1' }, 'staff@b2p.com');
   const t2 = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'B', due_date: dateUtils.getKolkataToday(), reason: 'R2' }, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(t1.id, 30, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(t2.id, 120, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(t1.id, 30, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
+  await officeService.snoozeFollowUp(t2.id, 120, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   counts = metricsService.getFollowUpCounts(undefined, companyA);
   displayed = officeService.getFollowUps('snoozed', companyA);
@@ -200,13 +200,13 @@ test('Test 5 — Snoozed + Company isolation: Company A and B snoozed tasks rema
 
   // Create and snooze 1 task for Company A
   const tA = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Co A Snoozed', due_date: todayStr, reason: 'Call A' }, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(tA.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tA.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   // Create and snooze 2 tasks for Company B
   const tB1 = await officeService.saveFollowUp({ company_id: companyB, customer_name: 'Co B Snoozed 1', due_date: todayStr, reason: 'Call B1' }, 'staff@b2p.com');
   const tB2 = await officeService.saveFollowUp({ company_id: companyB, customer_name: 'Co B Snoozed 2', due_date: todayStr, reason: 'Call B2' }, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(tB1.id, 60, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(tB2.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(tB1.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
+  await officeService.snoozeFollowUp(tB2.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   // Assert Company A sees only its 1 snoozed task
   const aList = officeService.getFollowUps('snoozed', companyA);
@@ -234,7 +234,7 @@ test('Test 6 — Snoozed + Staff filter: Staff filtering applies correctly to Sn
     reason: 'R-A',
     assigned_staff_email: 'staffA@b2p.com'
   }, 'admin@b2p.com');
-  await officeService.snoozeFollowUp(tA.id, 60, 'staffA@b2p.com');
+  await officeService.snoozeFollowUp(tA.id, 60, 'staffA@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   // Snoozed for Staff B
   const tB = await officeService.saveFollowUp({
@@ -244,7 +244,7 @@ test('Test 6 — Snoozed + Staff filter: Staff filtering applies correctly to Sn
     reason: 'R-B',
     assigned_staff_email: 'staffB@b2p.com'
   }, 'admin@b2p.com');
-  await officeService.snoozeFollowUp(tB.id, 60, 'staffB@b2p.com');
+  await officeService.snoozeFollowUp(tB.id, 60, 'staffB@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   // Filter Staff A
   const listStaffA = officeService.getFollowUps('snoozed', companyA, 'staffA@b2p.com');
@@ -281,7 +281,7 @@ test('Test 7 — Edit Snoozed Follow-up: retains SNOOZED status, company_id, lea
     reason: 'Initial Call'
   }, 'staff@b2p.com');
 
-  const snoozed = await officeService.snoozeFollowUp(original.id, 90, 'staff@b2p.com');
+  const snoozed = await officeService.snoozeFollowUp(original.id, 90, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
   const snoozedUntil = snoozed.snoozed_until;
   assert.ok(snoozedUntil);
 
@@ -317,7 +317,7 @@ test('Test 8 — Snoozed -> Complete: SNOOZED follow-up transitions to COMPLETED
     reason: 'Follow-up discussion'
   }, 'staff@b2p.com');
 
-  await officeService.snoozeFollowUp(task.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(task.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
   assert.equal(metricsService.getFollowUpCounts(undefined, companyA).snoozed, 1);
   assert.equal(officeService.getFollowUps('snoozed', companyA).length, 1);
 
@@ -472,7 +472,7 @@ test('Regression — Step 5: Filter consistency & table counts match badges acro
   await officeService.completeFollowUp(comp.id, 'Done', 'staff@b2p.com');
   // Snoozed
   const snz = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Snoozed Task', due_date: todayStr, reason: 'R5' }, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(snz.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(snz.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   const counts = metricsService.getFollowUpCounts(undefined, companyA);
 
@@ -623,7 +623,7 @@ test('Step 7 - Test 4: Editing due date shifts lead.next_follow_up_at to new ear
     customer_name: 'Lead David',
     due_date: '2026-10-05',
     due_time: '12:00',
-    reason: 'Rescheduled Call 1'
+    reason: 'Rescheduled Call 1', reschedule_reason: 'Customer requested later', follow_up_outcome: 'customer_callback'
   }, 'staff@b2p.com');
 
   // Next follow-up should now be Call 2 (2026-09-29T16:00:00+05:30)
@@ -725,7 +725,7 @@ test('Step 7 - Test 7: Snoozing earliest follow-up advances lead.next_follow_up_
 
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T10:00:00+05:30');
 
-  await officeService.snoozeFollowUp(fu1.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fu1.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
   // SNOOZED status is excluded from actionable follow-ups, so FU 2 becomes earliest actionable
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-30T14:00:00+05:30');
 });
@@ -753,7 +753,7 @@ test('Step 7 - Test 8: Snoozing the only follow-up sets lead.next_follow_up_at t
 
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T12:00:00+05:30');
 
-  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
 });
 
@@ -1084,7 +1084,7 @@ test('Step 8 - Test 4: Completing a Snoozed follow-up transitions to COMPLETED a
     due_time: '10:00',
     reason: 'Call 1'
   }, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(fu1.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fu1.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   const fu2 = await officeService.saveFollowUp({
     company_id: companyA,
@@ -1134,7 +1134,7 @@ test('Step 8 - Test 5: Snoozing/completing final actionable follow-up leaves nex
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T11:00:00+05:30');
 
   // Snoozing the only actionable follow-up
-  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
 
   // Completing it subsequently
@@ -1211,7 +1211,7 @@ test('Step 8 - Test 7: Snoozed lifecycle operations strictly maintain company is
     reason: 'FU A'
   }, 'staff@b2p.com');
 
-  await officeService.snoozeFollowUp(fuA.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fuA.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   // Verify Company A and Company B isolation
   const listA = officeService.getFollowUps('snoozed', companyA);
@@ -1242,7 +1242,7 @@ test('Step 8 - Test 8: Counters keep Snoozed records strictly segregated from ac
 
   // Create snoozed task (active snooze)
   const snzActive = await officeService.saveFollowUp({ company_id: companyA, customer_name: 'Active Snooze', due_date: todayStr, reason: 'R4' }, 'staff@b2p.com');
-  await officeService.snoozeFollowUp(snzActive.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(snzActive.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   // Create snoozed task (expired snooze)
   await officeService.saveFollowUp({
@@ -1302,7 +1302,7 @@ test('Step 8 - Test 10: Steps 1–7 regression verification intact', async () =>
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, '2026-09-28T10:00:00+05:30');
 
   // Step 6 & Step 1 check
-  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
   const snoozedFu = officeService.getFollowUps('snoozed', companyA)[0];
   assert.equal(snoozedFu.status, 'SNOOZED');
   assert.ok(snoozedFu.snoozed_until);
@@ -1324,8 +1324,8 @@ test('saved call remarks survive rescheduling, completion and identical retries 
   const company = '11111111-1111-4111-8111-111111111111';
   const task = await officeService.saveFollowUp({ company_id: company, lead_id: 'test-lead',
     customer_name: 'Timeline Customer', due_date: '2026-10-10', reason: 'Call client' }, 'caller@example.test');
-  await officeService.saveFollowUp({ ...task, notes: 'Client requests Monday', due_date: '2026-10-12' }, 'caller@example.test');
-  await officeService.saveFollowUp({ ...task, notes: 'Client requests Monday', due_date: '2026-10-12' }, 'caller@example.test');
+  await officeService.saveFollowUp({ ...task, notes: 'Client requests Monday', reschedule_reason: 'Customer requested Monday', follow_up_outcome: 'customer_callback', due_date: '2026-10-12' }, 'caller@example.test');
+  await officeService.saveFollowUp({ ...task, notes: 'Client requests Monday', reschedule_reason: 'Customer requested Monday', follow_up_outcome: 'customer_callback', due_date: '2026-10-12' }, 'caller@example.test');
   const remarks = leadService.getLeadActivities('test-lead').filter(a => a.action === 'Follow-up Call Remarks');
   assert.equal(remarks.length, 1);
   assert.equal(remarks[0].note, 'Client requests Monday');
@@ -1437,7 +1437,7 @@ test('Step 9 - Test 13: Completing, snoozing, and rescheduling preserves relativ
 
   // Snooze the next item
   const targetToSnooze = afterCompleteToday[1];
-  await officeService.snoozeFollowUp(targetToSnooze.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(targetToSnooze.id, 60, 'staff@b2p.com', 'Synthetic reschedule reason', 'no_answer');
 
   const afterSnoozeToday = officeService.getFollowUps('today', companyA);
   assert.equal(afterSnoozeToday.length, 3);
@@ -1450,7 +1450,7 @@ test('Step 9 - Test 13: Completing, snoozing, and rescheduling preserves relativ
 
   // Reschedule another item to tomorrow
   const targetToReschedule = afterSnoozeToday[1];
-  await officeService.saveFollowUp({ id: targetToReschedule.id, due_date: tomorrowStr, due_time: '14:00' }, 'staff@b2p.com');
+  await officeService.saveFollowUp({ id: targetToReschedule.id, reschedule_reason: 'Customer requested tomorrow', follow_up_outcome: 'customer_callback', due_date: tomorrowStr, due_time: '14:00' }, 'staff@b2p.com');
 
   const afterRescheduleToday = officeService.getFollowUps('today', companyA);
   assert.equal(afterRescheduleToday.length, 2);
@@ -1495,3 +1495,24 @@ test('Step 9 - Test 14: Strict tie-breaker guarantees total order even with iden
   assert.equal(compareFollowUpsDeterministically(item1, item1), 0, 'Comparing item to itself must return 0');
 });
 
+
+test('accountability: missing reschedule reason/outcome and blank completion cannot change cached task', async () => {
+  storage.clear();
+  const company = '11111111-1111-4111-8111-111111111111';
+  leadService.setActiveCompany(company);
+  const task = await officeService.saveFollowUp({company_id:company,customer_name:'Synthetic review task',due_date:'2026-10-20',due_time:'11:00'},'staff@example.test');
+  await assert.rejects(officeService.saveFollowUp({id:task.id,due_date:'2026-10-21'},'staff@example.test'),/contact outcome/);
+  await assert.rejects(officeService.snoozeFollowUp(task.id,30,'staff@example.test'),/reason and contact outcome/);
+  await assert.rejects(officeService.snoozeFollowUp(task.id,NaN,'staff@example.test','Synthetic reason','no_answer'),/valid postponement/);
+  await assert.rejects(officeService.completeFollowUp(task.id,'   ','staff@example.test'),/completion outcome/);
+  assert.equal(officeService.getFollowUps('all',company)[0].due_date,'2026-10-20');
+  assert.equal(officeService.getFollowUps('all',company)[0].status,'PENDING');
+  const moved = await officeService.saveFollowUp({id:task.id,due_date:'2026-10-21',reschedule_reason:'Customer requested tomorrow',follow_up_outcome:'customer_callback'},'staff@example.test');
+  assert.equal(moved.reschedule_reason,'Customer requested tomorrow');assert.equal(moved.follow_up_outcome,'customer_callback');assert.ok(moved.follow_up_action_id);
+  const action=moved.follow_up_action_id;
+  const again=await officeService.saveFollowUp({id:task.id,due_date:'2026-10-22',reschedule_reason:'No answer on callback',follow_up_outcome:'no_answer'},'staff@example.test');
+  assert.notEqual(again.follow_up_action_id,action);
+  leadService.setActiveCompany('44444444-4444-4444-8444-444444444444');
+  await assert.rejects(officeService.snoozeFollowUp(task.id,30,'staff@example.test','Synthetic reason','no_answer'),/another company/);
+  leadService.setActiveCompany(company);
+});

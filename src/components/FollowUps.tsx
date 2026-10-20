@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
-import type { FollowUp } from '../types';
+import type { FollowUp, FollowUpOutcome } from '../types';
+import { FollowUpOwnerReview } from './FollowUpOwnerReview';
 import { officeService, compareFollowUpsDeterministically } from '../services/officeService';
 import { metricsService, calculateFollowUpCounts } from '../services/metricsService';
 import { FollowUpModal } from './FollowUpModal';
@@ -41,6 +42,9 @@ function areFollowUpListsEqual(prev: FollowUp[], next: FollowUp[]): boolean {
       p.completed_at !== n.completed_at ||
       p.snoozed_until !== n.snoozed_until ||
       p.company_id !== n.company_id ||
+      p.reschedule_reason !== n.reschedule_reason ||
+      p.follow_up_outcome !== n.follow_up_outcome ||
+      p.follow_up_action_id !== n.follow_up_action_id ||
       p.lead_id !== n.lead_id
     ) {
       return false;
@@ -59,13 +63,15 @@ interface FollowUpsProps {
   userEmail?: string;
   companyId?: string;
   onOpenLead?: (leadId: string) => void;
+  canReviewFollowUps?: boolean;
 }
 
 export const FollowUps: React.FC<FollowUpsProps> = ({
   role: _role,
   userEmail = '',
   companyId: propCompanyId,
-  onOpenLead
+  onOpenLead,
+  canReviewFollowUps = false
 }) => {
   const [activeTab, setActiveTabState] = useState<'today' | 'upcoming' | 'overdue' | 'completed' | 'snoozed' | 'all'>(() => {
     try {
@@ -245,7 +251,7 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
 
   const handleQuickComplete = async (f: FollowUp) => {
     setActiveFollowUpId(f.id);
-    const note = prompt(`Enter completion outcome for ${f.customer_name}:`, 'Client contacted. Requirement updated.');
+    const note = prompt(`Enter the completed action and outcome for ${f.customer_name}:`, '');
     if (note !== null) {
       try {
         saveScrollAnchor();
@@ -259,9 +265,14 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
 
   const handleSnooze = async (f: FollowUp, minutes: number) => {
     setActiveFollowUpId(f.id);
+    const answer = prompt('Contact outcome: 1 = Customer requested callback; 2 = Attempted contact, no answer; 3 = Not contacted, postponed');
+    const outcome = ({ '1': 'customer_callback', '2': 'no_answer', '3': 'not_contacted' } as Record<string, FollowUpOutcome>)[answer || ''];
+    if (!outcome) return;
+    const reason = prompt('Why is this follow-up being postponed? Include the next action.');
+    if (!reason?.trim()) return;
     try {
       saveScrollAnchor();
-      await officeService.snoozeFollowUp(f.id, minutes, userEmail);
+      await officeService.snoozeFollowUp(f.id, minutes, userEmail, reason, outcome);
       refreshFollowUps();
     } catch (err: any) {
       alert(err.message || 'Failed to snooze follow-up.');
@@ -419,6 +430,8 @@ export const FollowUps: React.FC<FollowUpsProps> = ({
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {canReviewFollowUps && propCompanyId && <FollowUpOwnerReview companyId={propCompanyId} />}
+
       
       {/* Header */}
       <div className="glass-panel" style={{

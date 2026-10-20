@@ -2143,6 +2143,7 @@ function App() {
 
             {currentTab === 'follow-ups' && (
               <FollowUps
+                canReviewFollowUps={isOwner}
                 role={simulatedRole}
                 userEmail={currentUserEmail}
                 companyId={activeProfile?.id}

@@ -282,6 +282,9 @@ function sanitizeOfficeRowForSupabase(table: CrmOfficeTable, row: any) {
       created_by_email: row.created_by_email,
       completed_at: row.completed_at ?? null,
       completion_note: row.completion_note ?? null,
+      reschedule_reason: row.reschedule_reason ?? null,
+      follow_up_outcome: row.follow_up_outcome ?? null,
+      follow_up_action_id: row.follow_up_action_id ?? null,
       status: String(row.status || 'PENDING').toLowerCase(),
       created_at: row.created_at || new Date().toISOString(),
       updated_at: row.updated_at || new Date().toISOString()
@@ -433,6 +436,8 @@ async function persistOfficeRow<T extends { id: string }>(storageKey: string, ta
       if (migrationError || version !== 1) {
         throw new Error('Follow-up was not saved. Apply the follow-up timeline database migration before retrying.');
       }
+      const { data: reviewVersion, error: reviewMigrationError } = await supabase.rpc('followup_accountability_version');
+      if (reviewMigrationError || reviewVersion !== 1) throw new Error('Follow-up was not saved. The follow-up review database setup is required.');
     }
     const { data, error } = await supabase.from(table)
       .upsert(sanitizeOfficeRowForSupabase(table, changedRow)).select('*').single();
@@ -781,6 +786,20 @@ export const officeService = {
       };
     }
 
+    if (existing && (existing.due_date !== followUpRecord.due_date || normalizeDueTime(existing.due_time || '10:00') !== normalizeDueTime(followUpRecord.due_time))) {
+      if (!item.reschedule_reason?.trim() || !['customer_callback','no_answer','not_contacted'].includes(item.follow_up_outcome || '')) {
+        throw new Error('Select the contact outcome and explain why the follow-up date/time is changing.');
+      }
+      followUpRecord.reschedule_reason = item.reschedule_reason.trim();
+      followUpRecord.follow_up_outcome = item.follow_up_outcome;
+      followUpRecord.follow_up_action_id = generateUUID();
+    }
+
+    if (followUpRecord.status === 'COMPLETED' && existing?.status !== 'COMPLETED') {
+      if (!followUpRecord.completion_note?.trim()) throw new Error('Record the completion outcome before completing this follow-up.');
+      if (!followUpRecord.follow_up_action_id || followUpRecord.follow_up_action_id === existing?.follow_up_action_id) followUpRecord.follow_up_action_id = generateUUID();
+    }
+
     if (isNew) {
       list.unshift(followUpRecord);
       await persistOfficeRow(FOLLOW_UPS_KEY, 'follow_ups', list, followUpRecord);
@@ -847,6 +866,10 @@ export const officeService = {
       if (supabase && current.lead_id && current.company_id) await leadService.refreshLeadActivities(current.lead_id, current.company_id);
       return current;
     }
+    if (!completionNote.trim()) throw new Error('Record the completion outcome before completing this follow-up.');
+    current.follow_up_outcome = 'completed';
+    current.reschedule_reason = completionNote.trim();
+    current.follow_up_action_id = generateUUID();
     current.status = 'COMPLETED';
     current.completed_at = new Date().toISOString();
     current.completion_note = completionNote;
@@ -891,12 +914,19 @@ export const officeService = {
     return current;
   },
 
-  async snoozeFollowUp(id: string, minutes: number, userEmail: string): Promise<FollowUp | null> {
+  async snoozeFollowUp(id: string, minutes: number, userEmail: string, reason?: string, outcome?: FollowUp['follow_up_outcome']): Promise<FollowUp | null> {
     const list = getLocal<FollowUp[]>(FOLLOW_UPS_KEY, SEED_FOLLOW_UPS);
     const idx = list.findIndex(f => f.id === id);
     if (idx < 0) return null;
 
     const current = list[idx];
+    if (!reason?.trim() || !['customer_callback','no_answer','not_contacted'].includes(outcome || '')) throw new Error('A postponement reason and contact outcome are required.');
+    if (!Number.isFinite(minutes) || minutes <= 0) throw new Error('Choose a valid postponement duration.');
+    const activeCompany = leadService.getActiveCompany();
+    if (activeCompany && activeCompany !== 'default' && current.company_id !== activeCompany) throw new Error('Cannot postpone a follow-up belonging to another company.');
+    current.reschedule_reason = reason.trim();
+    current.follow_up_outcome = outcome;
+    current.follow_up_action_id = generateUUID();
     const newTime = new Date(Date.now() + minutes * 60 * 1000);
     current.status = 'SNOOZED';
     current.due_time = getKolkataTimeString(newTime);

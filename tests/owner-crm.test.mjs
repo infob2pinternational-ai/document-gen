@@ -111,10 +111,12 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
     export const saved = {};
     export let failure = false;
     export let migrationVersion = 0;
+    export let reviewVersion = 0;
+    export function setReviewVersion(value) { reviewVersion = value; }
     export function setMigrationVersion(value) { migrationVersion = value; }
     export function setFailure(value) { failure = value; }
     export const isCloudActive = () => true;
-    export const supabase = { async rpc() { return { data: migrationVersion, error: null }; }, from(table) { return {
+    export const supabase = { async rpc(name) { return { data: name === 'followup_accountability_version' ? reviewVersion : migrationVersion, error: null }; }, from(table) { return {
       upsert(row) { return { select() { return { async single() {
         if (failure) return { error: { message: 'permission denied' } };
         if (table === 'follow_ups' && !['pending','completed','cancelled','snoozed','overdue'].includes(row.status))
@@ -147,6 +149,9 @@ test('live CRM follow-ups and quotation approvals survive loading on another dev
     assert.equal(db.saved.follow_ups, undefined);
     assert.equal(officeService.getFollowUps('all', company).length, 0);
     db.setMigrationVersion(1);
+    await assert.rejects(officeService.saveFollowUp({ company_id: company, customer_name: 'Synthetic review setup check', due_date: '2026-09-21' }, 'staff@example.test'), /review database setup/);
+    assert.equal(db.saved.follow_ups, undefined);
+    db.setReviewVersion(1);
     const follow = await officeService.saveFollowUp({ company_id: company, lead_id: lead, customer_name: 'Enquiry', due_date: '2026-09-21', due_time: '15:45', reason: 'Call customer' }, 'staff@example.com');
     assert.equal(db.saved.follow_ups.follow_up_time, '15:45');
     assert.equal(db.saved.follow_ups.lead_id, lead);
