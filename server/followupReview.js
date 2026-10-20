@@ -1,4 +1,12 @@
-import { requireOwner, requireCompanyAccess } from './auth.js';
+import { requireUser, requireOwnerSession, requireCompanyAccess } from './auth.js';
+import { isAdditionalFollowupReviewer } from '../shared/followupReviewAccess.js';
+
+export async function requireFollowupReviewAccess(req, res) {
+  const auth = await requireUser(req, res);
+  if (!auth) return null;
+  if (auth.user.email_confirmed_at && isAdditionalFollowupReviewer(auth.user.email)) return auth;
+  return requireOwnerSession(auth, res);
+}
 
 export function dayBounds(day) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('A valid date is required.');
@@ -22,7 +30,7 @@ export function summarizeReview(events, states) {
     tasks: states.filter(row=>!row.deleted),
     flagged: states.filter(row=>!row.deleted && !['completed','cancelled'].includes(row.current_status.toLowerCase()) && row.postponement_count >= 2) };
 }
-export function createFollowupReviewHandler({ authorize = requireOwner, companyAccess = requireCompanyAccess, request = (...args)=>fetch(...args) } = {}) {
+export function createFollowupReviewHandler({ authorize = requireFollowupReviewAccess, companyAccess = requireCompanyAccess, request = (...args)=>fetch(...args) } = {}) {
   return async (req,res) => {
     res.setHeader('Cache-Control','private, no-store');
     if (req.method !== 'GET') { res.status(405).json({error:'Method not allowed.'}); return; }

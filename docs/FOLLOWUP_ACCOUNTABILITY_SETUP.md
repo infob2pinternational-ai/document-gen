@@ -22,9 +22,10 @@ on a customer callback outcome or completion. Outcomes are staff declarations, n
 Daily totals count actions: one task can have more than one legitimate action in a day.
 
 Review state and immutable event rows are separate from normal follow_ups responses.
-Authenticated/anonymous roles have no access to these tables. Only the server's owner-authorized,
-company-checked GET /api/followup-review endpoint returns review information. Email-only access
-(including Franson) grants no review access. The staff interface shows normal reason/outcome
+Authenticated/anonymous roles have no access to these tables. Only the server's review-authorized,
+company-checked GET /api/followup-review endpoint returns review information. Owners and the
+Auth-confirmed account fransonputhukkara@gmail.com have explicit review access. This does not
+grant Franson the Owner role or bypass company checks. Email access alone grants no review access. The staff interface shows normal reason/outcome
 fields, without owner counts or flags. This is ordinary task audit history, not device tracking.
 Deleted tasks retain audit evidence; tenant retention/deletion policy requires a separate review.
 

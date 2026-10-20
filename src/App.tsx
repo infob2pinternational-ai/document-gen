@@ -7,6 +7,7 @@ import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type S
 import { Sidebar } from './components/Sidebar';
 import EmailWorkspace from './components/email/EmailWorkspace';
 import { isAdditionalEmailUser } from '../shared/emailAccess.js';
+import { isAdditionalFollowupReviewer } from '../shared/followupReviewAccess.js';
 import { Dashboard } from './components/Dashboard';
 import { Documents } from './components/Documents';
 import { GoogleSyncDashboard } from './components/GoogleSyncDashboard';
@@ -2143,7 +2144,7 @@ function App() {
 
             {currentTab === 'follow-ups' && (
               <FollowUps
-                canReviewFollowUps={isOwner}
+                canReviewFollowUps={isOwner || (verifiedAccess.verified && isAdditionalFollowupReviewer(user?.email))}
                 role={simulatedRole}
                 userEmail={currentUserEmail}
                 companyId={activeProfile?.id}

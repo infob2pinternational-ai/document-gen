@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {dayBounds,summarizeReview,createFollowupReviewHandler} from '../server/followupReview.js';
+import { requireOwner } from '../server/auth.js';
 const response=()=>({code:0,body:null,setHeader(){},status(n){this.code=n;return this;},json(data){this.body=data;}});
 test('India day boundaries and invalid dates',()=>{
  assert.deepEqual(dayBounds('2026-10-20'),['2026-10-19T18:30:00.000Z','2026-10-20T18:30:00.000Z']);
@@ -50,4 +51,37 @@ test('real authorization boundary denies Email-only staff and inaccessible compa
  mode='owner';res=response();await createFollowupReviewHandler()(req,res);assert.equal(res.code,403);
  assert.ok(calls.every(url=>!url.includes('followup_review_')));
  }finally{globalThis.fetch=originalFetch;names.forEach((name,i)=>{if(previous[i]===undefined)delete process.env[name];else process.env[name]=previous[i];});}
+});
+
+
+test('Franson review access requires confirmed Auth identity and company access, without Owner privileges', async()=>{
+ const originalFetch=globalThis.fetch;
+ const names=['SUPABASE_URL','SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY'];const previous=names.map(name=>process.env[name]);
+ process.env.SUPABASE_URL='https://synthetic.invalid';process.env.SUPABASE_ANON_KEY='synthetic-anon';process.env.SUPABASE_SERVICE_ROLE_KEY='synthetic-service';
+ let email='fransonputhukkara@gmail.com',confirmed=true,companyAllowed=true;
+ let privateReads=0;
+ const company='11111111-1111-4111-8111-111111111111';
+ try {
+  globalThis.fetch=async(url)=>{
+   if(url.endsWith('/auth/v1/user'))return {ok:true,json:async()=>({id:'synthetic-user',email,email_confirmed_at:confirmed?'2026-10-01T00:00:00Z':null})};
+   if(url.endsWith('/rpc/current_app_role'))return {ok:true,json:async()=>'staff'};
+   if(url.includes('/profiles?'))return {ok:true,json:async()=>companyAllowed?[{id:company}]:[]};
+   if(url.includes('/followup_review_')){
+    privateReads++;
+    assert.equal(new URL(url).searchParams.get('company_id'),`eq.${company}`);
+    return {ok:true,json:async()=>[]};
+   }
+   throw Error('Unexpected request');
+  };
+  const req={method:'GET',headers:{authorization:'Bearer synthetic-session'},query:{company_id:company,day:'2026-10-20'}};
+  let res=response();await createFollowupReviewHandler()(req,res);assert.equal(res.code,200);assert.equal(privateReads,2);
+  res=response();assert.equal(await requireOwner(req,res),null);assert.equal(res.code,403);
+  for(const scenario of ['company','unconfirmed','other','unsigned']){
+   companyAllowed=scenario!=='company';confirmed=scenario!=='unconfirmed';email=scenario==='other'?'other@example.test':'fransonputhukkara@gmail.com';
+   const before=privateReads;res=response();
+   await createFollowupReviewHandler()({...req,headers:scenario==='unsigned'?{}:req.headers,body:{email:'fransonputhukkara@gmail.com',role:'owner'}},res);
+   assert.equal(res.code,scenario==='unsigned'?401:403,scenario);assert.equal(privateReads,before,scenario);
+  }
+  email='owner@b2p.com';confirmed=true;companyAllowed=true;res=response();await createFollowupReviewHandler()(req,res);assert.equal(res.code,200);
+ } finally {globalThis.fetch=originalFetch;names.forEach((name,i)=>{if(previous[i]===undefined)delete process.env[name];else process.env[name]=previous[i];});}
 });
