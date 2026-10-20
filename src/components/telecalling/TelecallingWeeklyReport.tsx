@@ -12,7 +12,7 @@ import {
   Settings,
   Loader2
 } from 'lucide-react';
-import type { CompanyProfile, TelecallingWeeklyReportData } from '../../types';
+import type { CompanyProfile, TelecallingStatus, TelecallingWeeklyReportData } from '../../types';
 import { telecallingService } from '../../services/telecallingService';
 import { 
   getKolkataToday, 
@@ -26,6 +26,15 @@ import {
   getOwnerWhatsAppNumber 
 } from '../../utils/telecallingShare';
 import { OwnerWhatsAppModal } from './OwnerWhatsAppModal';
+
+const KPI_FILTERS: { id: string; label: string; description: string; color: string; statuses: TelecallingStatus[] }[] = [
+  { id: 'all', label: 'Weekly Calls', description: '', color: '#3b82f6', statuses: [] },
+  { id: 'appointments', label: 'Appointments', description: 'Meetings scheduled', color: '#16a34a', statuses: ['Appointment Confirmed'] },
+  { id: 'interested', label: 'Interested / Sent', description: 'Details shared', color: '#2563eb', statuses: ['Interested / Details Shared'] },
+  { id: 'follow-ups', label: 'Follow-ups', description: 'Active pipeline', color: '#d97706', statuses: ['Follow-up Required', 'Call Back'] },
+  { id: 'no-response', label: 'No Response', description: 'Unreachable / off', color: '#64748b', statuses: ['No Answer / No Response', 'Not Reachable / Switched Off'] },
+  { id: 'no-interest', label: 'No Interest', description: 'Declined', color: '#ef4444', statuses: ['No Interest'] }
+];
 
 interface TelecallingWeeklyReportProps {
   activeProfile: CompanyProfile | null;
@@ -49,6 +58,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
 
   const [reportData, setReportData] = useState<TelecallingWeeklyReportData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeKpi, setActiveKpi] = useState('all');
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
   const [shareError, setShareError] = useState('');
@@ -77,6 +87,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
   };
 
   useEffect(() => {
+    setActiveKpi('all');
     loadWeeklyReport();
   }, [companyId, currentWeekMonday]);
 
@@ -92,9 +103,16 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
     setCurrentWeekMonday(getKolkataWeekRange(getKolkataToday()).startDate);
   };
 
+  const selectedKpi = KPI_FILTERS.find(kpi => kpi.id === activeKpi) || KPI_FILTERS[0];
+  const filteredReport = reportData && (activeKpi === 'all' ? reportData : telecallingService.computeWeeklyReport(
+    reportData.entries.filter(entry => selectedKpi.statuses.includes(entry.call_status)),
+    weekInfo.startDate,
+    weekInfo.endDate
+  ));
+
   // WhatsApp Share
   const handleShareWhatsApp = () => {
-    if (!reportData) return;
+    if (!filteredReport) return;
     setShareError('');
     setShareSuccess(false);
 
@@ -104,9 +122,9 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
       return;
     }
 
-    const message = buildWeeklyReportWhatsAppMessage(
+    const message = (activeKpi === 'all' ? '' : `Filter: ${selectedKpi.label}\n\n`) + buildWeeklyReportWhatsAppMessage(
       activeProfile?.name || 'B2P International',
-      reportData
+      filteredReport
     );
     const result = openWhatsAppShare(message, ownerPhone);
 
@@ -120,9 +138,9 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
 
   // CSV Export
   const handleExportCSV = () => {
-    if (!reportData || !reportData.entries.length) return;
+    if (!filteredReport?.entries.length) return;
     const headers = ['Date', 'Day', 'Company', 'Contact', 'Phone', 'Call Result', 'Feedback', 'Telecaller'];
-    const rows = reportData.entries.map(e => [
+    const rows = filteredReport.entries.map(e => [
       `"${e.entry_date}"`,
       `"${new Date(e.entry_date).toLocaleDateString('en-US', { weekday: 'short' })}"`,
       `"${(e.company_name || '').replace(/"/g, '""')}"`,
@@ -137,7 +155,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Telecalling_Weekly_Report_${weekInfo.startDate}_to_${weekInfo.endDate}.csv`);
+    link.setAttribute('download', `Telecalling_Weekly_Report_${weekInfo.startDate}_to_${weekInfo.endDate}${activeKpi === 'all' ? '' : `_${activeKpi}`}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -204,7 +222,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
           <button
             onClick={handleExportCSV}
             className="btn-secondary"
-            disabled={!reportData?.entries.length}
+            disabled={!filteredReport?.entries.length || loading}
             style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}
           >
             <Download size={15} />
@@ -312,7 +330,7 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
           <Loader2 className="spin" size={32} style={{ margin: '0 auto', color: '#3b82f6' }} />
           <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#64748b' }}>Computing weekly performance statistics...</p>
         </div>
-      ) : reportData ? (
+      ) : reportData && filteredReport ? (
         <>
           {/* Top Summary Cards */}
           <div style={{
@@ -321,256 +339,218 @@ export const TelecallingWeeklyReport: React.FC<TelecallingWeeklyReportProps> = (
             gap: '0.85rem',
             marginBottom: '1.25rem'
           }}>
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #3b82f6'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Weekly Calls</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>{reportData.totalCalls}</div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{reportData.uniqueCompanies} unique companies</div>
-            </div>
-
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #16a34a'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Appointments</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#166534', margin: '0.2rem 0' }}>
-                {reportData.statusCounts['Appointment Confirmed']}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#166534' }}>Meetings scheduled</div>
-            </div>
-
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #2563eb'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>Interested / Sent</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1e40af', margin: '0.2rem 0' }}>
-                {reportData.statusCounts['Interested / Details Shared']}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#1e40af' }}>Details shared</div>
-            </div>
-
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #d97706'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>Follow-ups</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#92400e', margin: '0.2rem 0' }}>
-                {reportData.followUpsCount}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#92400e' }}>Active pipeline</div>
-            </div>
-
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #64748b'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>No Response</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#475569', margin: '0.2rem 0' }}>
-                {reportData.statusCounts['No Answer / No Response'] + reportData.statusCounts['Not Reachable / Switched Off']}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Unreachable / off</div>
-            </div>
-
-            <div style={{
-              background: 'var(--bg-primary, #ffffff)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: '10px',
-              padding: '1rem',
-              borderLeft: '4px solid #ef4444'
-            }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>No Interest</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#991b1b', margin: '0.2rem 0' }}>
-                {reportData.statusCounts['No Interest']}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>Declined</div>
-            </div>
+            {KPI_FILTERS.map(kpi => {
+              const selected = activeKpi === kpi.id;
+              const count = kpi.id === 'all' ? reportData.totalCalls :
+                kpi.statuses.reduce((total, status) => total + reportData.statusCounts[status], 0);
+              return (
+                <button
+                  key={kpi.id}
+                  type="button"
+                  aria-pressed={selected}
+                  aria-controls="weekly-filtered-results"
+                  aria-label={`${kpi.label}: ${count} calls`}
+                  onClick={() => setActiveKpi(kpi.id)}
+                  style={{
+                    background: 'var(--bg-primary, #ffffff)',
+                    border: `1px solid ${selected ? kpi.color : 'var(--border-color, #e2e8f0)'}`,
+                    borderLeft: `4px solid ${kpi.color}`,
+                    borderRadius: '10px',
+                    padding: '1rem',
+                    textAlign: 'left',
+                    font: 'inherit',
+                    cursor: 'pointer',
+                    boxShadow: selected ? `0 0 0 2px ${kpi.color}` : 'none'
+                  }}
+                >
+                  <span style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: kpi.color, textTransform: 'uppercase' }}>{kpi.label}</span>
+                  <span style={{ display: 'block', fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0.2rem 0' }}>{count}</span>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted, #64748b)' }}>
+                    {kpi.id === 'all' ? `${reportData.uniqueCompanies} unique companies` : kpi.description}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Daily Breakdown Table */}
-          <div style={{
-            background: 'var(--bg-primary, #ffffff)',
-            border: '1px solid var(--border-color, #e2e8f0)',
-            borderRadius: '10px',
-            padding: '1rem',
-            marginBottom: '1.25rem'
-          }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
-              Day-by-Day Activity Trend (Monday to Sunday):
-            </h4>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-secondary, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
-                    <th style={{ padding: '8px 10px', textAlign: 'left' }}>Day & Date</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>Total Calls</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>Appointment</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>Interested</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>Follow-up</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>No Response</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>No Interest</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>Invalid / Other</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportData.dailyBreakdown.map((d) => (
-                    <tr key={d.date} style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
-                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>
-                        {d.dayName} ({formatKolkataDisplayDate(d.date)})
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: d.totalCalls > 0 ? '#2563eb' : '#64748b' }}>
-                        {d.totalCalls}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', color: '#166534', fontWeight: 600 }}>
-                        {d.statusCounts['Appointment Confirmed']}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', color: '#1e40af', fontWeight: 600 }}>
-                        {d.statusCounts['Interested / Details Shared']}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', color: '#92400e', fontWeight: 600 }}>
-                        {d.statusCounts['Follow-up Required'] + d.statusCounts['Call Back']}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', color: '#475569' }}>
-                        {d.statusCounts['No Answer / No Response'] + d.statusCounts['Not Reachable / Switched Off']}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', color: '#991b1b' }}>
-                        {d.statusCounts['No Interest']}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>
-                        {d.statusCounts['Wrong / Invalid Number'] + d.statusCounts['Other']}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div id="weekly-filtered-results">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+              <span role="status" style={{ color: 'var(--text-primary, #0f172a)' }}>
+                {selectedKpi.label}: showing {filteredReport?.totalCalls || 0} of {reportData.totalCalls} calls
+              </span>
+              {activeKpi !== 'all' && (
+                <button type="button" className="btn-secondary" onClick={() => setActiveKpi('all')}>Clear filter</button>
+              )}
             </div>
-          </div>
 
-          {/* Telecaller Breakdown Section */}
-          <div style={{
-            background: 'var(--bg-primary, #ffffff)',
-            border: '1px solid var(--border-color, #e2e8f0)',
-            borderRadius: '10px',
-            padding: '1rem',
-            marginBottom: '1.25rem'
-          }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
-              Telecaller Productivity Breakdown:
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
-              {Object.entries(reportData.telecallerBreakdown).map(([caller, data]) => (
-                <div key={caller} style={{
-                  background: 'var(--bg-secondary, #f8fafc)',
-                  border: '1px solid var(--border-color, #e2e8f0)',
-                  borderRadius: '8px',
-                  padding: '1rem'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{caller}</span>
-                    <span style={{
-                      background: '#eff6ff',
-                      color: '#2563eb',
-                      padding: '2px 8px',
-                      borderRadius: '999px',
-                      fontWeight: 800,
-                      fontSize: '0.8rem'
-                    }}>
-                      {data.total} Calls
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px' }}>
-                    <div>Appointments: <strong style={{ color: '#166534' }}>{data.statusCounts['Appointment Confirmed']}</strong></div>
-                    <div>Interested: <strong style={{ color: '#1e40af' }}>{data.statusCounts['Interested / Details Shared']}</strong></div>
-                    <div>Follow-ups: <strong style={{ color: '#92400e' }}>{data.statusCounts['Follow-up Required']}</strong></div>
-                    <div>No Interest: <strong style={{ color: '#991b1b' }}>{data.statusCounts['No Interest']}</strong></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Full Activity Log for the Week */}
-          <div style={{
-            background: 'var(--bg-primary, #ffffff)',
-            border: '1px solid var(--border-color, #e2e8f0)',
-            borderRadius: '10px',
-            padding: '1rem'
-          }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
-              Weekly Call Activity Log ({reportData.entries.length} Total Calls):
-            </h4>
-            {reportData.entries.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-                No calls recorded during this week.
-              </div>
-            ) : (
+            {/* Daily Breakdown Table */}
+            <div style={{
+              background: 'var(--bg-primary, #ffffff)',
+              border: '1px solid var(--border-color, #e2e8f0)',
+              borderRadius: '10px',
+              padding: '1rem',
+              marginBottom: '1.25rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
+                Day-by-Day Activity Trend (Monday to Sunday):
+              </h4>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-secondary, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
-                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Date</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Company</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Contact</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Phone</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Result / Status</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Feedback / Remarks</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Telecaller</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Day & Date</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Total Calls</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Appointment</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Interested</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Follow-up</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>No Response</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>No Interest</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Invalid / Other</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {reportData.entries.map((e) => (
-                      <tr key={e.id} style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
-                        <td style={{ padding: '8px 10px', color: '#64748b' }}>{e.entry_date}</td>
-                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{e.company_name}</td>
-                        <td style={{ padding: '8px 10px' }}>{e.contact_person || '—'}</td>
-                        <td style={{ padding: '8px 10px' }}>{e.phone}</td>
-                        <td style={{ padding: '8px 10px' }}>
-                          <span style={{
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            background: e.call_status === 'Appointment Confirmed' ? '#dcfce7' :
-                                        e.call_status === 'Interested / Details Shared' ? '#dbeafe' :
-                                        e.call_status === 'Follow-up Required' || e.call_status === 'Call Back' ? '#fef3c7' :
-                                        e.call_status === 'No Interest' ? '#fee2e2' : '#f1f5f9',
-                            color: e.call_status === 'Appointment Confirmed' ? '#166534' :
-                                   e.call_status === 'Interested / Details Shared' ? '#1e40af' :
-                                   e.call_status === 'Follow-up Required' || e.call_status === 'Call Back' ? '#92400e' :
-                                   e.call_status === 'No Interest' ? '#991b1b' : '#475569'
-                          }}>
-                            {e.call_status}
-                          </span>
+                    {filteredReport.dailyBreakdown.map((d) => (
+                      <tr key={d.date} style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>
+                          {d.dayName} ({formatKolkataDisplayDate(d.date)})
                         </td>
-                        <td style={{ padding: '8px 10px', color: '#475569', maxWidth: '300px' }}>
-                          {e.feedback || '—'}
+                        <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: d.totalCalls > 0 ? '#2563eb' : '#64748b' }}>
+                          {d.totalCalls}
                         </td>
-                        <td style={{ padding: '8px 10px', fontSize: '0.8rem', color: '#64748b' }}>
-                          {e.created_by_name || e.created_by_email?.split('@')[0] || 'Staff'}
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#166534', fontWeight: 600 }}>
+                          {d.statusCounts['Appointment Confirmed']}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#1e40af', fontWeight: 600 }}>
+                          {d.statusCounts['Interested / Details Shared']}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#92400e', fontWeight: 600 }}>
+                          {d.statusCounts['Follow-up Required'] + d.statusCounts['Call Back']}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#475569' }}>
+                          {d.statusCounts['No Answer / No Response'] + d.statusCounts['Not Reachable / Switched Off']}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#991b1b' }}>
+                          {d.statusCounts['No Interest']}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>
+                          {d.statusCounts['Wrong / Invalid Number'] + d.statusCounts['Other']}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
+
+            {/* Telecaller Breakdown Section */}
+            <div style={{
+              background: 'var(--bg-primary, #ffffff)',
+              border: '1px solid var(--border-color, #e2e8f0)',
+              borderRadius: '10px',
+              padding: '1rem',
+              marginBottom: '1.25rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
+                Telecaller Productivity Breakdown:
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
+                {Object.entries(filteredReport.telecallerBreakdown).map(([caller, data]) => (
+                  <div key={caller} style={{
+                    background: 'var(--bg-secondary, #f8fafc)',
+                    border: '1px solid var(--border-color, #e2e8f0)',
+                    borderRadius: '8px',
+                    padding: '1rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{caller}</span>
+                      <span style={{
+                        background: '#eff6ff',
+                        color: '#2563eb',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        fontWeight: 800,
+                        fontSize: '0.8rem'
+                      }}>
+                        {data.total} Calls
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px' }}>
+                      <div>Appointments: <strong style={{ color: '#166534' }}>{data.statusCounts['Appointment Confirmed']}</strong></div>
+                      <div>Interested: <strong style={{ color: '#1e40af' }}>{data.statusCounts['Interested / Details Shared']}</strong></div>
+                      <div>Follow-ups: <strong style={{ color: '#92400e' }}>{data.statusCounts['Follow-up Required'] + data.statusCounts['Call Back']}</strong></div>
+                      <div>No Interest: <strong style={{ color: '#991b1b' }}>{data.statusCounts['No Interest']}</strong></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Full Activity Log for the Week */}
+            <div style={{
+              background: 'var(--bg-primary, #ffffff)',
+              border: '1px solid var(--border-color, #e2e8f0)',
+              borderRadius: '10px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700 }}>
+                Weekly Call Activity Log ({filteredReport.entries.length} Calls):
+              </h4>
+              {filteredReport.entries.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                  {activeKpi === 'all' ? 'No calls recorded during this week.' : `No ${selectedKpi.label.toLowerCase()} calls recorded during this week.`}
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-secondary, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }}>Date</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }}>Company</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }}>Contact</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }}>Phone</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }}>Result / Status</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }}>Feedback / Remarks</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left' }}>Telecaller</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredReport.entries.map((e) => (
+                        <tr key={e.id} style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                          <td style={{ padding: '8px 10px', color: '#64748b' }}>{e.entry_date}</td>
+                          <td style={{ padding: '8px 10px', fontWeight: 600 }}>{e.company_name}</td>
+                          <td style={{ padding: '8px 10px' }}>{e.contact_person || '—'}</td>
+                          <td style={{ padding: '8px 10px' }}>{e.phone}</td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: e.call_status === 'Appointment Confirmed' ? '#dcfce7' :
+                                          e.call_status === 'Interested / Details Shared' ? '#dbeafe' :
+                                          e.call_status === 'Follow-up Required' || e.call_status === 'Call Back' ? '#fef3c7' :
+                                          e.call_status === 'No Interest' ? '#fee2e2' : '#f1f5f9',
+                              color: e.call_status === 'Appointment Confirmed' ? '#166534' :
+                                     e.call_status === 'Interested / Details Shared' ? '#1e40af' :
+                                     e.call_status === 'Follow-up Required' || e.call_status === 'Call Back' ? '#92400e' :
+                                     e.call_status === 'No Interest' ? '#991b1b' : '#475569'
+                            }}>
+                              {e.call_status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#475569', maxWidth: '300px' }}>
+                            {e.feedback || '—'}
+                          </td>
+                          <td style={{ padding: '8px 10px', fontSize: '0.8rem', color: '#64748b' }}>
+                            {e.created_by_name || e.created_by_email?.split('@')[0] || 'Staff'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </>
       ) : null}
