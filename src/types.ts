@@ -391,6 +391,7 @@ export interface WhatsAppMessage {
   attachment_type?: 'pdf' | 'image' | 'route_map' | 'document';
   attachment_name?: string;
   error_message?: string;
+  dispatch_outcome?: 'accepted' | 'rejected' | 'uncertain';
   raw_payload?: any;
   created_at?: string;
 }

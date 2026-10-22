@@ -308,8 +308,10 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
 
     try {
       if (!sendingScope) throw new Error('Sign in and select a company before sending. Your draft is kept.');
+      const requestId = whatsappDrafts.beginSend(sendingScope, submittedDraft);
       setDraftStorageError(false);
       const newMsg = await whatsappService.sendMessage({
+        requestId,
         conversationId: activeConvId,
         phone: activeConv.phone,
         text: textToSend,
@@ -319,7 +321,9 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
         companyId: activeConv.company_id || companyId
       });
       const sameIdentity = draftIdentityRef.current === sendingIdentity;
+      if (newMsg.status === 'sent' && newMsg.wa_message_id) whatsappDrafts.recordAcceptance(sendingScope, requestId, newMsg.wa_message_id);
       if (newMsg.status !== 'sent' || !newMsg.wa_message_id || newMsg.error_message) {
+        if (newMsg.dispatch_outcome === 'rejected') whatsappDrafts.rejectSend(sendingScope, requestId);
         if (sameIdentity) setStatusFeedback(newMsg.error_message || 'Failed to dispatch message via WhatsApp.');
       } else {
         const stored = whatsappDrafts.confirmSend(sendingScope, submittedDraft);
@@ -986,6 +990,7 @@ export const WhatsAppInbox: React.FC<WhatsAppInboxProps> = ({
                   <span>{isSending ? 'Sending…' : 'Send'}</span>
                 </button>
               </form>
+              {draftScope && whatsappDrafts.load(draftScope).pending && <div role="status" style={{padding: '0.25rem 0.75rem', color: '#92400e', fontSize: '0.75rem'}}>Send outcome unresolved. Reference: {whatsappDrafts.load(draftScope).pending!.id}. Your draft is kept. Check delivery before sending again; no automatic retry will occur.</div>}
               {draftStorageError && <div role="status" style={{padding: '0.25rem 0.75rem', color: '#b91c1c', fontSize: '0.75rem'}}>Draft storage is unavailable. Your text is kept in this view; keep the page open until storage is restored.</div>}
               <div style={{ flexShrink: 0, padding: '0.25rem 0.75rem', background: '#fff', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                 {!isOnline ? 'Offline — your draft is kept in this conversation.' : 'Enter to send · Shift+Enter for a new line. File uploads are not available in this release.'}

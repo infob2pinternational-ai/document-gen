@@ -42,10 +42,15 @@ test('existing API payload and acceptance work without a persisted response or n
  await expect(input(page)).toHaveValue('');expect(sends).toBe(1);await page.reload();await expect(input(page)).toHaveValue('');
  await expect(page.getByTestId('whatsapp-message-feed')).toContainText('Synthetic acceptance');
 });
-for(const mode of ['rejected','network-loss'])test(mode+' keeps draft after reload without automatic retry',async({page})=>{
- let sends=0;await open(page);await page.route('**/api/whatsapp?*',route=>{sends++;return mode==='rejected'?route.fulfill({status:400,contentType:'application/json',body:'{"error":"Synthetic rejection"}'}):route.abort('timedout');});
+for(const mode of ['rejected','network-loss','missing-provider-id'])test(mode+' keeps draft after reload without automatic retry',async({page})=>{
+ let sends=0;let requestId='';await open(page);await page.route('**/api/whatsapp?*',route=>{sends++;requestId=route.request().headers()['x-request-id'];return mode==='rejected'?route.fulfill({status:400,contentType:'application/json',body:'{"error":"Synthetic rejection"}'}):mode==='missing-provider-id'?route.fulfill({status:200,contentType:'application/json',body:'{"success":true}'}):route.abort('timedout');});
  await input(page).fill('Preserved draft');await input(page).press('Enter');await expect(page.getByText(/Check delivery before manually retrying/)).toBeVisible();await expect(input(page)).toHaveValue('Preserved draft');
  await page.reload();await expect(input(page)).toHaveValue('Preserved draft');expect(sends).toBe(1);
+ if(mode!=='rejected'){
+  await expect(page.getByText(/Send outcome unresolved/)).toContainText(requestId);
+  await input(page).press('Enter');await expect(page.getByText(/An earlier send is unresolved/)).toBeVisible();expect(sends).toBe(1);
+  await page.getByRole('button',{name:'Discard draft'}).click();await page.reload();await expect(page.getByText(/Send outcome unresolved/)).toContainText(requestId);
+ }
 });
 test('storage errors retain in-memory text and explicit discard clears saved text',async({page})=>{
  await open(page);await input(page).fill('Saved draft');await page.getByRole('button',{name:'Discard draft'}).click();await page.reload();await expect(input(page)).toHaveValue('');

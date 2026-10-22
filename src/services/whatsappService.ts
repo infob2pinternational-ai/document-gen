@@ -180,6 +180,7 @@ class WhatsAppService {
    * Sends a message via Meta Cloud API and stores to database/local.
    */
   async sendMessage(params: {
+    requestId?: string;
     conversationId: string;
     phone: string;
     text: string;
@@ -201,7 +202,7 @@ class WhatsAppService {
     } = params;
 
     const newMsg: WhatsAppMessage = {
-      id: crypto.randomUUID(),
+      id: params.requestId || crypto.randomUUID(),
       conversation_id: conversationId,
       company_id: companyId,
       sender_type: senderType,
@@ -237,7 +238,7 @@ class WhatsAppService {
     try {
       const response = await fetch('/api/whatsapp?action=send-message', {
         method: 'POST',
-        headers: await authenticatedHeaders(),
+        headers: {...await authenticatedHeaders(), 'X-Request-ID': newMsg.id},
         body: JSON.stringify({
           phone,
           type: attachment?.url ? 'document' : 'text',
@@ -258,24 +259,31 @@ class WhatsAppService {
         }
         waMsgId = resData.messageId;
         newMsg.status = 'sent';
+        newMsg.dispatch_outcome = 'accepted';
         newMsg.wa_message_id = waMsgId;
       } else {
         const errData = await response.json().catch(() => null);
         const errMsg = errData?.error || `HTTP ${response.status}`;
         console.warn('[whatsappService] Outbound API dispatch returned error:', response.status, errMsg);
         newMsg.status = 'failed';
+        newMsg.dispatch_outcome = errData?.outcome === 'rejected' ? 'rejected' : errData?.outcome === 'uncertain' || response.status >= 500 || [408, 429].includes(response.status) ? 'uncertain' : 'rejected';
         newMsg.error_message = errMsg;
       }
     } catch (apiErr) {
       console.warn('[whatsappService] Could not reach WhatsApp serverless endpoint:', apiErr);
       newMsg.status = 'failed';
+      newMsg.dispatch_outcome = 'uncertain';
       newMsg.error_message = apiErr instanceof Error ? apiErr.message : 'Unable to send message.';
+    }
+
+    if (newMsg.dispatch_outcome === 'uncertain') {
+      newMsg.error_message = `Delivery outcome uncertain. Reference: ${newMsg.id}. ${newMsg.error_message || ''}`;
     }
 
     // Persist directly to Supabase if cloud active
     if (isCloudActive() && supabase) {
       try {
-        await supabase.from('whatsapp_messages').insert({
+        const savedMessage = await supabase.from('whatsapp_messages').insert({
           id: newMsg.id,
           conversation_id: conversationId,
           company_id: companyId || null,
@@ -290,14 +298,17 @@ class WhatsAppService {
           attachment_type: attachment?.type || null,
           attachment_name: attachment?.name || null
         });
+        if (savedMessage.error) throw new Error('Message persistence failed');
 
-        await supabase.from('whatsapp_conversations').update({
+        const savedConversation = await supabase.from('whatsapp_conversations').update({
           last_message: text || (attachment ? `[${attachment.name}]` : ''),
           last_message_at: newMsg.timestamp,
           updated_at: new Date().toISOString()
         }).eq('id', conversationId);
-      } catch (dbErr) {
-        console.error('[whatsappService] Error persisting message to Supabase:', dbErr);
+        if (savedConversation.error) throw new Error('Conversation persistence failed');
+      } catch {
+        console.error('[whatsappService] Message history persistence could not be verified.');
+        if (newMsg.dispatch_outcome === 'accepted') newMsg.error_message = 'Provider accepted this message, but history persistence could not be verified. Do not resend.';
       }
     }
 
@@ -385,13 +396,6 @@ class WhatsAppService {
       `Warm Regards,\n` +
       `${companyName}`;
 
-    // Always log WhatsApp send event in Supabase documents table
-    if (userEmail) {
-      dbService.logWhatsAppSend(doc.id, userEmail).then(() => {
-        if (options?.onLogged) options.onLogged();
-      }).catch(err => console.error(err));
-    }
-
     if (options?.mode === 'wame') {
       window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
       return { success: true };
@@ -414,20 +418,25 @@ class WhatsAppService {
 
       if (res.ok) {
         const data = await res.json();
+        if (!data.success || data.simulated || typeof data.messageId !== 'string' || !data.messageId.trim()) {
+          return { success: false, error: 'Provider acceptance is uncertain. Check delivery before retrying.' };
+        }
+        if (userEmail) {
+          dbService.logWhatsAppSend(doc.id, userEmail).then(() => {
+            if (options?.onLogged) options.onLogged();
+          }).catch(() => console.error('[whatsappService] Accepted document send history could not be recorded.'));
+        }
         return {
           success: true,
           messageId: data.messageId,
           simulated: data.simulated
         };
       } else {
-        // Fallback to wa.me if serverless route returns error
-        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-        return { success: true };
+        const data = await res.json().catch(() => null);
+        return { success: false, error: data?.error || `HTTP ${res.status}. Check delivery before retrying.` };
       }
     } catch {
-      // Offline or network error: fallback to wa.me
-      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-      return { success: true };
+      return { success: false, error: 'Provider acceptance is uncertain. Check delivery before retrying.' };
     }
   }
 

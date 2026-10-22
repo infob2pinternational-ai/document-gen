@@ -24,15 +24,16 @@ export async function loadUtils() {
   }
 }
 
-export async function loadWhatsAppService() {
+export async function loadWhatsAppService(dbStub) {
   const source = readFileSync(new URL('../src/services/whatsappService.ts', import.meta.url), 'utf8');
   let { outputText } = ts.transpileModule(source, { compilerOptions: {
     target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext
   } });
+  outputText = outputText.replaceAll('import.meta.env', '({})');
   // Isolate transport/state behavior from the live Supabase and CRM services.
   const stubs = {
     './apiAuth': "export async function authenticatedHeaders() { return { Authorization: 'Bearer test-token' }; }",
-    './db': 'export const supabase = null; export const isCloudActive = () => false; export const dbService = {};',
+    './db': dbStub || 'export const supabase = null; export const isCloudActive = () => false; export const dbService = {};',
     '../utils/whatsappShare': 'export const normalizeIndianPhone = x => x;',
     '../utils/calculations': 'export const normalizeAdvance = x => Number(x) || 0; export const calculateBalanceDue = (x,y) => x-y;',
     './leadService': 'export const leadService = { addLeadActivity: async () => {} };',
