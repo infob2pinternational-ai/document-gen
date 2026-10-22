@@ -19,12 +19,6 @@ export function getTelecallingWebhookUrl(): string {
   return custom && custom.trim() ? custom.trim() : DEFAULT_TELECALLING_WEBHOOK_URL;
 }
 
-export function setTelecallingWebhookUrl(url: string): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('b2p_telecalling_webhook_url', url.trim());
-  }
-}
-
 const BROWSER_WORKER_ID = `browser_worker_${Math.random().toString(36).substring(2, 9)}`;
 
 export interface CreateTelecallingEntryInput {

@@ -68,7 +68,7 @@ document-gen-main/
 │   ├── main.tsx                 # React root mount
 │   ├── types.ts                 # Shared TypeScript interfaces (Document, Customer,
 │   │                             #   Service, CompanyProfile, DocumentItem, etc.)
-│   ├── App.css / index.css      # Global styles, CSS variables, responsive breakpoints
+│   ├── index.css                # Global styles, CSS variables, responsive breakpoints
 │   ├── components/
 │   │   ├── AuthPanel.tsx         # Login/signup UI
 │   │   ├── Sidebar.tsx           # Navigation + company switcher

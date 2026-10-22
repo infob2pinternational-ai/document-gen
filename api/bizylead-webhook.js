@@ -269,7 +269,6 @@ export default async function handler(req, res) {
       if (!msg.from) continue;
 
       let cleanDigits = String(msg.from).replace(/\D/g, '');
-      const phone10 = cleanDigits.length === 12 && cleanDigits.startsWith('91') ? cleanDigits.slice(2) : cleanDigits;
       const phone91 = cleanDigits.length === 10 ? '91' + cleanDigits : cleanDigits;
 
       const customerName = msg.name || 'WhatsApp Contact';

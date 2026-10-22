@@ -495,7 +495,7 @@ test('Step 9 - Test 9: Steps 1–8 regression verification', async () => {
   assert.ok(hydratedLead.next_follow_up_at, 'lead.next_follow_up_at must be populated');
 
   // Snooze follow-up (Step 6 & 8)
-  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com');
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff@b2p.com', 'Customer requested a callback', 'customer_callback');
   const snoozedFu = officeService.getFollowUps('snoozed', companyA);
   assert.equal(snoozedFu.length, 1);
   assert.equal(snoozedFu[0].status, 'SNOOZED');

@@ -1,7 +1,6 @@
 import type { Document } from '../types';
 import { dbService } from '../services/db';
 import { normalizeAdvance, calculateBalanceDue } from './calculations';
-import { authenticatedHeaders } from '../services/apiAuth';
 
 /**
  * Normalizes a stored phone number into wa.me's expected format
@@ -116,66 +115,4 @@ export function shareDocumentViaWhatsApp(
   }
 
   window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-}
-
-/**
- * Outbound WhatsApp dispatch via official Meta Cloud API endpoint (/api/whatsapp).
- * Falls back gracefully to wa.me if the API is offline or returns error.
- */
-export async function sendDocumentViaWhatsAppApi(
-  doc: Document,
-  companyName: string,
-  userEmail: string,
-  onLogged?: () => void
-): Promise<{ success: boolean; simulated?: boolean; messageId?: string; error?: string }> {
-  if (doc.status !== 'approved') {
-    return { success: false, error: 'Document must be approved first.' };
-  }
-  if (!doc.customer_phone) {
-    return { success: false, error: 'Customer phone number missing.' };
-  }
-
-  const { message, cleanPhone } = buildWhatsAppDocumentMessage(doc, companyName);
-
-  if (userEmail) {
-    dbService.logWhatsAppSend(doc.id, userEmail).then(() => {
-      if (onLogged) onLogged();
-    }).catch(err => console.error(err));
-  }
-
-  try {
-    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    try {
-      headers = await authenticatedHeaders();
-    } catch {}
-
-    const res = await fetch('/api/whatsapp?action=send-message', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        phone: cleanPhone,
-        type: 'text',
-        text: message,
-        company_id: doc.company_id,
-        sender_name: companyName,
-        sender_email: userEmail
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        success: true,
-        messageId: data.messageId,
-        simulated: data.simulated
-      };
-    } else {
-      // Fallback to wa.me
-      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-      return { success: true };
-    }
-  } catch {
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-    return { success: true };
-  }
 }

@@ -1,6 +1,6 @@
 /* Owner mobile app - supplementary styles only.
    Global variables, colors, and the DocumentPreview print layout come
-   from index.css/App.css (imported in main.tsx) so the reused
+   from index.css (imported in main.tsx) so the reused
    DocumentPreview component renders identically to the web app. This
    file only styles the new owner-specific screens/shell. */
 

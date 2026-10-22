@@ -430,7 +430,7 @@ test('Step 10 - Test 9: Steps 1–9 non-regression verification', async () => {
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at?.split('T')[0], todayStr);
 
   // Step 6 & 8: Snoozed status lifecycle
-  await officeService.snoozeFollowUp(fu.id, 60, 'staff1@b2p.com');
+  await officeService.snoozeFollowUp(fu.id, 60, 'staff1@b2p.com', 'Customer requested a callback', 'customer_callback');
   assert.equal(leadService.getLeadById(lead.id).next_follow_up_at, null);
 
   // Step 5: Follow-up counters & badges

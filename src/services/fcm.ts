@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getMessaging, getToken, onMessage, type Messaging } from 'firebase/messaging';
+import { getMessaging, getToken, type Messaging } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -104,11 +104,4 @@ export const getFCMToken = async (serviceWorkerRegistration?: ServiceWorkerRegis
     console.error('Error retrieving FCM token:', err);
     return { token: null, error: err instanceof Error ? err.message : String(err) };
   }
-};
-
-export const onMessageListener = (callback: (payload: any) => void) => {
-  if (messaging) {
-    return onMessage(messaging, callback);
-  }
-  return () => {};
 };
