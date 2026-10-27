@@ -13,14 +13,14 @@ export type EmployeeRole =
 export type ModuleKey =
   | 'dashboard'         // Home tab (counts, Revenue/Outstanding)
   | 'documents'         // Documents tab (view/search/filter)
-  | 'pending_approval'  // Pending tab + Approve/Reject actions
+  | 'pending_approval'  // Pending tab visibility; approval actions are separately owner-only
   | 'edit_documents'    // Edit action on a document
   | 'customers'         // Customers tab
   | 'services';         // Services tab
 
 const ROLE_MODULES: Record<EmployeeRole, ModuleKey[]> = {
   owner: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services'],
-  admin: ['dashboard', 'documents', 'edit_documents', 'customers', 'services'],
+  admin: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services'],
   manager: ['dashboard', 'documents', 'edit_documents', 'customers', 'services'],
   accounts: ['dashboard', 'documents', 'customers'],
   sales: ['documents', 'edit_documents', 'customers', 'services'],

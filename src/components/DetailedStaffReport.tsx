@@ -30,7 +30,7 @@ export const DetailedStaffReport: React.FC<DetailedStaffReportProps> = ({
   userRole = 'owner',
   userEmail = 'owner@b2p.com'
 }) => {
-  const isOwner = userRole === 'owner' ||
+  const canAccessDetailedReports = userRole === 'owner' || userRole === 'admin' ||
     userEmail.toLowerCase().trim() === 'sarathjohnpanengadan@gmail.com' ||
     userEmail.toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' ||
     userEmail.toLowerCase().trim() === 'owner@b2p.com';
@@ -196,15 +196,15 @@ export const DetailedStaffReport: React.FC<DetailedStaffReportProps> = ({
     setTimeout(() => setCopiedPart(null), 2000);
   };
 
-  if (!isOwner) {
+  if (!canAccessDetailedReports) {
     return (
       <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
         <ShieldAlert size={48} color="#dc2626" style={{ margin: '0 auto 1rem' }} />
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-          Owner-Only Access Restricted
+          Management Access Required
         </h2>
         <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-          The Detailed Staff Activity Report contains confidential management telemetry and is restricted strictly to the verified company owner account.
+          The Detailed Staff Activity Report contains confidential management telemetry and is restricted to verified Owner and Admin accounts.
         </p>
       </div>
     );
@@ -232,7 +232,7 @@ export const DetailedStaffReport: React.FC<DetailedStaffReportProps> = ({
               Detailed Staff Report
             </h1>
             <span className="badge badge-warning" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
-              Owner Confidential
+              Management Confidential
             </span>
             <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
               8:00 PM IST Automated

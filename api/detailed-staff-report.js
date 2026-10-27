@@ -1,5 +1,5 @@
 import https from 'https';
-import { requireOwner } from '../server/auth.js';
+import { requireOwnerOrAdmin } from '../server/auth.js';
 import {
   TARGET_STAFF_EMAIL,
   OWNER_WHATSAPP_NUMBER,
@@ -321,7 +321,7 @@ export default async function handler(req, res) {
 
   // Enforce server-side authorization:
   // 1. Cron requests MUST provide valid CRON_SECRET via Authorization: Bearer <CRON_SECRET>
-  // 2. Interactive requests MUST be authenticated and verified as Owner via requireOwner
+  // 2. Interactive requests MUST be authenticated and verified as Owner or Admin via requireOwnerOrAdmin
   let callerToken = null;
   if (isCron) {
     const cronSecret = process.env.CRON_SECRET;
@@ -341,8 +341,8 @@ export default async function handler(req, res) {
       });
     }
   } else {
-    const auth = await requireOwner(req, res);
-    if (!auth) return; // 401 or 403 sent by requireOwner
+    const auth = await requireOwnerOrAdmin(req, res);
+    if (!auth) return; // 401 or 403 sent by requireOwnerOrAdmin
     callerToken = auth?.headers?.Authorization ? auth.headers.Authorization.replace(/^Bearer\s+/i, '') : null;
   }
 

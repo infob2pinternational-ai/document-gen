@@ -147,7 +147,7 @@ function App() {
 
   const verifiedAccess = useAppRole(user?.id);
   const isOwner = verifiedAccess.role === 'owner';
-  const canUseEmail = isOwner || (verifiedAccess.verified && isAdditionalEmailUser(user?.email));
+  const canUseEmail = isOwner || verifiedAccess.role === 'admin' || (verifiedAccess.verified && isAdditionalEmailUser(user?.email));
   const isItAdmin = verifiedAccess.role === 'admin';
   const [devSimulatedRole, setDevSimulatedRole] = useState<UserRole>('telecaller');
   const authRole: UserRole = isOwner ? 'owner' : isItAdmin ? 'admin' : 'telecaller';
@@ -2144,7 +2144,7 @@ function App() {
 
             {currentTab === 'follow-ups' && (
               <FollowUps
-                canReviewFollowUps={isOwner || (verifiedAccess.verified && isAdditionalFollowupReviewer(user?.email))}
+                canReviewFollowUps={isOwner || isItAdmin || (verifiedAccess.verified && isAdditionalFollowupReviewer(user?.email))}
                 role={simulatedRole}
                 userEmail={currentUserEmail}
                 companyId={activeProfile?.id}

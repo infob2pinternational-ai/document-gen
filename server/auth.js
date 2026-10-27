@@ -99,3 +99,27 @@ export async function requireOwnerSession(auth, res) {
   return null;
 }
 
+
+// Operational access only: approval endpoints must continue to use requireOwner.
+export async function requireOwnerOrAdmin(req, res) {
+  const auth = await requireUser(req, res);
+  return auth ? requireOwnerOrAdminSession(auth, res) : null;
+}
+
+export async function requireOwnerOrAdminSession(auth, res) {
+  if (OWNER_EMAILS.has((auth.user?.email || "").toLowerCase().trim())) return auth;
+  try {
+    const response = await fetch(`${auth.url}/rest/v1/rpc/current_app_role`, {
+      method: 'POST', headers: auth.headers, signal: AbortSignal.timeout(10000)
+    });
+    if (response.ok) {
+      const role = await response.json();
+      if (role === 'owner' || role === 'admin') return auth;
+    }
+  } catch {
+    res.status(503).json({ error: 'Unable to verify office permissions.' });
+    return null;
+  }
+  res.status(403).json({ error: 'Access restricted to owner or admin.' });
+  return null;
+}

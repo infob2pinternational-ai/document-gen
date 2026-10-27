@@ -1157,7 +1157,7 @@ Go to Settings > Local Backup & Data Recovery in your portal and select this .zi
       if (supabase) {
         if (!isCloudActive()) throw new Error('Please sign in again. The backup was not restored.');
         const access = await supabase.rpc('current_app_role');
-        if (access.error || access.data !== 'owner') throw new Error('Only the owner can restore backups.');
+        if (access.error || !['owner', 'admin'].includes(access.data)) throw new Error('Only the owner or admin can restore backups.');
         for (const [table, rows] of [['profiles', profs], ['customers', custs], ['services', servs]] as const) {
           if (rows.length) {
             const { error } = await supabase.from(table).upsert(rows as any[]);

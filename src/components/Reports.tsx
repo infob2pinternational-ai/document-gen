@@ -20,7 +20,7 @@ export const Reports: React.FC<ReportsProps> = ({
   userRole = 'owner',
   userEmail = 'owner@b2p.com'
 }) => {
-  const isOwner = userRole === 'owner' ||
+  const canAccessDetailedReports = userRole === 'owner' || userRole === 'admin' ||
     userEmail.toLowerCase().trim() === 'sarathjohnpanengadan@gmail.com' ||
     userEmail.toLowerCase().trim() === 'sarathjohnpanegdan@gmail.com' ||
     userEmail.toLowerCase().trim() === 'owner@b2p.com';
@@ -96,7 +96,7 @@ export const Reports: React.FC<ReportsProps> = ({
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       
       {/* Top Tab Bar for Owner */}
-      {isOwner && (
+      {canAccessDetailedReports && (
         <div className="glass-panel no-print" style={{
           display: 'flex',
           gap: '0.5rem',

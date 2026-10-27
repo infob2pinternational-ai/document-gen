@@ -1,11 +1,11 @@
-import { requireUser, requireOwnerSession, requireCompanyAccess } from './auth.js';
+import { requireUser, requireOwnerOrAdminSession, requireCompanyAccess } from './auth.js';
 import { isAdditionalFollowupReviewer } from '../shared/followupReviewAccess.js';
 
 export async function requireFollowupReviewAccess(req, res) {
   const auth = await requireUser(req, res);
   if (!auth) return null;
   if (auth.user.email_confirmed_at && isAdditionalFollowupReviewer(auth.user.email)) return auth;
-  return requireOwnerSession(auth, res);
+  return requireOwnerOrAdminSession(auth, res);
 }
 
 export function dayBounds(day) {
