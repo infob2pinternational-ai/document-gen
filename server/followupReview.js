@@ -16,6 +16,7 @@ export function dayBounds(day) {
 }
 export function summarizeReview(events, states) {
   const totals = new Map();
+  const names = new Map(states.map(row => [row.follow_up_id, row.customer_name]));
   for (const event of events) {
     if (!['completed','postponed','rescheduled'].includes(event.event_type)) continue;
     const row = totals.get(event.actor_email) || { staff: event.actor_email, completed: 0, postponed: 0, customer_callback: 0, no_answer: 0, not_contacted: 0 };
@@ -26,7 +27,14 @@ export function summarizeReview(events, states) {
     }
     totals.set(event.actor_email,row);
   }
-  return { totals: [...totals.values()].sort((a,b)=>a.staff.localeCompare(b.staff)),
+  const actions = events.filter(event => ['completed','postponed','rescheduled'].includes(event.event_type)).map(event => ({
+    id: event.id, follow_up_id: event.follow_up_id,
+    customer_name: names.get(event.follow_up_id) || 'Unavailable customer',
+    actor_email: event.actor_email || '', event_type: event.event_type,
+    outcome: event.outcome || '', reason: event.reason || '',
+    previous_due: event.previous_due, new_due: event.new_due, created_at: event.created_at
+  }));
+  return { actions, totals: [...totals.values()].sort((a,b)=>a.staff.localeCompare(b.staff)),
     tasks: states.filter(row=>!row.deleted),
     flagged: states.filter(row=>!row.deleted && !['completed','cancelled'].includes(row.current_status.toLowerCase()) && row.postponement_count >= 2) };
 }
