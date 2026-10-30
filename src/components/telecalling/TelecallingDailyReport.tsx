@@ -26,6 +26,7 @@ import {
 import type { CompanyProfile, TelecallingEntry, TelecallingStatus, TelecallingDailyReportData } from '../../types';
 import { TELECALLING_STATUSES, isUnresolvedStatus } from '../../types';
 import { telecallingService } from '../../services/telecallingService';
+import { leadService } from '../../services/leadService';
 import { officeService } from '../../services/officeService';
 import { metricsService } from '../../services/metricsService';
 import { getKolkataToday, formatKolkataDisplayDate } from '../../utils/dateUtils';
@@ -80,6 +81,10 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
   const [shareError, setShareError] = useState('');
   const [shareSuccess, setShareSuccess] = useState('');
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
+  const [convertingEntryId, setConvertingEntryId] = useState<string | null>(null);
+  const [convertedLeadByEntry, setConvertedLeadByEntry] = useState<Record<string, { id: string; lead_number?: string; existing?: boolean }>>({});
+  const [conversionMessage, setConversionMessage] = useState('');
+  const [conversionError, setConversionError] = useState('');
 
   // WhatsApp & Email dispatch state
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
@@ -129,14 +134,22 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
       const dueTodayCount = crmDueToday.length > 0 ? crmDueToday.length : crmCounts.today;
       const overdueCount = crmOverdue.length > 0 ? crmOverdue.length : crmCounts.overdue;
 
-      const enriched: TelecallingDailyReportData = {
-        ...computed,
-        followUpsCount: dueTodayCount,
-        followUpsDueToday: dueTodayCount,
-        overdueFollowUpsCount: overdueCount,
-        followUpsDueTodayList,
-        overdueFollowUpsList
-      };
+      const leads = leadService.getLeads(companyId);
+      const convertedLeadDetails = data.flatMap(entry => {
+        const marker = `[telecalling-entry:${entry.id}]`;
+        const lead = leads.find(item => item.source_details?.includes(marker));
+        return lead ? [{ company_name: entry.company_name, contact_person: entry.contact_person || lead.customer_name, phone: entry.phone, lead_number: lead.lead_number || lead.id, telecaller: entry.created_by_name || entry.created_by_email?.split('@')[0] || 'Staff' }] : [];
+      });
+      setConvertedLeadByEntry(prev => {
+        const next = { ...prev };
+        data.forEach(entry => {
+          const marker = `[telecalling-entry:${entry.id}]`;
+          const lead = leads.find(item => item.source_details?.includes(marker));
+          if (lead) next[entry.id] = { id: lead.id, lead_number: lead.lead_number };
+        });
+        return next;
+      });
+      const enriched: TelecallingDailyReportData = { ...computed, followUpsCount: dueTodayCount, followUpsDueToday: dueTodayCount, overdueFollowUpsCount: overdueCount, followUpsDueTodayList, overdueFollowUpsList, convertedLeadCount: convertedLeadDetails.length, convertedLeadDetails };
 
       setReportData(enriched);
 
@@ -157,6 +170,41 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+
+  const handleConvertToLead = async (entry: TelecallingEntry) => {
+    if (!companyId || convertingEntryId) return;
+    setConversionError(''); setConversionMessage('');
+    if (!entry.phone?.trim()) { setConversionError('A phone number is required before conversion.'); return; }
+    setConvertingEntryId(entry.id);
+    try {
+      const marker = `[telecalling-entry:${entry.id}]`;
+      const leads = leadService.getLeads(companyId);
+      const converted = leads.find(lead => lead.source_details?.includes(marker));
+      if (converted) {
+        setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: converted.id, lead_number: converted.lead_number } }));
+        setConversionMessage(`Already linked to ${converted.lead_number || 'an existing lead'}.`); return;
+      }
+      const norm = (value?: string | null) => (value || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+      const duplicate = leads.find(lead => norm(lead.phone) === norm(entry.phone) && (lead.company_name || lead.customer_name || '').trim().toLowerCase() === entry.company_name.trim().toLowerCase());
+      if (duplicate) {
+        setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: duplicate.id, lead_number: duplicate.lead_number, existing: true } }));
+        setConversionMessage(`Matching lead already exists: ${duplicate.lead_number || duplicate.customer_name}. No duplicate created.`); return;
+      }
+      const history = await telecallingService.searchPreviousEntries(companyId, entry.phone, 50);
+      const historyLines = history.filter(item => norm(item.phone) === norm(entry.phone) || norm(item.other_phone) === norm(entry.phone))
+        .sort((a, b) => (a.entry_date + a.created_at).localeCompare(b.entry_date + b.created_at))
+        .map(item => `${item.entry_date}: ${item.call_status} — ${item.feedback || 'No feedback'}`);
+      let userEmail = entry.created_by_email || 'Staff';
+      try { userEmail = JSON.parse(localStorage.getItem('supabase_user') || 'null')?.email || userEmail; } catch {}
+      const notes = [`Converted from Telecaller Daily Report on ${getKolkataToday()}.`, `Latest call status: ${entry.call_status}.`, entry.feedback ? `Latest feedback: ${entry.feedback}` : '', historyLines.length ? `Calling history:\n${historyLines.join('\n')}` : ''].filter(Boolean).join('\n\n');
+      const lead = await leadService.saveLead({ company_id: companyId, customer_name: entry.contact_person?.trim() || entry.company_name.trim(), company_name: entry.company_name.trim(), phone: entry.phone.trim(), whatsapp_number: entry.phone.trim(), location: entry.location || undefined, address: entry.location || undefined, lead_source: 'phone', source_details: `Telecaller Daily Report ${marker}`, priority: 'WARM', assigned_telecaller_email: entry.created_by_email || undefined, status: 'new', notes, remarks: entry.feedback || undefined }, userEmail);
+      setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: lead.id, lead_number: lead.lead_number } }));
+      setConversionMessage(`Lead ${lead.lead_number || lead.customer_name} created. Calling feedback history was preserved in lead notes.`);
+      await loadReport();
+    } catch (error: any) { setConversionError(error?.message || 'Unable to convert this contact. Please retry.'); }
+    finally { setConvertingEntryId(null); }
   };
 
   // Re-load only when companyId or selectedDate changes (or manual refresh)
@@ -512,6 +560,8 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
         </div>
       </div>
 
+      {conversionMessage && <div role="status" style={{ padding: '0.65rem 0.9rem', marginBottom: '0.75rem', borderRadius: 6, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '0.85rem' }}>{conversionMessage}</div>}
+      {conversionError && <div role="alert" style={{ padding: '0.65rem 0.9rem', marginBottom: '0.75rem', borderRadius: 6, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', fontSize: '0.85rem' }}>{conversionError}</div>}
       {/* Share / Email notifications */}
       {shareSuccess && (
         <div style={{
@@ -1311,6 +1361,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                                 {copiedPhoneId === e.id ? <Check size={14} /> : <Copy size={14} />}
                               </button>
 
+                              {convertedLeadByEntry[e.id] ? <span title={convertedLeadByEntry[e.id].existing ? 'Matching lead already exists' : 'Linked to CRM lead'} style={{ color: '#15803d', fontSize: '0.7rem', fontWeight: 700 }}><CheckCircle2 size={13} /> {convertedLeadByEntry[e.id].existing ? 'Existing lead found' : (convertedLeadByEntry[e.id].lead_number || 'Lead created')}</span> : <button type="button" onClick={() => void handleConvertToLead(e)} disabled={Boolean(convertingEntryId)} className="btn-ghost" title="Create a CRM lead from this telecalling record" style={{ padding: '0.2rem 0.4rem', color: '#166534', fontSize: '0.7rem', fontWeight: 700, background: '#dcfce7', borderRadius: 4 }}>{convertingEntryId === e.id ? 'Converting…' : 'Convert to Lead'}</button>}
                               {/* Call Again */}
                               <button
                                 type="button"
