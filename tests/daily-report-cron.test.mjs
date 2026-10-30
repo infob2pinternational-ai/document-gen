@@ -73,6 +73,8 @@ test('formatDailyReportMessage formats valid B2P WhatsApp text with status count
     },
     followUpsCount: 6,
     unresolvedCallsCount: 13,
+    convertedLeadCount: 1,
+    convertedLeadDetails: [{ company_name: 'Demo Retail', contact_person: 'Anu', phone: '9876543210', lead_number: 'B2P-LD-1001', telecaller: 'Franson' }],
     entries: []
   };
 
@@ -83,6 +85,9 @@ test('formatDailyReportMessage formats valid B2P WhatsApp text with status count
   assert.ok(message.includes('Total Calls: 28'));
   assert.ok(message.includes('Unique Companies: 22'));
   assert.ok(message.includes('Unresolved Calls: 13'));
+  assert.ok(message.includes('Contacts Converted to Leads: 1'));
+  assert.ok(message.includes('Demo Retail'));
+  assert.ok(message.includes('B2P-LD-1001'));
   assert.ok(message.includes('1. Appointment Confirmed: 5'));
   assert.ok(message.includes('2. Interested / Details Shared: 7'));
   assert.ok(message.includes('Franson: 18'));
