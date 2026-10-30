@@ -738,7 +738,10 @@ export function formatDailyReportMessage(companyName, report, isNightSlot = fals
     `Follow-ups Completed Today: ${completedTodayCount}\n` +
     `Follow-ups Rescheduled / Snoozed: ${rescheduledTodayCount}\n` +
     `Unique Companies: ${report.uniqueCompanies || 0}\n` +
-    `Unresolved Calls: ${unresolvedCount}\n\n` +
+    `Unresolved Calls: ${unresolvedCount}\n` +
+    `Contacts Converted to Leads: ${report.convertedLeadCount || 0}\n` +
+    ((report.convertedLeadDetails || []).length ? `\n*New Leads Created:*\n${report.convertedLeadDetails.map((lead, idx) => `${idx + 1}. ${lead.company_name} — ${lead.contact_person || 'Contact N/A'} (${lead.phone}) | ${lead.lead_number} | ${lead.telecaller}`).join('\n')}\n` : '') +
+    `\n` +
     `*Call Results:*\n` +
     (statusLines.length > 0 ? statusLines.join('\n') : 'No call entries recorded.') +
     `\n\n` +
@@ -1084,6 +1087,38 @@ export default async function handler(req, res) {
       entries: dbEntries
     };
   }
+
+  // Include conversions in both manual and unattended owner reports. Match only
+  // telecalling-entry markers present in this report.
+  const reportEntryIds = new Set((reportData.entries || []).map(entry => entry.id).filter(Boolean));
+  let convertedLeads = [];
+  if (reportEntryIds.size > 0) {
+    try {
+      const nextDate = new Date(new Date(targetDate + 'T00:00:00.000Z').getTime() + 86400000).toISOString();
+      const leadsForDate = await supabaseRest(
+        'leads?created_at=gte.' + targetDate + 'T00:00:00&created_at=lt.' + nextDate + '&select=id,company_id,customer_name,company_name,phone,lead_number,source_details,assigned_telecaller_email,created_at',
+        'GET'
+      ) || [];
+      convertedLeads = leadsForDate.filter(lead => {
+        const match = (lead.source_details || '').match(/\\[telecalling-entry:([^\\]]+)\\]/);
+        return match && reportEntryIds.has(match[1]);
+      }).map(lead => {
+        const sourceMatch = (lead.source_details || '').match(/\\[telecalling-entry:([^\\]]+)\\]/);
+        const entry = (reportData.entries || []).find(item => item.id === sourceMatch?.[1]);
+        return {
+          company_name: lead.company_name || entry?.company_name || lead.customer_name || 'Contact',
+          contact_person: entry?.contact_person || lead.customer_name || '',
+          phone: lead.phone || entry?.phone || '',
+          lead_number: lead.lead_number || lead.id,
+          telecaller: entry?.created_by_name || entry?.created_by_email?.split('@')[0] || lead.assigned_telecaller_email?.split('@')[0] || 'Staff'
+        };
+      });
+    } catch (conversionErr) {
+      console.warn('[Daily Report API] Could not load converted leads:', conversionErr);
+    }
+  }
+  reportData.convertedLeadDetails = convertedLeads;
+  reportData.convertedLeadCount = convertedLeads.length;
 
   // Night slot check: If slot is 'night', only send if activity occurred after 6:30 PM IST (13:00 UTC)
   if (isNightSlot) {
