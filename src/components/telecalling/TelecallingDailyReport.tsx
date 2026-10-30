@@ -186,7 +186,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
         setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: converted.id, lead_number: converted.lead_number } }));
         setConversionMessage(`Already linked to ${converted.lead_number || 'an existing lead'}.`); return;
       }
-      const norm = (value?: string) => (value || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+      const norm = (value?: string | null) => (value || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
       const duplicate = leads.find(lead => norm(lead.phone) === norm(entry.phone) && (lead.company_name || lead.customer_name || '').trim().toLowerCase() === entry.company_name.trim().toLowerCase());
       if (duplicate) {
         setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: duplicate.id, lead_number: duplicate.lead_number, existing: true } }));
