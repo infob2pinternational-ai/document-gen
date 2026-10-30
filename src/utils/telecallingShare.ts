@@ -833,6 +833,7 @@ export function buildDailyReportEmailContent(
     report.convertedLeadDetails.forEach((lead, idx) => plainLines.push(`${idx + 1}. ${lead.company_name} | Contact: ${lead.contact_person || 'N/A'} | Phone: ${lead.phone} | Lead: ${lead.lead_number} | Telecaller: ${lead.telecaller}`));
   }
 
+  plainLines.push(`\nGenerated from B2P ONE Portal & ERP`);
 
   const plainTextBody = plainLines.join('\n');
 
