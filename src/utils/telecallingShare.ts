@@ -695,9 +695,9 @@ export function buildDailyReportWhatsAppMessage(
     `Follow-ups Completed Today: ${completedTodayCount}\n` +
     `Follow-ups Rescheduled / Snoozed: ${rescheduledTodayCount}\n` +
     `Unique Companies: ${report.uniqueCompanies}\n` +
-    `Unresolved Calls: ${report.unresolvedCallsCount ?? report.unresolvedEntries?.length ?? 0}\\n` +
-    `Contacts Converted to Leads: ${report.convertedLeadCount ?? report.convertedLeadDetails?.length ?? 0}\\n` +
-    ((report.convertedLeadDetails?.length ?? 0) > 0 ? `\\n*New Leads Created:*\\n${report.convertedLeadDetails!.map((lead, idx) => `${idx + 1}. ${lead.company_name} — ${lead.contact_person || 'Contact N/A'} (${lead.phone}) | ${lead.lead_number} | ${lead.telecaller}`).join('\\n')}\\n` : '') +
+    `Unresolved Calls: ${report.unresolvedCallsCount ?? report.unresolvedEntries?.length ?? 0}\n` +
+    `Contacts Converted to Leads: ${report.convertedLeadCount ?? report.convertedLeadDetails?.length ?? 0}\n` +
+    ((report.convertedLeadDetails?.length ?? 0) > 0 ? `\n*New Leads Created:*\n${report.convertedLeadDetails!.map((lead, idx) => `${idx + 1}. ${lead.company_name} — ${lead.contact_person || 'Contact N/A'} (${lead.phone}) | ${lead.lead_number} | ${lead.telecaller}`).join('\n')}\n` : '') +
     `\\n` +
     `*Call Results:*\n` +
     (statusLines.length > 0 ? statusLines.join('\n') : 'No call entries recorded.') +
@@ -800,7 +800,8 @@ export function buildDailyReportEmailContent(
     `- Total Calls Logged: ${report.totalCalls}`,
     `- Unique Companies: ${report.uniqueCompanies}`,
     `- Unresolved Calls Requiring Action: ${unresolvedCount}`,
-    `- Follow-ups / Call Back: ${report.followUpsCount}`,\n    `- Contacts Converted to Leads: ${report.convertedLeadCount ?? report.convertedLeadDetails?.length ?? 0}`,
+    `- Follow-ups / Call Back: ${report.followUpsCount}`,
+    `- Contacts Converted to Leads: ${report.convertedLeadCount ?? report.convertedLeadDetails?.length ?? 0}`,
     `CALL RESULTS BREAKDOWN:`
   ];
 
@@ -827,7 +828,11 @@ export function buildDailyReportEmailContent(
     });
   }
 
-  if (report.convertedLeadDetails?.length) {\n    plainLines.push(`\\nNEW LEADS CREATED FROM TELECALLING:`);\n    report.convertedLeadDetails.forEach((lead, idx) => plainLines.push(`${idx + 1}. ${lead.company_name} | Contact: ${lead.contact_person || 'N/A'} | Phone: ${lead.phone} | Lead: ${lead.lead_number} | Telecaller: ${lead.telecaller}`));\n  }\n\n  plainLines.push(`\\nGenerated from B2P ONE Portal & ERP`);
+  if (report.convertedLeadDetails?.length) {
+    plainLines.push(`\nNEW LEADS CREATED FROM TELECALLING:`);
+    report.convertedLeadDetails.forEach((lead, idx) => plainLines.push(`${idx + 1}. ${lead.company_name} | Contact: ${lead.contact_person || 'N/A'} | Phone: ${lead.phone} | Lead: ${lead.lead_number} | Telecaller: ${lead.telecaller}`));
+  }
+
 
   const plainTextBody = plainLines.join('\n');
 
