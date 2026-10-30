@@ -1100,10 +1100,10 @@ export default async function handler(req, res) {
         'GET'
       ) || [];
       convertedLeads = leadsForDate.filter(lead => {
-        const match = (lead.source_details || '').match(/\\[telecalling-entry:([^\\]]+)\\]/);
+        const match = (lead.source_details || '').match(/\[telecalling-entry:([^\]]+)\]/);
         return match && reportEntryIds.has(match[1]);
       }).map(lead => {
-        const sourceMatch = (lead.source_details || '').match(/\\[telecalling-entry:([^\\]]+)\\]/);
+        const sourceMatch = (lead.source_details || '').match(/\[telecalling-entry:([^\]]+)\]/);
         const entry = (reportData.entries || []).find(item => item.id === sourceMatch?.[1]);
         return {
           company_name: lead.company_name || entry?.company_name || lead.customer_name || 'Contact',
