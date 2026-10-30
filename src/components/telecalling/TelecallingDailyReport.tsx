@@ -186,7 +186,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
         setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: converted.id, lead_number: converted.lead_number } }));
         setConversionMessage(`Already linked to ${converted.lead_number || 'an existing lead'}.`); return;
       }
-      const norm = (value?: string) => (value || '').replace(/\\D/g, '').replace(/^91(?=\\d{10}$)/, '');
+      const norm = (value?: string) => (value || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
       const duplicate = leads.find(lead => norm(lead.phone) === norm(entry.phone) && (lead.company_name || lead.customer_name || '').trim().toLowerCase() === entry.company_name.trim().toLowerCase());
       if (duplicate) {
         setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: duplicate.id, lead_number: duplicate.lead_number, existing: true } }));
@@ -198,7 +198,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
         .map(item => `${item.entry_date}: ${item.call_status} — ${item.feedback || 'No feedback'}`);
       let userEmail = entry.created_by_email || 'Staff';
       try { userEmail = JSON.parse(localStorage.getItem('supabase_user') || 'null')?.email || userEmail; } catch {}
-      const notes = [`Converted from Telecaller Daily Report on ${getKolkataToday()}.`, `Latest call status: ${entry.call_status}.`, entry.feedback ? `Latest feedback: ${entry.feedback}` : '', historyLines.length ? `Calling history:\\n${historyLines.join('\\n')}` : ''].filter(Boolean).join('\\n\\n');
+      const notes = [`Converted from Telecaller Daily Report on ${getKolkataToday()}.`, `Latest call status: ${entry.call_status}.`, entry.feedback ? `Latest feedback: ${entry.feedback}` : '', historyLines.length ? `Calling history:\n${historyLines.join('\n')}` : ''].filter(Boolean).join('\n\n');
       const lead = await leadService.saveLead({ company_id: companyId, customer_name: entry.contact_person?.trim() || entry.company_name.trim(), company_name: entry.company_name.trim(), phone: entry.phone.trim(), whatsapp_number: entry.phone.trim(), location: entry.location || undefined, address: entry.location || undefined, lead_source: 'phone', source_details: `Telecaller Daily Report ${marker}`, priority: 'WARM', assigned_telecaller_email: entry.created_by_email || undefined, status: 'new', notes, remarks: entry.feedback || undefined }, userEmail);
       setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: lead.id, lead_number: lead.lead_number } }));
       setConversionMessage(`Lead ${lead.lead_number || lead.customer_name} created. Calling feedback history was preserved in lead notes.`);
