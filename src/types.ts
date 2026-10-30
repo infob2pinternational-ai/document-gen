@@ -1367,6 +1367,9 @@ export interface TelecallingDailyReportData {
   documentsCount?: number;
   documentsList?: any[];
   staffIndividualReports?: any[];
+  /** Contacts converted to CRM leads from this report date. */
+  convertedLeadCount?: number;
+  convertedLeadDetails?: Array<{ company_name: string; contact_person?: string; phone: string; lead_number: string; telecaller: string }>;
 }
 
 export interface TelecallingWeeklyReportData {
