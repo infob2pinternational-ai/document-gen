@@ -1,39 +1,87 @@
-# Field Sales Data Collection: database release notes
+# Security hardening and Field Sales: database release guide
 
 This is a review document, not authorization to deploy. Nothing in this
-repository applies the migration. The frontend build does not apply it either.
+repository applies any of this SQL. The frontend build does not apply it either.
 
-- Target: Supabase project **generator**, reference **rqovkmjsdwzggebvwvdk**.
-- Migration: `database/migrations/20261110000001_field_sales_data_collection.sql`
-- Rollback: `database/rollback/20261110000001_field_sales_data_collection_rollback.sql`
-- Tests: `tests/field-sales-db.test.mjs` (in-memory Postgres only)
-- Fixture: `tests/fixtures/live-schema-2026-11-10.sql`
+Target: Supabase project **generator**, reference **rqovkmjsdwzggebvwvdk**.
 
-## 1. What the migration changes
+There are four separate operations. Each has its own script, its own approval
+and its own section below. They must not be combined.
 
-New objects:
+| Part | Operation | Script | Approval |
+|---|---|---|---|
+| **A** | Feature migration | `database/migrations/20261110000002_field_sales_data_collection.sql` | Feature release |
+| **B** | Security hardening | `database/migrations/20261110000001_security_office_roles_only.sql` | Security change; apply first |
+| **C** | Feature rollback | `database/rollback/20261110000002_field_sales_feature_rollback.sql` | Feature owner |
+| **D** | Security-policy rollback | `database/rollback/20261110000001_security_office_roles_only_rollback.sql` | Owner, in writing, separately |
 
-| Kind | Name | Purpose |
-|---|---|---|
-| Table | `field_sales_members` | Which companies a salesperson may submit visits for |
-| Table | `field_visits` | One row per visit; separate from `leads` until converted |
-| Table | `field_visit_events` | Append-only audit history |
-| Function | `save_field_visit(jsonb)` | Create or correct a visit; idempotent on the visit id |
-| Function | `review_field_visit(uuid, text, text)` | Approve, reject, request correction (owner/admin) |
-| Function | `convert_field_visit_to_lead(...)` | Atomic, idempotent conversion with optional follow-up (owner/admin) |
-| Function | `my_field_sales_companies()` | Companies the caller may submit for |
-| Function | `field_visit_assignees(uuid)` | Eligible lead assignees for a company (owner/admin) |
-| Function | `field_sales_can_submit(uuid)`, `field_visit_can_review(uuid)` | Access checks used by the read policy |
-| Function | `field_visit_assignee_ok(uuid, text)`, `field_visit_normalize_phone(text)`, `field_sales_guard_membership()` | Internal helpers; not callable by app users |
+Order when installing: **B, then A**. Part A refuses to run without part B.
+Order when removing the feature: **C only**. Part C never removes part B.
+Part D is not a step of any normal procedure.
 
-Changes to existing objects (each reversed by the rollback script):
+Supporting files:
 
-1. `app_members_role_check` gains `sales`.
-2. `leads_lead_source_check` gains `field_visit`.
-3. `app_members` and `app_company_members` each gain one guard trigger, so a
-   `sales` user can never hold normal company membership.
-4. Nineteen tables gain one RESTRICTIVE policy named `office_roles_only`
-   (owner, admin and staff only). Their existing policies are not edited.
+- `database/verification/field_sales_readonly_production_checks.sql`: read-only checks for production.
+- `database/verification/field_sales_schema_capture.sql`: read-only query that produced the test fixture.
+- `tests/fixtures/live-schema-2026-11-10.sql`: schema fixture.
+- `tests/field-sales-db.test.mjs`, `tests/field-sales-concurrency.test.mjs`, `tests/helpers/field-sales-db.mjs`, `tests/helpers/with-local-postgres.sh`: tests.
+
+---
+
+## Release gates (all parts)
+
+- [ ] **Vercel configuration verified.** Production `VITE_SUPABASE_URL` and
+      `SUPABASE_URL` are confirmed to be
+      `https://rqovkmjsdwzggebvwvdk.supabase.co`. This is still **unverified**:
+      the connected Vercel account shows no projects and the production site is
+      not reachable from the development environment.
+- [ ] **Security patch 1 released separately** before any real salesperson
+      account is created: `claim_telecalling_sync_queue_rows` is a SECURITY
+      DEFINER function with no identity or company check and is executable by
+      anonymous callers.
+- [ ] **Security patch 2 released separately:** `api/daily-report.js` proceeds
+      without authentication when no Authorization header is sent, using the
+      server's admin token and a recipient number from the request.
+- [ ] Neither patch is part of this branch, and neither is fixed by anything
+      here. Until patch 1 is live, a sales account could still read telecalling
+      queue payloads through that function, like any other caller.
+- [ ] The SQL has been reviewed and approved at an exact commit.
+- [ ] `npm test` passes at that commit, and the concurrency suite passes on a
+      local PostgreSQL (see "Tests").
+
+## Backup checklist (before part B and before part A)
+
+- [ ] The dashboard shows project **generator / rqovkmjsdwzggebvwvdk**.
+- [ ] A recent automatic backup exists (Database → Backups), or a manual one
+      was taken; note its timestamp.
+- [ ] `leads`, `app_members` and `app_company_members` exported to CSV.
+- [ ] `database/verification/field_sales_readonly_production_checks.sql` run,
+      sections 0 to 8, and the output saved as the baseline with date and
+      operator. Expected in the baseline: 55 policies, 8 triggers, section 8a
+      lists the 19 tables.
+- [ ] A time outside working hours is chosen. Part A briefly locks `leads`
+      (333 rows) and `app_members` (4 rows) while it replaces two constraints.
+
+## How to run any of the scripts
+
+1. Open the SQL Editor for project `rqovkmjsdwzggebvwvdk` and confirm the name.
+2. Paste the whole file. Each file contains its own `BEGIN` and `COMMIT`.
+3. On any error the transaction rolls back and nothing is changed. Do not
+   re-run pieces by hand; fix the cause and run the whole file again.
+4. Record commit, filename, operator and time. Running SQL by hand does not
+   add an entry to Supabase's migration history.
+5. Run the read-only verification script and compare with the expectations
+   written in it.
+
+---
+
+## Part B: security hardening (apply first)
+
+**What it does.** Nineteen tables are readable and writable by any signed-in
+account, in any company, with or without an office role. The script adds one
+RESTRICTIVE policy, `office_roles_only`, to each, allowing only owner, admin
+and staff. A restrictive policy is AND-ed with the existing ones, so no
+existing policy is edited or dropped. The service role is unaffected.
 
 The nineteen tables: `account_groups`, `account_heads`, `bank_accounts`,
 `bank_reconciliation_statements`, `customer_receipts`, `expenses`,
@@ -42,103 +90,63 @@ The nineteen tables: `account_groups`, `account_heads`, `bank_accounts`,
 `bookings`, `resources`, `google_sync_log`, `google_sync_queue`,
 `google_sync_settings`, `lead_activity`.
 
-No existing row is modified. No existing policy, function or trigger is edited
-or removed.
+It also creates a private schema, `b2p_migration_internal`, holding a registry
+of every object these migrations create with a fingerprint of its definition.
+No application role can reach it.
 
-## 2. Schema drift (why this is a standalone script)
+**Effect on current users.** None: all four current members are owner, admin
+or staff. Accounts that can sign in but have no office role lose access to
+these tables.
 
-Live was inspected read-only on 2026-11-10. It differs from the files in
-`database/migrations`:
+**After applying, verify (read-only script):**
 
-| Item | Repository files | Live |
+- Section 2: 74 policies; the 55 from the baseline are unchanged.
+- Section 8a: no rows.
+- Section 8b: `true, true` on all 19 rows.
+- Section 9: 19 rows, all `unchanged`.
+- Sign in as owner, admin and a staff user: Google Sheets sync, bookings and
+  any finance screen in use behave as before.
+
+## Part A: feature migration
+
+**Requires part B.** It checks that all 19 policies are present and stops if not.
+
+**New objects**
+
+| Kind | Name | Purpose |
 |---|---|---|
-| Recorded migration history | 23 files | 19 entries; only `followup_timeline_atomic` matches by name |
-| `lead_activities` | `action`, `note`, `user_email` | `type`, `notes`, `performed_by` |
-| `follow_ups` | `due_date`, `due_time` | `follow_up_date`, `follow_up_time` |
-| `leads.phone` | NOT NULL | nullable |
-| `can_access_company` | owner bypass only | owner and admin bypass |
-| `lead_activity` (singular) | absent | present, 0 rows |
+| Table | `field_sales_members` | Which companies a salesperson may submit visits for |
+| Table | `field_visits` | One row per visit; separate from `leads` until converted |
+| Table | `field_visit_events` | Append-only audit history |
+| API function | `save_field_visit(jsonb)` | Create or correct a visit; idempotent on the visit id |
+| API function | `review_field_visit(uuid, text, text)` | Approve, reject, request correction (owner/admin) |
+| API function | `convert_field_visit_to_lead(...)` | Atomic, idempotent conversion with optional follow-up (owner/admin) |
+| API function | `my_field_sales_companies()` | Companies the caller may submit for |
+| API function | `field_visit_assignees(uuid)` | Eligible lead assignees for a company (owner/admin) |
+| Schema | `field_sales_internal` | Helpers; not reachable through the API |
 
-The migration checks the live columns it needs before changing anything and
-stops with a clear error if they are missing.
+**Changes to existing objects**
 
-## 3. Release gates (all must be true before applying)
+1. `app_members_role_check` gains `sales`.
+2. `leads_lead_source_check` gains `field_visit`.
+3. `app_members` and `app_company_members` each gain one guard trigger.
 
-- [ ] The two separate security patches are released first, or real sales
-      accounts are not created until they are:
-      (A) `claim_telecalling_sync_queue_rows` is callable anonymously;
-      (B) `api/daily-report.js` proceeds without authentication.
-      Neither is touched by this branch.
-- [ ] Production Vercel `VITE_SUPABASE_URL` and `SUPABASE_URL` are confirmed to
-      be `https://rqovkmjsdwzggebvwvdk.supabase.co`. This is still unverified.
-- [ ] This SQL has been reviewed and approved at an exact commit.
-- [ ] `npm test` passes at that commit.
+No existing row, policy, function or trigger is edited or removed.
 
-## 4. Backup checklist (before applying)
+**After applying, verify (read-only script):**
 
-- [ ] Confirm the dashboard shows project **generator / rqovkmjsdwzggebvwvdk**.
-- [ ] Confirm a recent automatic backup exists (Database → Backups), or take a
-      manual one, and note its timestamp.
-- [ ] Export `leads`, `app_members` and `app_company_members` to CSV.
-- [ ] Save the output of the "before" queries below with the date and operator.
-- [ ] Choose a time outside working hours. The two constraint changes take a
-      brief lock on `leads` (333 rows) and `app_members` (4 rows).
+- Section 2: 76 policies. Section 4: 15 triggers, all enabled.
+- Section 3: `authenticated` has SELECT on `field_visits` and
+  `field_visit_events` and nothing else on the three new tables; `anon` has nothing.
+- Section 6: the expectations written above that query.
+- Section 7: also confirm in Dashboard → Settings → API that the exposed
+  schemas are only `public` and `graphql_public`.
+- Section 8d: `sales_with_normal_membership = 0`.
+- Section 9: 44 rows, all `unchanged` (19 policies from part B, 25 objects from part A).
+- Sign in to the web app as owner, admin and staff and confirm leads,
+  follow-ups and telecalling behave as before.
 
-"Before" queries (read-only):
-
-```sql
-SELECT conrelid::regclass AS tbl, conname, pg_get_constraintdef(oid)
-FROM pg_constraint WHERE conname IN ('app_members_role_check', 'leads_lead_source_check');
-
-SELECT tablename, policyname, permissive, cmd, roles, qual, with_check
-FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename, policyname;
-
-SELECT role, active, count(*) FROM public.app_members GROUP BY 1, 2;
-SELECT lead_source, count(*) FROM public.leads GROUP BY 1;
-```
-
-## 5. Applying (separate SQL Editor operation, after approval)
-
-1. Open the SQL Editor for project `rqovkmjsdwzggebvwvdk` and confirm the name.
-2. Paste the whole migration file. It contains its own `BEGIN` and `COMMIT`.
-   Stop on any error: the transaction rolls back and nothing is changed.
-3. Record commit, filename, operator and time. Running SQL by hand does not
-   register an entry in Supabase's migration history.
-4. Run the verification queries.
-
-Verification queries (read-only):
-
-```sql
--- Expect 3 tables, all with row-level security on.
-SELECT relname, relrowsecurity FROM pg_class
-WHERE relnamespace = 'public'::regnamespace AND relname IN ('field_visits', 'field_visit_events', 'field_sales_members');
-
--- Expect: anon has nothing; authenticated has SELECT on field_visits and field_visit_events only.
-SELECT table_name, grantee, string_agg(privilege_type, ',' ORDER BY privilege_type)
-FROM information_schema.role_table_grants
-WHERE table_schema = 'public' AND table_name IN ('field_visits', 'field_visit_events', 'field_sales_members')
-  AND grantee IN ('anon', 'authenticated') GROUP BY 1, 2;
-
--- Expect anon_can_run = false on every row; authenticated true on the 7 public entry points only.
-SELECT p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_can_run,
-       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_can_run
-FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
-  AND (p.proname LIKE 'field_%' OR p.proname LIKE '%field_visit%' OR p.proname = 'my_field_sales_companies') ORDER BY 1;
-
--- Expect 19 rows, all RESTRICTIVE.
-SELECT tablename, permissive FROM pg_policies WHERE schemaname = 'public' AND policyname = 'office_roles_only' ORDER BY 1;
-
--- Expect the same counts as before the migration.
-SELECT role, active, count(*) FROM public.app_members GROUP BY 1, 2;
-SELECT lead_source, count(*) FROM public.leads GROUP BY 1;
-```
-
-Then sign in to the web app as owner, admin and a staff user and confirm leads,
-follow-ups, telecalling and Google Sheets sync behave as before.
-
-## 6. Off-switch (temporary stop, nothing removed)
-
-Disables the feature immediately. Phones keep unsent visits as pending.
+**Off-switch (temporary stop, nothing removed).** Phones keep unsent visits as pending.
 
 ```sql
 REVOKE EXECUTE ON FUNCTION
@@ -148,34 +156,142 @@ REVOKE EXECUTE ON FUNCTION
 FROM authenticated;
 ```
 
-Re-enable with the matching `GRANT EXECUTE ... TO authenticated`.
+Re-enable with the matching `GRANT EXECUTE ... TO authenticated`. After either
+statement, section 9 of the verification script still reports `unchanged`
+(privileges are not part of the fingerprint), and re-running part A restores
+the grants.
 
-## 7. Rollback (full removal)
+## Part C: feature rollback
 
-1. Remove every sales account using the removal procedure in section 9. The
-   script refuses to run while any `app_members` row has role `sales`.
-2. Run the rollback file. It contains its own `BEGIN` and `COMMIT`.
-3. It copies the three feature tables into the private schema
-   `field_sales_archive` before dropping them. That schema is left in place;
-   drop it by hand once the data is no longer needed.
-4. Leads already created from field visits remain as ordinary leads. Their
-   `lead_source` becomes `other`; the origin stays in `source_details`.
-5. Re-run the section 5 queries: no `field_*` objects, no `office_roles_only`
-   policies, both constraints back to their original definitions.
+Removes the feature only.
 
-The rollback restores the previous state of the nineteen tables, which means
-they are again open to every signed-in account.
+- **It never touches the 19 `office_roles_only` policies** or their registry
+  records. They stay in force.
+- It refuses to run while any `app_members` row has role `sales`. Remove those
+  accounts first ("Removing a salesperson").
+- It refuses to drop an object that is not exactly what part A created.
+- It copies `field_visits`, `field_visit_events` and `field_sales_members`
+  into the private schema `field_sales_archive` before dropping them. That
+  schema is left in place; drop it by hand when the data is no longer needed.
+- **Leads are not modified.** Leads created from field visits keep every
+  column, including `lead_source = 'field_visit'`, and keep their follow-ups
+  and timeline.
+  - If any such lead exists, `leads_lead_source_check` is left in its extended
+    form so those rows remain valid.
+  - If none exists, the constraint is restored to the original nine values.
+- `app_members_role_check` is restored to owner/admin/staff.
 
-## 8. Adding a salesperson
+If the web app is also rolled back to a build that does not know the
+`field_visit` source, those leads still load and save; the lead form will show
+their source as blank until the app is updated again.
 
-Run by the owner in the Supabase dashboard. Replace the placeholders.
+**After running, verify:** no `field_*` tables or functions; section 8b still
+`true, true` on all 19 rows; section 9 lists only the 19 security policies.
 
-1. Authentication → Users → Add user: email and password, with "Auto Confirm
-   User" on. Do not use the web sign-up form.
+## Part D: security-policy rollback (separate approval)
+
+**This re-opens the nineteen tables to every signed-in account.** It is not
+part of removing the feature and is not a recovery step for anything in part A.
+
+Use it only if part B itself is shown to break a legitimate workflow that
+cannot be fixed another way, and only with the owner's written approval naming
+this script.
+
+Safeguards built into the script:
+
+- It does nothing unless the operator runs this line first, in the same session:
+
+```sql
+SET b2p.confirm_reopen_office_tables = 'I accept that all signed-in accounts regain access';
+```
+
+- It stops while the feature is installed or any account holds a role other
+  than owner, admin or staff. Run part C first.
+- It stops if a policy it is about to drop was changed after part B created it.
+
+A narrower alternative, if one table is the problem, is to drop the policy on
+that table alone after review; the other eighteen stay protected. That, too,
+needs separate approval.
+
+---
+
+## How re-running is made safe
+
+`CREATE TABLE IF NOT EXISTS` and `CREATE OR REPLACE FUNCTION` are not treated
+as proof of safe idempotency. On their own they would silently keep a wrong
+table or overwrite someone else's function.
+
+- Before changing anything, parts A and B check every table, function, policy
+  and trigger they own. Each must be **absent**, or **exactly what the
+  migration last created**, compared by a recorded fingerprint of its full
+  definition (columns, constraints, indexes, source text, policy expressions).
+- An object with the same name that the migrations did not create, or that was
+  changed afterwards, stops the script with an error and nothing is changed.
+- The two existing CHECK constraints are replaced only if they are exactly the
+  definitions inspected in production, or already the new ones.
+- Tables are never dropped or rewritten by a migration, so existing visits,
+  events and memberships survive a re-run unchanged.
+- Each script is one transaction. A failure at any point rolls all of it back.
+
+Section 9 of the verification script reports any object that has drifted.
+
+## Audit history and the administrator exception
+
+`field_visit_events` is append-only, and `field_visits` rows are never deleted.
+
+- No application role has INSERT, UPDATE, DELETE or TRUNCATE on either table.
+  Rows are written only by the three workflow functions.
+- Triggers additionally refuse UPDATE, DELETE and TRUNCATE on
+  `field_visit_events`, and DELETE and TRUNCATE on `field_visits`, for **any
+  statement that arrives through the API**: anonymous, signed-in, or the
+  server-side service key. This also stops SECURITY DEFINER functions from
+  changing history on a caller's behalf.
+- Consequence: a company profile that has field visits cannot be deleted from
+  the app, because the cascade would delete audit history.
+
+**The exception.** A direct database session with no API request role (the
+Supabase SQL editor, or a direct connection as the `postgres` role) can still
+update and delete. This is deliberate: it is required for part C and for
+legally required erasure. Anyone with that access can also disable the
+triggers. Treat SQL-editor access as fully privileged and restrict who has it.
+
+## Function security review
+
+All functions are owned by the role that runs the migration (`postgres` in
+production: not a superuser, but able to bypass row-level security) and have a
+fixed, empty `search_path`.
+
+| Function | SECURITY DEFINER | Executable by | Identity and company |
+|---|---|---|---|
+| `save_field_visit` | yes | authenticated | Salesperson is `auth.uid()`; e-mail read from `auth.users`; company from the payload is checked against the caller's membership, and ignored once the visit exists |
+| `review_field_visit` | yes | authenticated | Role must be owner/admin; company taken from the stored visit |
+| `convert_field_visit_to_lead` | yes | authenticated | Same; assignee and any linked lead must belong to the visit's company |
+| `my_field_sales_companies` | yes | authenticated | Returns only the caller's companies |
+| `field_visit_assignees` | yes | authenticated | Owner/admin of that company only |
+| `field_sales_internal.can_submit`, `can_review` | yes | authenticated | Answer only about the caller; needed by the read policy on `field_visits` |
+| `field_sales_internal.assignee_ok` | yes | nobody | Internal |
+| `field_sales_internal.normalize_phone` | no | nobody | Pure |
+| `field_sales_internal.guard_membership`, `audit_guard` | no | nobody | Triggers |
+| `b2p_migration_internal.*` | no | nobody | Administrator only |
+
+- `PUBLIC` and `anon` can execute none of them.
+- `can_submit` and `can_review` must be executable by `authenticated` because
+  Postgres evaluates policy expressions with the caller's privileges. They are
+  in a schema the HTTP API does not expose, so an app user cannot call them
+  directly. This depends on the project's exposed-schema setting, which must
+  be confirmed in the dashboard (verification script, section 7).
+- With no identity in the token, every entry point refuses.
+
+## Adding a salesperson
+
+Do not create real accounts until security patch 1 is live.
+
+1. Authentication → Users → Add user: email and password, "Auto Confirm User"
+   on. Do not use the web sign-up form.
 2. SQL Editor:
 
 ```sql
--- Role: sales. Never add app_company_members for this user.
+-- Role: sales. Never add app_company_members for this user (the database refuses it).
 INSERT INTO public.app_members (user_id, role, active)
 SELECT id, 'sales', true FROM auth.users WHERE lower(email) = lower('<salesperson email>');
 
@@ -199,11 +315,22 @@ WHERE lower(u.email) = lower('<salesperson email>');
 4. Have them sign in on the phone and submit one test visit. Reject it from
    Office Review with the note "provisioning test".
 
-The database enforces the separation: adding `app_company_members` for a
-`sales` user fails, and the field-visit functions refuse a `sales` user who
-somehow has such a row.
+Other changes:
 
-## 9. Removing a salesperson
+- **Move to another company:** delete and insert the `field_sales_members`
+  row. Earlier visits stay with the original company and the salesperson can
+  no longer read them.
+- **Pause for one company:** set `field_sales_members.active = false`.
+- **Pause the account:** set `app_members.active = false`. Reactivating
+  restores exactly the field memberships that are still active.
+- **Staff becomes sales:** delete their `app_company_members` rows, set the
+  role to `sales`, add `field_sales_members`. The database refuses the role
+  change while normal memberships exist.
+- **Sales becomes staff:** delete their `field_sales_members` rows, change the
+  role, add `app_company_members`. The database refuses the role change while
+  field memberships exist.
+
+## Removing a salesperson
 
 1. If possible, ask them to open the app online so pending visits sync.
 2. SQL Editor (takes effect on their next request):
@@ -217,8 +344,8 @@ WHERE user_id = (SELECT id FROM auth.users WHERE lower(email) = lower('<salesper
 ```
 
 3. Authentication → Users → the user → Ban user, then sign out their sessions.
-   Prefer a ban to deletion: visits keep a copy of the email either way, but a
-   ban also keeps the account id that the audit history refers to.
+   Prefer a ban to deletion: visits keep a copy of the e-mail either way, but a
+   ban also keeps the account id the audit history refers to.
 4. Verify. Expect zero rows:
 
 ```sql
@@ -226,7 +353,7 @@ SELECT u.email FROM auth.users u JOIN public.app_members m ON m.user_id = u.id
 WHERE lower(u.email) = lower('<salesperson email>') AND m.active;
 ```
 
-5. To remove the account completely (required before a rollback):
+5. To remove the account completely (required before part C):
 
 ```sql
 DELETE FROM public.app_members
@@ -236,56 +363,72 @@ WHERE role = 'sales' AND user_id = (SELECT id FROM auth.users WHERE lower(email)
 Visits they did not sync before removal stay on their phone and cannot be
 recovered by the server.
 
-Moving a salesperson to another company: delete and insert the
-`field_sales_members` row. Their earlier visits stay with the original company
-and they can no longer read them.
+---
 
-## 10. Test plan
+## Tests
 
-### Automated now (`npm test`, file `tests/field-sales-db.test.mjs`)
+No test connects to production or to any remote database. The helper refuses
+any host that is not a local Unix socket or the loopback address.
 
-| # | Test | Proves |
-|---|---|---|
-| 1 | Fixture reproduces the gap | Before the migration any signed-in account reads all 19 tables |
-| 2 | Additive and re-runnable | Owner, admin and staff keep read/write on all 19 tables and on leads; the script can run twice |
-| 3 | 19 restricted tables | Sales, no-role accounts and anonymous callers cannot read, insert, update or delete in any of them |
-| 4 | Unrelated CRM data | Sales cannot reach leads, lead activities, follow-ups, customers, services, quotations, templates, telecalling, documents, WhatsApp or profiles |
-| 5 | No self-provisioning | Sales cannot change roles or memberships; `sales` and normal membership are mutually exclusive |
-| 6 | Anonymous access | No new table is readable and no field-sales function is runnable anonymously |
-| 7 | Server-controlled identity | Forged salesperson, status, reviewer and lead fields are ignored; direct table writes are refused; another salesperson cannot see or overwrite a visit |
-| 8 | Save idempotency | Retries create no second visit and no second event |
-| 9 | Cross-company isolation | A visit cannot be created in, moved to or read from another company; other-company staff and leads are refused at conversion |
-| 10 | Access re-checked on the server | Deactivation, ban, membership removal and a stray company membership all lock the user out |
-| 11 | Review rules | Only owner/admin review; transitions, required notes, retries and self-review are enforced and audited |
-| 12 | Conversion | One lead with source `field_visit`, activities, optional follow-up owned by the lead assignee; the salesperson is never the assignee |
-| 13 | Conversion idempotency | Repeating a conversion creates nothing new |
-| 14 | Conversion atomicity | A failure in the follow-up step leaves no lead, no activity, no consumed lead number |
-| 15 | Duplicate protection | A phone match creates nothing until the reviewer links or forces; forcing is audited |
-| 16 | Rollback | Data is archived, every new object is removed, constraints are restored, the migration can be re-applied |
+```bash
+npm test
+```
 
-### Limits of these tests
+```bash
+tests/helpers/with-local-postgres.sh node --test tests/field-sales-db.test.mjs tests/field-sales-concurrency.test.mjs
+```
 
-- They run on an in-memory Postgres built from a capture of live, not on live.
-  Five existing tables and eighteen of the nineteen restricted tables are
-  modelled with reduced columns; their policies and grants are verbatim.
-- One connection only, so two truly simultaneous conversions are not exercised.
-  The row lock and advisory lock that handle that case are covered only by
-  sequential repeat calls.
-- Known exception: `claim_telecalling_sync_queue_rows` stays callable by any
-  caller until security patch A. No test here asserts it is closed.
+The first runs everything on an in-memory Postgres (PGlite); the six
+two-connection tests are skipped there. The second starts a throwaway local
+PostgreSQL in a temporary directory, runs the same database tests plus the
+concurrency tests on it, and deletes it.
 
-### After applying (manual, with a test sales account)
+On the local PostgreSQL the test database is owned by a role that, like
+production's `postgres`, is not a superuser but can bypass row-level security.
 
-- [ ] Sign in as the test sales user and confirm every query in the section 5
-      list of restricted tables returns no rows through the app's API key.
-- [ ] Submit, correct, approve and convert one visit end to end; delete the
-      resulting test lead afterwards.
-- [ ] Remove the test account with the section 9 procedure.
+| Area | What is proved |
+|---|---|
+| Hardening | Before it, a no-role account reads all 19 tables. After it, owner, admin and staff keep read, update, insert and delete on each; no-role, sales and anonymous callers are denied on each, using the real production columns |
+| Hardening safety | An unexpected or modified `office_roles_only` policy stops the script; a re-run changes nothing; the registry is private |
+| Feature safety | Refuses to run without part B; stops with nothing changed for a same-named function, table or schema, for constraints that differ from production, and for a missing live column |
+| Re-run | Visits, events, memberships, leads, follow-ups and all recorded definitions are byte-identical after two re-runs; a hand-edited function, table, policy, trigger or index stops the script |
+| Failure recovery | A failure part-way through rolls back completely; the script succeeds once the cause is removed |
+| Unrelated CRM data | Sales cannot reach leads, activities, follow-ups, customers, services, quotations, templates, telecalling, documents, WhatsApp, devices, report dispatches or profiles |
+| Membership guards | Owner/admin/staff provisioning and role changes work as before; a sales user cannot get normal membership by insert, upsert, bulk insert or update; role changes in both directions; moving between companies; deactivation and reactivation |
+| Function security | Owner, empty `search_path`, SECURITY DEFINER only where listed, exact execute grants, no anon or PUBLIC access; behaviour with no identity, unknown identity and a forged e-mail claim |
+| Workflow | Server-controlled identity, validation, idempotent save, cross-company isolation, review rules and self-review audit |
+| Audit integrity | Updates, deletes and truncates are refused for every application role, directly and through SECURITY DEFINER functions, including the service key; the administrator exception works |
+| Conversion | One lead, activities, optional follow-up owned by the lead assignee; never the salesperson; atomic on failure; duplicate protection |
+| Concurrency (2 connections) | Same visit by two reviewers: exactly one lead, one follow-up, one event, with the second caller proven to be waiting. Rollback of the first lets the second complete. Twenty uncoordinated races. Two visits with the same company and phone: one lead, the other told of the duplicate. Ten uncoordinated same-phone races. Same visit saved from two devices |
+| Rollbacks | Part C keeps all 19 policies identical and enforced and leaves every lead row unchanged and valid; part D refuses without confirmation, while the feature is installed, and for modified policies |
 
-### Later stages (not written yet)
+## Limits
 
-- Unit tests for the offline outbox, sync worker and cached-role gating.
-- Playwright: New Visit and My Visits at phone width; web Office Review.
-- Real-device Android: airplane-mode save, app kill, reconnect.
-- Regression: `tests/leads`, `tests/regression`, lead form/filter/report with
-  the new source.
+- **Not production.** Tests run on PGlite and on local PostgreSQL 16.
+  Production is PostgreSQL 17.6. The schema is a capture of production's
+  catalog taken on 2026-11-10; anything changed in production since then is
+  not reflected.
+- **Fixture stubs.** Roles, the `auth` schema and Supabase's default
+  privileges are hand-written stand-ins. `auth.uid()` and `auth.role()` use
+  production's function bodies; `auth.jwt()` uses the standard Supabase body,
+  which was not captured. `auth.users` has only the five columns the functions read.
+- **Ownership.** In tests every object is owned by the role that loads the
+  fixture. The capture did not record ownership of individual objects beyond
+  confirming that production's tables and functions are owned by `postgres`.
+- **Exposed schemas.** Whether `field_sales_internal` is unreachable through
+  the HTTP API depends on a project setting that SQL cannot read. It has not
+  been checked.
+- **API layer.** Tests call the database as the roles PostgREST uses, with the
+  same request settings. They do not go through PostgREST, Realtime or
+  pg_graphql themselves.
+- **Concurrency scope.** Two connections, on one machine. Higher contention,
+  connection pooling and statement timeouts (production sets 8 seconds for
+  `authenticated`) are not exercised. A reviewer whose conversion waits behind
+  another for more than 8 seconds would receive a timeout error and nothing
+  would be created.
+- **Administrator exception.** Nothing prevents a database administrator from
+  altering audit history or disabling the guard triggers.
+- **Known open issues.** The two security patches in "Release gates" are
+  outside this branch.
+- **Application code.** The mobile and web screens, offline outbox and sync
+  worker are not written yet and have no tests.

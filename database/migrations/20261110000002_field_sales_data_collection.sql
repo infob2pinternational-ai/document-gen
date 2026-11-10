@@ -1,27 +1,39 @@
 -- =====================================================================
--- Field Sales Data Collection
--- Target: Supabase project rqovkmjsdwzggebvwvdk (verified read-only 2026-11-10).
+-- FEATURE: Field Sales Data Collection
+-- Target: Supabase project rqovkmjsdwzggebvwvdk (inspected read-only 2026-11-10).
 --
--- DO NOT RUN WITHOUT REVIEW. Read database/FIELD_SALES_DEPLOYMENT.md first
--- (backup checklist, verification queries, rollback).
+-- DO NOT RUN WITHOUT REVIEW. See database/FIELD_SALES_DEPLOYMENT.md, part A.
+--
+-- Requires 20261110000001_security_office_roles_only.sql to be applied first.
+-- This script stops if it is not.
 --
 -- Standalone and additive: written against the LIVE schema, not against the
--- other files in this folder (they no longer reproduce production).
--- Safe to re-run: every statement is idempotent.
+-- older files in this folder (they no longer reproduce production).
 --
 -- New objects
---   tables     field_sales_members, field_visits, field_visit_events
---   functions  field_visit_normalize_phone, field_sales_can_submit,
---              field_visit_can_review, field_visit_assignee_ok,
---              field_sales_guard_membership (trigger),
---              my_field_sales_companies, field_visit_assignees,
---              save_field_visit, review_field_visit, convert_field_visit_to_lead
--- Changes to existing objects (all reversible, see the rollback script)
---   1. app_members_role_check        gains 'sales'
---   2. leads_lead_source_check       gains 'field_visit'
+--   schema     field_sales_internal (helpers; not reachable through the API)
+--   tables     public.field_sales_members, public.field_visits, public.field_visit_events
+--   API        public.my_field_sales_companies, public.field_visit_assignees,
+--              public.save_field_visit, public.review_field_visit,
+--              public.convert_field_visit_to_lead
+--   internal   field_sales_internal.normalize_phone, can_submit, can_review,
+--              assignee_ok, guard_membership (trigger), audit_guard (trigger)
+-- Changes to existing objects (reversed by the feature rollback script)
+--   1. app_members_role_check      gains 'sales'
+--   2. leads_lead_source_check     gains 'field_visit'
 --   3. app_members, app_company_members   one guard trigger each
---   4. 19 previously open tables     one RESTRICTIVE policy each (office_roles_only)
 -- No existing policy, function, trigger or row is edited or removed.
+--
+-- Re-running
+--   CREATE TABLE IF NOT EXISTS and CREATE OR REPLACE FUNCTION are NOT treated
+--   as proof that a re-run is safe: on their own they would silently keep a
+--   wrong table or overwrite someone else's function. Instead, section 1
+--   checks every table, function, policy and trigger this script owns BEFORE
+--   anything is changed. Each must be either absent, or exactly what this
+--   script last created (compared by a recorded fingerprint of its
+--   definition). Anything else stops the script with nothing changed.
+--   Tables are never dropped or rewritten, so existing visits survive a re-run.
+--   The whole script is one transaction: any error rolls all of it back.
 -- =====================================================================
 BEGIN;
 
@@ -58,98 +70,206 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.app_members WHERE role NOT IN ('owner','admin','staff','sales')) THEN
     RAISE EXCEPTION 'Field sales: app_members contains an unexpected role';
   END IF;
+
+  -- Functions below are SECURITY DEFINER and are owned by whoever runs this
+  -- script. That role must bypass row-level security (in production: postgres).
+  IF NOT (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user) THEN
+    RAISE EXCEPTION 'Field sales: run as the database owner role (it must be able to bypass row-level security).';
+  END IF;
+
+  -- The security hardening must already be in place: a sales account must
+  -- never exist while the nineteen tables are open to every signed-in user.
+  IF to_regprocedure('b2p_migration_internal.assert_unmodified(text,text)') IS NULL THEN
+    RAISE EXCEPTION 'Field sales: apply 20261110000001_security_office_roles_only.sql first.';
+  END IF;
+  SELECT string_agg(t, ', ') INTO missing
+  FROM unnest(ARRAY[
+    'account_groups','account_heads','bank_accounts','bank_reconciliation_statements','customer_receipts','expenses',
+    'financial_audit_logs','financial_period_locks','financial_year_closures','journal_entries','purchase_bills',
+    'supplier_payments','suppliers','bookings','resources','google_sync_log','google_sync_queue','google_sync_settings',
+    'lead_activity']) t
+  WHERE NOT EXISTS (SELECT 1 FROM pg_policies p
+                    WHERE p.schemaname = 'public' AND p.tablename = t AND p.policyname = 'office_roles_only' AND p.permissive = 'RESTRICTIVE');
+  IF missing IS NOT NULL THEN
+    RAISE EXCEPTION 'Field sales: security hardening is missing on: %. Apply 20261110000001_security_office_roles_only.sql first.', missing;
+  END IF;
 END $$;
 
 -- ---------------------------------------------------------------------
--- 1. Restricted "sales" role
+-- 1. Definition checks: nothing below may overwrite an unexpected object.
+--    Each object must be absent or exactly as this script last created it.
 -- ---------------------------------------------------------------------
-ALTER TABLE public.app_members DROP CONSTRAINT IF EXISTS app_members_role_check;
-ALTER TABLE public.app_members ADD CONSTRAINT app_members_role_check
-  CHECK (role = ANY (ARRAY['owner'::text, 'admin'::text, 'staff'::text, 'sales'::text]));
+DO $$
+DECLARE obj text[];
+BEGIN
+  FOREACH obj SLICE 1 IN ARRAY ARRAY[
+    ['table',    'public.field_sales_members'],
+    ['table',    'public.field_visits'],
+    ['table',    'public.field_visit_events'],
+    ['function', 'field_sales_internal.normalize_phone(text)'],
+    ['function', 'field_sales_internal.can_submit(uuid)'],
+    ['function', 'field_sales_internal.can_review(uuid)'],
+    ['function', 'field_sales_internal.assignee_ok(uuid,text)'],
+    ['function', 'field_sales_internal.guard_membership()'],
+    ['function', 'field_sales_internal.audit_guard()'],
+    ['function', 'public.my_field_sales_companies()'],
+    ['function', 'public.field_visit_assignees(uuid)'],
+    ['function', 'public.save_field_visit(jsonb)'],
+    ['function', 'public.review_field_visit(uuid,text,text)'],
+    ['function', 'public.convert_field_visit_to_lead(uuid,text,uuid,boolean,date,time without time zone)'],
+    ['policy',   'public.field_visits/field_visits_read'],
+    ['policy',   'public.field_visit_events/field_visit_events_read'],
+    ['trigger',  'public.app_company_members/field_sales_guard_membership'],
+    ['trigger',  'public.app_members/field_sales_guard_membership'],
+    ['trigger',  'public.field_sales_members/field_sales_guard_membership'],
+    ['trigger',  'public.field_visit_events/field_visit_events_append_only'],
+    ['trigger',  'public.field_visit_events/field_visit_events_no_truncate'],
+    ['trigger',  'public.field_visits/field_visits_no_delete'],
+    ['trigger',  'public.field_visits/field_visits_no_truncate']
+  ] LOOP
+    PERFORM b2p_migration_internal.assert_unmodified(obj[1], obj[2]);
+  END LOOP;
+END $$;
+
+-- The helper schema must be absent or ours (it is ours if the checks above found our functions in it).
+DO $$
+BEGIN
+  IF to_regnamespace('field_sales_internal') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM b2p_migration_internal.object_registry r WHERE r.migration = 'field_sales' AND r.ident LIKE 'field_sales_internal.%') THEN
+    RAISE EXCEPTION 'Migration stopped: schema field_sales_internal already exists but was not created by these migrations.';
+  END IF;
+END $$;
+CREATE SCHEMA IF NOT EXISTS field_sales_internal;
 
 -- ---------------------------------------------------------------------
--- 2. "field_visit" lead source (the nine existing values are unchanged)
+-- 2. The two existing CHECK constraints
+--    Each is replaced only if it is exactly the definition inspected in
+--    production. If it already has the new definition nothing is done. Any
+--    other definition stops the script.
 -- ---------------------------------------------------------------------
-ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_lead_source_check;
-ALTER TABLE public.leads ADD CONSTRAINT leads_lead_source_check
-  CHECK (lead_source = ANY (ARRAY['facebook'::text, 'instagram'::text, 'whatsapp_bulk'::text, 'website'::text,
-    'bulk_email'::text, 'existing_customer'::text, 'phone'::text, 'referral'::text, 'other'::text, 'field_visit'::text]));
+DO $$
+DECLARE
+  spec record;
+  v_current text;
+BEGIN
+  FOR spec IN SELECT * FROM (VALUES
+    ('app_members', 'app_members_role_check',
+     'CHECK ((role = ANY (ARRAY[''owner''::text, ''admin''::text, ''staff''::text])))',
+     'CHECK ((role = ANY (ARRAY[''owner''::text, ''admin''::text, ''staff''::text, ''sales''::text])))'),
+    ('leads', 'leads_lead_source_check',
+     'CHECK ((lead_source = ANY (ARRAY[''facebook''::text, ''instagram''::text, ''whatsapp_bulk''::text, ''website''::text, ''bulk_email''::text, ''existing_customer''::text, ''phone''::text, ''referral''::text, ''other''::text])))',
+     'CHECK ((lead_source = ANY (ARRAY[''facebook''::text, ''instagram''::text, ''whatsapp_bulk''::text, ''website''::text, ''bulk_email''::text, ''existing_customer''::text, ''phone''::text, ''referral''::text, ''other''::text, ''field_visit''::text])))')
+  ) AS v(tbl, con, original_def, new_def) LOOP
+    v_current := b2p_migration_internal.object_definition('constraint', 'public.' || spec.tbl || '/' || spec.con);
+    IF v_current = spec.new_def THEN
+      NULL;                                             -- already applied
+    ELSIF v_current = spec.original_def THEN
+      EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I', spec.tbl, spec.con);
+      EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I %s', spec.tbl, spec.con, spec.new_def);
+    ELSE
+      RAISE EXCEPTION 'Migration stopped: constraint %.% is not the definition inspected in production (found: %). Nothing was changed.',
+        spec.tbl, spec.con, coalesce(v_current, 'missing');
+    END IF;
+    PERFORM b2p_migration_internal.record_object('field_sales', 'constraint', 'public.' || spec.tbl || '/' || spec.con);
+  END LOOP;
+END $$;
 
 -- ---------------------------------------------------------------------
 -- 3. Tables
+--    A table is created only when it does not exist. When it does exist,
+--    section 1 has already proved it is exactly the table this script created,
+--    so it is left alone and its rows are kept. Indexes are created with the
+--    table and without IF NOT EXISTS: a name that is already taken by
+--    something else is an error, not something to skip silently.
 -- ---------------------------------------------------------------------
 -- Which companies a salesperson may submit visits for. Deliberately separate
 -- from app_company_members: a row here grants nothing on any existing table.
-CREATE TABLE IF NOT EXISTS public.field_sales_members (
-  user_id    uuid NOT NULL REFERENCES public.app_members(user_id) ON DELETE CASCADE,
-  company_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  active     boolean NOT NULL DEFAULT true,
-  note       text,
-  added_at   timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, company_id)
-);
+DO $create$
+BEGIN
+  IF to_regclass('public.field_sales_members') IS NOT NULL THEN RETURN; END IF;
+  CREATE TABLE public.field_sales_members (
+    user_id    uuid NOT NULL REFERENCES public.app_members(user_id) ON DELETE CASCADE,
+    company_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    active     boolean NOT NULL DEFAULT true,
+    note       text,
+    added_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, company_id)
+  );
+END $create$;
 
-CREATE TABLE IF NOT EXISTS public.field_visits (
-  id                 uuid PRIMARY KEY,                       -- generated on the device: the idempotency key
-  company_id         uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  salesperson_id     uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  salesperson_email  text NOT NULL,                          -- snapshot; survives account removal
-  business_name      text NOT NULL CHECK (btrim(business_name) <> '' AND char_length(business_name) <= 200),
-  phone              text NOT NULL CHECK (char_length(phone) <= 40),
-  phone_normalized   text NOT NULL CHECK (phone_normalized ~ '^[0-9]{6,15}$'),
-  location           text CHECK (location IS NULL OR char_length(location) <= 300),
-  contact_person     text CHECK (contact_person IS NULL OR char_length(contact_person) <= 200),
-  requirements       text[] NOT NULL DEFAULT '{}'
-                     CHECK (requirements <@ ARRAY['website','billing_software','crm','attendance_software','other']::text[]),
-  requirement_other  text CHECK (requirement_other IS NULL OR char_length(requirement_other) <= 300),
-  estimated_budget   numeric(14,2) CHECK (estimated_budget IS NULL OR estimated_budget >= 0),
-  remarks            text CHECK (remarks IS NULL OR char_length(remarks) <= 2000),
-  follow_up_date     date,
-  status             text NOT NULL DEFAULT 'submitted'
-                     CHECK (status IN ('submitted','needs_correction','approved','rejected','converted')),
-  review_note        text CHECK (review_note IS NULL OR char_length(review_note) <= 1000),
-  reviewed_by        uuid,
-  reviewed_by_email  text,
-  reviewed_at        timestamptz,
-  lead_id            uuid REFERENCES public.leads(id) ON DELETE SET NULL,
-  follow_up_id       uuid REFERENCES public.follow_ups(id) ON DELETE SET NULL,
-  conversion_mode    text CHECK (conversion_mode IS NULL OR conversion_mode IN ('new_lead','linked_existing')),
-  converted_by       uuid,
-  converted_by_email text,
-  converted_at       timestamptz,
-  client_created_at  timestamptz,                            -- device clock; informational only
-  created_at         timestamptz NOT NULL DEFAULT now(),
-  updated_at         timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_field_visits_company_status ON public.field_visits (company_id, status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_field_visits_salesperson ON public.field_visits (salesperson_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_field_visits_company_phone ON public.field_visits (company_id, phone_normalized);
+DO $create$
+BEGIN
+  IF to_regclass('public.field_visits') IS NOT NULL THEN RETURN; END IF;
+  CREATE TABLE public.field_visits (
+    id                 uuid PRIMARY KEY,                       -- generated on the device: the idempotency key
+    company_id         uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    salesperson_id     uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    salesperson_email  text NOT NULL,                          -- snapshot; survives account removal
+    business_name      text NOT NULL CHECK (btrim(business_name) <> '' AND char_length(business_name) <= 200),
+    phone              text NOT NULL CHECK (char_length(phone) <= 40),
+    phone_normalized   text NOT NULL CHECK (phone_normalized ~ '^[0-9]{6,15}$'),
+    location           text CHECK (location IS NULL OR char_length(location) <= 300),
+    contact_person     text CHECK (contact_person IS NULL OR char_length(contact_person) <= 200),
+    requirements       text[] NOT NULL DEFAULT '{}'
+                       CHECK (requirements <@ ARRAY['website','billing_software','crm','attendance_software','other']::text[]),
+    requirement_other  text CHECK (requirement_other IS NULL OR char_length(requirement_other) <= 300),
+    estimated_budget   numeric(14,2) CHECK (estimated_budget IS NULL OR estimated_budget >= 0),
+    remarks            text CHECK (remarks IS NULL OR char_length(remarks) <= 2000),
+    follow_up_date     date,
+    status             text NOT NULL DEFAULT 'submitted'
+                       CHECK (status IN ('submitted','needs_correction','approved','rejected','converted')),
+    review_note        text CHECK (review_note IS NULL OR char_length(review_note) <= 1000),
+    reviewed_by        uuid,
+    reviewed_by_email  text,
+    reviewed_at        timestamptz,
+    lead_id            uuid REFERENCES public.leads(id) ON DELETE SET NULL,
+    follow_up_id       uuid REFERENCES public.follow_ups(id) ON DELETE SET NULL,
+    conversion_mode    text CHECK (conversion_mode IS NULL OR conversion_mode IN ('new_lead','linked_existing')),
+    converted_by       uuid,
+    converted_by_email text,
+    converted_at       timestamptz,
+    client_created_at  timestamptz,                            -- device clock; informational only
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    updated_at         timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX idx_field_visits_company_status ON public.field_visits (company_id, status, created_at DESC);
+  CREATE INDEX idx_field_visits_salesperson ON public.field_visits (salesperson_id, created_at DESC);
+  CREATE INDEX idx_field_visits_company_phone ON public.field_visits (company_id, phone_normalized);
+END $create$;
 
 -- Append-only audit history. Rows are written only by the functions below.
-CREATE TABLE IF NOT EXISTS public.field_visit_events (
-  id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  visit_id    uuid NOT NULL REFERENCES public.field_visits(id) ON DELETE CASCADE,
-  company_id  uuid NOT NULL,
-  action      text NOT NULL CHECK (action IN ('submitted','updated','resubmitted','approved','rejected',
-                'correction_requested','converted_new_lead','converted_linked_lead')),
-  from_status text,
-  to_status   text NOT NULL,
-  actor_id    uuid,
-  actor_email text NOT NULL,
-  actor_role  text NOT NULL,
-  self_review boolean NOT NULL DEFAULT false,               -- reviewer acted on their own submission
-  note        text,
-  details     jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at  timestamptz NOT NULL DEFAULT clock_timestamp()
-);
-CREATE INDEX IF NOT EXISTS idx_field_visit_events_visit ON public.field_visit_events (visit_id, id);
+DO $create$
+BEGIN
+  IF to_regclass('public.field_visit_events') IS NOT NULL THEN RETURN; END IF;
+  CREATE TABLE public.field_visit_events (
+    id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    visit_id    uuid NOT NULL REFERENCES public.field_visits(id) ON DELETE CASCADE,
+    company_id  uuid NOT NULL,
+    action      text NOT NULL CHECK (action IN ('submitted','updated','resubmitted','approved','rejected',
+                  'correction_requested','converted_new_lead','converted_linked_lead')),
+    from_status text,
+    to_status   text NOT NULL,
+    actor_id    uuid,
+    actor_email text NOT NULL,
+    actor_role  text NOT NULL,
+    self_review boolean NOT NULL DEFAULT false,               -- reviewer acted on their own submission
+    note        text,
+    details     jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at  timestamptz NOT NULL DEFAULT clock_timestamp()
+  );
+  CREATE INDEX idx_field_visit_events_visit ON public.field_visit_events (visit_id, id);
+END $create$;
 
 -- ---------------------------------------------------------------------
--- 4. Helper functions
+-- 4. Helper functions (schema field_sales_internal)
+--    The API only exposes schema public, so none of these can be called by an
+--    app user directly. can_submit and can_review are still granted to
+--    "authenticated" because the read policy on field_visits evaluates them
+--    with the caller's privileges; they reveal only the caller's own access.
 -- ---------------------------------------------------------------------
 -- Digits only; drops a leading 91 (12 digits) or 0 (11 digits). Mirrors the
 -- client normalisation used for telecalling conversion.
-CREATE OR REPLACE FUNCTION public.field_visit_normalize_phone(p_phone text) RETURNS text
+CREATE OR REPLACE FUNCTION field_sales_internal.normalize_phone(p_phone text) RETURNS text
 LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
   SELECT CASE
     WHEN d ~ '^91[0-9]{10}$' THEN substr(d, 3)
@@ -162,7 +282,7 @@ $$;
 --   sales        : active field_sales_members row, and (fail closed) no normal company membership
 --   owner, admin : whatever can_access_company already allows
 --   anyone else  : no
-CREATE OR REPLACE FUNCTION public.field_sales_can_submit(p_company_id uuid) RETURNS boolean
+CREATE OR REPLACE FUNCTION field_sales_internal.can_submit(p_company_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT CASE public.current_app_role()
     WHEN 'sales' THEN
@@ -175,15 +295,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
 $$;
 
 -- May the CALLER review and convert field visits of this company?
-CREATE OR REPLACE FUNCTION public.field_visit_can_review(p_company_id uuid) RETURNS boolean
+CREATE OR REPLACE FUNCTION field_sales_internal.can_review(p_company_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT coalesce(public.current_app_role() IN ('owner','admin'), false)
      AND public.can_access_company(p_company_id)
 $$;
 
 -- Is this e-mail an active owner/admin/staff member with access to the company?
--- Internal: never callable by app users.
-CREATE OR REPLACE FUNCTION public.field_visit_assignee_ok(p_company_id uuid, p_email text) RETURNS boolean
+-- Not granted to any application role.
+CREATE OR REPLACE FUNCTION field_sales_internal.assignee_ok(p_company_id uuid, p_email text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.app_members m JOIN auth.users u ON u.id = m.user_id
@@ -198,7 +318,7 @@ $$;
 -- ---------------------------------------------------------------------
 -- 5. Keep the sales role and normal company membership mutually exclusive
 -- ---------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.field_sales_guard_membership() RETURNS trigger
+CREATE OR REPLACE FUNCTION field_sales_internal.guard_membership() RETURNS trigger
 LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
   IF TG_TABLE_NAME = 'app_company_members' THEN
@@ -209,6 +329,10 @@ BEGIN
     IF NEW.role = 'sales' AND EXISTS (SELECT 1 FROM public.app_company_members c WHERE c.user_id = NEW.user_id) THEN
       RAISE EXCEPTION 'Remove this user''s app_company_members rows before assigning the sales role.';
     END IF;
+    IF TG_OP = 'UPDATE' AND OLD.role = 'sales' AND NEW.role <> 'sales'
+       AND EXISTS (SELECT 1 FROM public.field_sales_members f WHERE f.user_id = NEW.user_id) THEN
+      RAISE EXCEPTION 'Remove this user''s field_sales_members rows before changing their role from sales.';
+    END IF;
   ELSIF TG_TABLE_NAME = 'field_sales_members' THEN
     IF NOT EXISTS (SELECT 1 FROM public.app_members m WHERE m.user_id = NEW.user_id AND m.role = 'sales') THEN
       RAISE EXCEPTION 'field_sales_members is only for users whose app_members role is sales.';
@@ -217,33 +341,84 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- Section 1 has already verified that any existing trigger or policy of these
+-- names is exactly ours, so dropping and re-creating them cannot remove anything else.
 DROP TRIGGER IF EXISTS field_sales_guard_membership ON public.app_company_members;
 CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE ON public.app_company_members
-  FOR EACH ROW EXECUTE FUNCTION public.field_sales_guard_membership();
+  FOR EACH ROW EXECUTE FUNCTION field_sales_internal.guard_membership();
 DROP TRIGGER IF EXISTS field_sales_guard_membership ON public.app_members;
 CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE OF role ON public.app_members
-  FOR EACH ROW EXECUTE FUNCTION public.field_sales_guard_membership();
+  FOR EACH ROW EXECUTE FUNCTION field_sales_internal.guard_membership();
 DROP TRIGGER IF EXISTS field_sales_guard_membership ON public.field_sales_members;
 CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE ON public.field_sales_members
-  FOR EACH ROW EXECUTE FUNCTION public.field_sales_guard_membership();
+  FOR EACH ROW EXECUTE FUNCTION field_sales_internal.guard_membership();
+
+-- ---------------------------------------------------------------------
+-- 5b. Audit integrity: field_visit_events is append-only, and visits are never deleted
+--
+--     Application roles hold no UPDATE/DELETE/TRUNCATE privilege on these
+--     tables (section 6). These triggers add a second barrier that privileges
+--     alone cannot give: they also stop SECURITY DEFINER functions, which run
+--     with the owner's privileges, from changing history on behalf of a caller.
+--
+--     Rule: any statement that arrives through the API carries a request role
+--     (anon, authenticated or service_role) and is refused. Only a direct
+--     database session with no request role (the SQL editor or a direct
+--     connection as the database owner) may update or delete. That is the
+--     single, deliberate administrator exception; it is needed for rollback
+--     and for legally required erasure.
+--
+--     Consequence: a company profile that has field visits cannot be deleted
+--     from the app, because the cascade would delete audit history.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION field_sales_internal.audit_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF nullif(auth.role(), '') IS NOT NULL THEN
+    RAISE EXCEPTION 'Field visit history is append-only: % on % is not allowed', TG_OP, TG_TABLE_NAME
+      USING ERRCODE = '42501';
+  END IF;
+  IF TG_LEVEL = 'STATEMENT' THEN RETURN NULL; END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS field_visit_events_append_only ON public.field_visit_events;
+CREATE TRIGGER field_visit_events_append_only BEFORE UPDATE OR DELETE ON public.field_visit_events
+  FOR EACH ROW EXECUTE FUNCTION field_sales_internal.audit_guard();
+DROP TRIGGER IF EXISTS field_visit_events_no_truncate ON public.field_visit_events;
+CREATE TRIGGER field_visit_events_no_truncate BEFORE TRUNCATE ON public.field_visit_events
+  FOR EACH STATEMENT EXECUTE FUNCTION field_sales_internal.audit_guard();
+DROP TRIGGER IF EXISTS field_visits_no_delete ON public.field_visits;
+CREATE TRIGGER field_visits_no_delete BEFORE DELETE ON public.field_visits
+  FOR EACH ROW EXECUTE FUNCTION field_sales_internal.audit_guard();
+DROP TRIGGER IF EXISTS field_visits_no_truncate ON public.field_visits;
+CREATE TRIGGER field_visits_no_truncate BEFORE TRUNCATE ON public.field_visits
+  FOR EACH STATEMENT EXECUTE FUNCTION field_sales_internal.audit_guard();
 
 -- ---------------------------------------------------------------------
 -- 6. Row-level security and grants for the new tables
 --    (Supabase grants new tables to anon/authenticated by default: revoke first.)
+--    No application role receives INSERT, UPDATE, DELETE or TRUNCATE on any of them.
 -- ---------------------------------------------------------------------
 ALTER TABLE public.field_sales_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.field_visits        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.field_visit_events  ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.field_sales_members, public.field_visits, public.field_visit_events FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON SEQUENCE public.field_visit_events_id_seq FROM PUBLIC, anon, authenticated;
+-- The identity sequence is looked up, not assumed by name.
+DO $$
+BEGIN
+  EXECUTE format('REVOKE ALL ON SEQUENCE %s FROM PUBLIC, anon, authenticated',
+    pg_get_serial_sequence('public.field_visit_events', 'id'));
+END $$;
 -- Read-only for signed-in users; every write goes through the functions in section 7.
 GRANT SELECT ON public.field_visits, public.field_visit_events TO authenticated;
 
 DROP POLICY IF EXISTS field_visits_read ON public.field_visits;
 CREATE POLICY field_visits_read ON public.field_visits FOR SELECT TO authenticated
-  USING ((salesperson_id = auth.uid() AND public.field_sales_can_submit(company_id))
-         OR public.field_visit_can_review(company_id));
+  USING ((salesperson_id = auth.uid() AND field_sales_internal.can_submit(company_id))
+         OR field_sales_internal.can_review(company_id));
 
 -- An event is visible exactly when its visit is (the subquery is itself subject to field_visits_read).
 DROP POLICY IF EXISTS field_visit_events_read ON public.field_visit_events;
@@ -262,7 +437,7 @@ CREATE POLICY field_visit_events_read ON public.field_visit_events FOR SELECT TO
 CREATE OR REPLACE FUNCTION public.my_field_sales_companies() RETURNS TABLE (id uuid, name text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT p.id, p.name FROM public.profiles p
-  WHERE public.field_sales_can_submit(p.id)
+  WHERE field_sales_internal.can_submit(p.id)
   ORDER BY p.name
 $$;
 
@@ -270,13 +445,13 @@ $$;
 CREATE OR REPLACE FUNCTION public.field_visit_assignees(p_company_id uuid) RETURNS TABLE (email text, role text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
-  IF NOT coalesce(public.field_visit_can_review(p_company_id), false) THEN
+  IF NOT coalesce(field_sales_internal.can_review(p_company_id), false) THEN
     RAISE EXCEPTION 'Field visit access denied' USING ERRCODE = '42501';
   END IF;
   RETURN QUERY
     SELECT lower(u.email)::text, m.role::text
     FROM public.app_members m JOIN auth.users u ON u.id = m.user_id
-    WHERE public.field_visit_assignee_ok(p_company_id, u.email)
+    WHERE field_sales_internal.assignee_ok(p_company_id, u.email)
     ORDER BY CASE m.role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END, lower(u.email);
 END $$;
 
@@ -321,7 +496,7 @@ BEGIN
 
   v_business  := btrim(coalesce(p_visit->>'business_name', ''));
   v_phone      := btrim(coalesce(p_visit->>'phone', ''));
-  v_phone_norm := public.field_visit_normalize_phone(v_phone);
+  v_phone_norm := field_sales_internal.normalize_phone(v_phone);
   v_location   := nullif(btrim(coalesce(p_visit->>'location', '')), '');
   v_contact    := nullif(btrim(coalesce(p_visit->>'contact_person', '')), '');
   v_req_other  := nullif(btrim(coalesce(p_visit->>'requirement_other', '')), '');
@@ -352,7 +527,7 @@ BEGIN
   IF FOUND THEN
     -- Existing visit: only its owner, and only while they still have access. The
     -- company comes from the stored row; a different company in the payload is refused.
-    IF v_old.salesperson_id IS DISTINCT FROM v_uid OR NOT public.field_sales_can_submit(v_old.company_id) THEN
+    IF v_old.salesperson_id IS DISTINCT FROM v_uid OR NOT field_sales_internal.can_submit(v_old.company_id) THEN
       RAISE EXCEPTION 'Field visit access denied' USING ERRCODE = '42501';
     END IF;
     IF v_company IS NOT NULL AND v_company IS DISTINCT FROM v_old.company_id THEN
@@ -381,7 +556,7 @@ BEGIN
       follow_up_date = v_follow, status = 'submitted', updated_at = now()
     WHERE id = v_id RETURNING * INTO v_new;
   ELSE
-    IF v_company IS NULL OR NOT coalesce(public.field_sales_can_submit(v_company), false) THEN
+    IF v_company IS NULL OR NOT coalesce(field_sales_internal.can_submit(v_company), false) THEN
       RAISE EXCEPTION 'Field visit access denied' USING ERRCODE = '42501';
     END IF;
     SELECT u.email INTO v_email FROM auth.users u WHERE u.id = v_uid;
@@ -421,7 +596,7 @@ BEGIN
 
   SELECT * INTO v FROM public.field_visits WHERE id = p_visit_id FOR UPDATE;
   -- Same message whether the visit is missing or belongs to a company the caller cannot review.
-  IF NOT FOUND OR NOT public.field_visit_can_review(v.company_id) THEN
+  IF NOT FOUND OR NOT field_sales_internal.can_review(v.company_id) THEN
     RAISE EXCEPTION 'Field visit not found' USING ERRCODE = '42501';
   END IF;
 
@@ -498,7 +673,7 @@ BEGIN
   END IF;
 
   SELECT * INTO v FROM public.field_visits WHERE id = p_visit_id FOR UPDATE;
-  IF NOT FOUND OR NOT public.field_visit_can_review(v.company_id) THEN
+  IF NOT FOUND OR NOT field_sales_internal.can_review(v.company_id) THEN
     RAISE EXCEPTION 'Field visit not found' USING ERRCODE = '42501';
   END IF;
 
@@ -514,7 +689,7 @@ BEGIN
   -- Assignee: the reviewer unless another eligible staff member is chosen. The
   -- salesperson is never used automatically, and a sales account is never eligible.
   v_assignee := lower(btrim(coalesce(nullif(btrim(coalesce(p_assignee_email, '')), ''), v_email, '')));
-  IF v_assignee = '' OR NOT public.field_visit_assignee_ok(v.company_id, v_assignee) THEN
+  IF v_assignee = '' OR NOT field_sales_internal.assignee_ok(v.company_id, v_assignee) THEN
     RAISE EXCEPTION 'The assignee must be an active owner, admin or staff member of this company';
   END IF;
 
@@ -545,7 +720,7 @@ BEGIN
       INTO v_matches
     FROM public.leads l
     WHERE l.company_id = v.company_id
-      AND v.phone_normalized IN (public.field_visit_normalize_phone(l.phone), public.field_visit_normalize_phone(l.whatsapp_number));
+      AND v.phone_normalized IN (field_sales_internal.normalize_phone(l.phone), field_sales_internal.normalize_phone(l.whatsapp_number));
 
     IF jsonb_array_length(v_matches) > 0 AND NOT coalesce(p_force_new, false) THEN
       RETURN jsonb_build_object('result', 'duplicates_found', 'visit', to_jsonb(v), 'matches', v_matches);
@@ -617,14 +792,27 @@ END $$;
 
 -- ---------------------------------------------------------------------
 -- 8. Function privileges
---    (Supabase grants EXECUTE on new functions to anon/authenticated by default.)
+--    Supabase grants EXECUTE on new functions to PUBLIC, anon and
+--    authenticated by default, so everything is revoked first and then
+--    granted back narrowly. anon gets nothing.
+--
+--    SECURITY DEFINER functions (all owned by the role running this script,
+--    all with search_path = ''):
+--      can_submit, can_review, assignee_ok          internal
+--      my_field_sales_companies, field_visit_assignees,
+--      save_field_visit, review_field_visit,
+--      convert_field_visit_to_lead                  API
+--    SECURITY INVOKER: normalize_phone (pure), guard_membership and
+--    audit_guard (triggers).
 -- ---------------------------------------------------------------------
+REVOKE ALL ON SCHEMA field_sales_internal FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION
-  public.field_visit_normalize_phone(text),
-  public.field_sales_can_submit(uuid),
-  public.field_visit_can_review(uuid),
-  public.field_visit_assignee_ok(uuid, text),
-  public.field_sales_guard_membership(),
+  field_sales_internal.normalize_phone(text),
+  field_sales_internal.can_submit(uuid),
+  field_sales_internal.can_review(uuid),
+  field_sales_internal.assignee_ok(uuid, text),
+  field_sales_internal.guard_membership(),
+  field_sales_internal.audit_guard(),
   public.my_field_sales_companies(),
   public.field_visit_assignees(uuid),
   public.save_field_visit(jsonb),
@@ -632,9 +820,15 @@ REVOKE ALL ON FUNCTION
   public.convert_field_visit_to_lead(uuid, text, uuid, boolean, date, time)
 FROM PUBLIC, anon, authenticated;
 
+-- Needed only so the field_visits_read policy can be evaluated for a signed-in user.
+GRANT USAGE ON SCHEMA field_sales_internal TO authenticated;
 GRANT EXECUTE ON FUNCTION
-  public.field_sales_can_submit(uuid),       -- needed by the field_visits_read policy; reveals only the caller's own access
-  public.field_visit_can_review(uuid),       -- same
+  field_sales_internal.can_submit(uuid),
+  field_sales_internal.can_review(uuid)
+TO authenticated;
+
+-- The five API entry points.
+GRANT EXECUTE ON FUNCTION
   public.my_field_sales_companies(),
   public.field_visit_assignees(uuid),
   public.save_field_visit(jsonb),
@@ -643,30 +837,37 @@ GRANT EXECUTE ON FUNCTION
 TO authenticated;
 
 -- ---------------------------------------------------------------------
--- 9. Close the 19 tables that were open to every signed-in account.
---    A RESTRICTIVE policy is AND-ed with the existing permissive ones, so the
---    existing policies stay exactly as they are. Owner, admin and staff keep
---    their current access; sales users and accounts with no role get none.
---    The service role bypasses row-level security and is unaffected.
+-- 9. Record what was created, so a later run can tell ours from anything else
 -- ---------------------------------------------------------------------
 DO $$
-DECLARE t text;
+DECLARE obj text[];
 BEGIN
-  FOREACH t IN ARRAY ARRAY[
-    'account_groups','account_heads','bank_accounts','bank_reconciliation_statements','customer_receipts','expenses',
-    'financial_audit_logs','financial_period_locks','financial_year_closures','journal_entries','purchase_bills',
-    'supplier_payments','suppliers','bookings','resources','google_sync_log','google_sync_queue','google_sync_settings',
-    'lead_activity'
+  FOREACH obj SLICE 1 IN ARRAY ARRAY[
+    ['table',    'public.field_sales_members'],
+    ['table',    'public.field_visits'],
+    ['table',    'public.field_visit_events'],
+    ['function', 'field_sales_internal.normalize_phone(text)'],
+    ['function', 'field_sales_internal.can_submit(uuid)'],
+    ['function', 'field_sales_internal.can_review(uuid)'],
+    ['function', 'field_sales_internal.assignee_ok(uuid,text)'],
+    ['function', 'field_sales_internal.guard_membership()'],
+    ['function', 'field_sales_internal.audit_guard()'],
+    ['function', 'public.my_field_sales_companies()'],
+    ['function', 'public.field_visit_assignees(uuid)'],
+    ['function', 'public.save_field_visit(jsonb)'],
+    ['function', 'public.review_field_visit(uuid,text,text)'],
+    ['function', 'public.convert_field_visit_to_lead(uuid,text,uuid,boolean,date,time without time zone)'],
+    ['policy',   'public.field_visits/field_visits_read'],
+    ['policy',   'public.field_visit_events/field_visit_events_read'],
+    ['trigger',  'public.app_company_members/field_sales_guard_membership'],
+    ['trigger',  'public.app_members/field_sales_guard_membership'],
+    ['trigger',  'public.field_sales_members/field_sales_guard_membership'],
+    ['trigger',  'public.field_visit_events/field_visit_events_append_only'],
+    ['trigger',  'public.field_visit_events/field_visit_events_no_truncate'],
+    ['trigger',  'public.field_visits/field_visits_no_delete'],
+    ['trigger',  'public.field_visits/field_visits_no_truncate']
   ] LOOP
-    IF to_regclass('public.' || t) IS NULL THEN
-      RAISE EXCEPTION 'Field sales: expected table public.% not found', t;
-    END IF;
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('DROP POLICY IF EXISTS office_roles_only ON public.%I', t);
-    EXECUTE format(
-      'CREATE POLICY office_roles_only ON public.%I AS RESTRICTIVE FOR ALL TO authenticated '
-      || 'USING ((SELECT public.current_app_role()) IN (''owner'',''admin'',''staff'')) '
-      || 'WITH CHECK ((SELECT public.current_app_role()) IN (''owner'',''admin'',''staff''))', t);
+    PERFORM b2p_migration_internal.record_object('field_sales', obj[1], obj[2]);
   END LOOP;
 END $$;
 
