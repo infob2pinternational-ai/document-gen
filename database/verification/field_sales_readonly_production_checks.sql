@@ -157,15 +157,44 @@ WHERE p.schemaname = 'public' AND p.permissive = 'PERMISSIVE'
   AND NOT EXISTS (SELECT 1 FROM pg_policies r WHERE r.schemaname = 'public' AND r.tablename = p.tablename AND r.permissive = 'RESTRICTIVE')
 ORDER BY 1, 2;
 
--- 8b. The 19 tables and whether each has the hardening policy.
---     After part B: has_office_roles_only = true and is_restrictive = true on all 19.
+-- 8b. The 19 tables and whether each has the hardening policy, checked
+--     property by property.
+--     After part B expect every boolean column to be true on all 19 rows.
+--
+--     The two expressions are compared after normalisation, not as one exact
+--     string: PostgreSQL prints stored expressions slightly differently
+--     between major versions (spacing, parentheses, ::text casts, the
+--     "AS current_app_role" alias, an optional "public." prefix, the SELECT
+--     keyword of the scalar sub-query). Those
+--     details are removed and letter case is ignored before comparing, so the
+--     check means "only owner, admin and staff, decided by current_app_role()"
+--     on PostgreSQL 16 and 17 alike. The raw expressions are shown as well so
+--     a person can read them; if a boolean is false, read the raw text before
+--     concluding anything. Section 9 is the authoritative comparison with
+--     what the migration actually created.
+WITH expected AS (
+  SELECT 'current_app_role=anyarray[''owner'',''admin'',''staff'']' AS normalised
+), policy AS (
+  SELECT p.tablename, p.permissive, p.cmd, p.roles, p.qual, p.with_check,
+         regexp_replace(lower(coalesce(p.qual, '')), '\s|[()]|::text|as current_app_role|public\.|select', '', 'g') AS using_normalised,
+         regexp_replace(lower(coalesce(p.with_check, '')), '\s|[()]|::text|as current_app_role|public\.|select', '', 'g') AS check_normalised
+  FROM pg_policies p WHERE p.schemaname = 'public' AND p.policyname = 'office_roles_only'
+)
 SELECT t.table_name,
-       EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = t.table_name AND p.policyname = 'office_roles_only') AS has_office_roles_only,
-       EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = t.table_name AND p.policyname = 'office_roles_only' AND p.permissive = 'RESTRICTIVE'
-                 AND p.qual = '(( SELECT current_app_role() AS current_app_role) = ANY (ARRAY[''owner''::text, ''admin''::text, ''staff''::text]))') AS is_restrictive_and_as_expected
+       policy.tablename IS NOT NULL                                          AS has_office_roles_only,
+       coalesce(policy.permissive = 'RESTRICTIVE', false)                    AS is_restrictive,
+       coalesce(policy.cmd = 'ALL', false)                                   AS covers_all_commands,
+       coalesce(policy.roles = ARRAY['authenticated']::name[], false)        AS applies_to_authenticated_only,
+       coalesce(policy.using_normalised = expected.normalised, false)        AS using_is_owner_admin_staff,
+       coalesce(policy.check_normalised = expected.normalised, false)        AS check_is_owner_admin_staff,
+       (SELECT count(*) FROM pg_policies o WHERE o.schemaname = 'public' AND o.tablename = t.table_name AND o.policyname <> 'office_roles_only') AS other_policies,
+       policy.qual                                                           AS raw_using,
+       policy.with_check                                                     AS raw_check
 FROM unnest(ARRAY['account_groups','account_heads','bank_accounts','bank_reconciliation_statements','customer_receipts','expenses',
   'financial_audit_logs','financial_period_locks','financial_year_closures','journal_entries','purchase_bills','supplier_payments',
   'suppliers','bookings','resources','google_sync_log','google_sync_queue','google_sync_settings','lead_activity']) AS t(table_name)
+CROSS JOIN expected
+LEFT JOIN policy ON policy.tablename = t.table_name
 ORDER BY 1;
 
 -- 8c. SECURITY DEFINER functions that an anonymous caller may execute.

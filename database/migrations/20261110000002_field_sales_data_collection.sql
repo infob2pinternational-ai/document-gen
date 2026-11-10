@@ -79,19 +79,48 @@ BEGIN
 
   -- The security hardening must already be in place: a sales account must
   -- never exist while the nineteen tables are open to every signed-in user.
-  IF to_regprocedure('b2p_migration_internal.assert_unmodified(text,text)') IS NULL THEN
+  IF to_regprocedure('b2p_migration_internal.assert_unmodified(text,text)') IS NULL
+     OR to_regprocedure('b2p_migration_internal.object_definition(text,text)') IS NULL THEN
     RAISE EXCEPTION 'Field sales: apply 20261110000001_security_office_roles_only.sql first.';
   END IF;
-  SELECT string_agg(t, ', ') INTO missing
-  FROM unnest(ARRAY[
+  IF to_regclass('b2p_migration_internal.object_registry') IS NULL THEN
+    RAISE EXCEPTION 'Field sales: the migration registry is missing. Apply 20261110000001_security_office_roles_only.sql first.';
+  END IF;
+END $$;
+
+-- Every one of the 19 security policies must be present, must be recorded as
+-- created by the security migration, and must still have exactly the
+-- definition that migration created (mode, command, roles and both
+-- expressions, compared by fingerprint). A policy that merely has the right
+-- name, or the right name and RESTRICTIVE mode, is not enough.
+DO $$
+DECLARE
+  t text; v_ident text; v_owner text;
+  problems text[] := '{}';
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
     'account_groups','account_heads','bank_accounts','bank_reconciliation_statements','customer_receipts','expenses',
     'financial_audit_logs','financial_period_locks','financial_year_closures','journal_entries','purchase_bills',
     'supplier_payments','suppliers','bookings','resources','google_sync_log','google_sync_queue','google_sync_settings',
-    'lead_activity']) t
-  WHERE NOT EXISTS (SELECT 1 FROM pg_policies p
-                    WHERE p.schemaname = 'public' AND p.tablename = t AND p.policyname = 'office_roles_only' AND p.permissive = 'RESTRICTIVE');
-  IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'Field sales: security hardening is missing on: %. Apply 20261110000001_security_office_roles_only.sql first.', missing;
+    'lead_activity'
+  ] LOOP
+    v_ident := 'public.' || t || '/office_roles_only';
+    SELECT r.migration INTO v_owner FROM b2p_migration_internal.object_registry r WHERE r.kind = 'policy' AND r.ident = v_ident;
+    IF b2p_migration_internal.object_definition('policy', v_ident) IS NULL THEN
+      problems := problems || (t || ' (missing)');
+    ELSIF v_owner IS DISTINCT FROM 'security_office_roles_only' THEN
+      problems := problems || (t || ' (not recorded as created by the security migration)');
+    ELSE
+      BEGIN
+        PERFORM b2p_migration_internal.assert_unmodified('policy', v_ident);
+      EXCEPTION WHEN raise_exception THEN
+        problems := problems || (t || ' (modified since the security migration created it)');
+      END;
+    END IF;
+  END LOOP;
+  IF array_length(problems, 1) > 0 THEN
+    RAISE EXCEPTION 'Field sales: security hardening is not intact on: %. Nothing was changed. Restore it with 20261110000001_security_office_roles_only.sql (or investigate) before installing the feature.',
+      array_to_string(problems, ', ');
   END IF;
 END $$;
 
@@ -318,9 +347,40 @@ $$;
 -- ---------------------------------------------------------------------
 -- 5. Keep the sales role and normal company membership mutually exclusive
 -- ---------------------------------------------------------------------
+-- Invariant: a user with role "sales" never has an app_company_members row,
+-- and only a user with role "sales" has field_sales_members rows.
+--
+-- Each trigger checks a DIFFERENT table from the one being written, so two
+-- transactions working on the same user at the same moment could each pass
+-- their check before either commits. To prevent that, every path through this
+-- function first takes ONE lock per user, always the same one:
+--
+--     pg_advisory_xact_lock( hash('field_sales_membership:' || user_id) )
+--
+--   * It is the first thing the function does, before any check, on all three
+--     tables, so all membership changes for one user run one after another.
+--   * It is held until the transaction ends, so the second transaction waits
+--     for the first to commit or roll back and then checks again. Under READ
+--     COMMITTED every statement in this function sees the newest committed
+--     data, so the second transaction sees what the first one did.
+--   * REPEATABLE READ and SERIALIZABLE transactions keep an old snapshot and
+--     would NOT see it, so membership changes are refused in those modes.
+--   * An advisory lock is used rather than a row lock on auth.users because it
+--     needs no privilege on the auth schema (owned by Supabase, not by us) and
+--     cannot interfere with sign-in or with other tables' foreign keys.
+--   * One lock per user and one acquisition point means there is no lock-order
+--     cycle within a user. A statement that touches several users in an order
+--     opposite to another transaction can still deadlock; Postgres detects
+--     that and aborts one of them, which keeps the invariant.
 CREATE OR REPLACE FUNCTION field_sales_internal.guard_membership() RETURNS trigger
 LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'Membership changes must run in a READ COMMITTED transaction (found: %).', current_setting('transaction_isolation');
+  END IF;
+  -- Serialise every membership change for this user. Must stay the first action.
+  PERFORM pg_advisory_xact_lock(hashtextextended('field_sales_membership:' || NEW.user_id::text, 0));
+
   IF TG_TABLE_NAME = 'app_company_members' THEN
     IF EXISTS (SELECT 1 FROM public.app_members m WHERE m.user_id = NEW.user_id AND m.role = 'sales') THEN
       RAISE EXCEPTION 'A sales user cannot be given normal company membership. Use field_sales_members.';

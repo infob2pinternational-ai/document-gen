@@ -102,14 +102,24 @@ these tables.
 
 - Section 2: 74 policies; the 55 from the baseline are unchanged.
 - Section 8a: no rows.
-- Section 8b: `true, true` on all 19 rows.
+- Section 8b: every boolean column `true` on all 19 rows.
 - Section 9: 19 rows, all `unchanged`.
 - Sign in as owner, admin and a staff user: Google Sheets sync, bookings and
   any finance screen in use behave as before.
 
 ## Part A: feature migration
 
-**Requires part B.** It checks that all 19 policies are present and stops if not.
+**Requires part B, intact.** Before changing anything it checks each of the 19
+`office_roles_only` policies against the fingerprint recorded when part B
+created it, and stops, with nothing changed, if any policy is:
+
+- missing;
+- modified in any way (expression, WITH CHECK, roles, command or mode), even if
+  it still has the right name and is still RESTRICTIVE;
+- present but not recorded as created by the security migration.
+
+The error lists every affected table. The same check runs again on any re-run
+of part A.
 
 **New objects**
 
@@ -185,8 +195,28 @@ If the web app is also rolled back to a build that does not know the
 `field_visit` source, those leads still load and save; the lead form will show
 their source as blank until the app is updated again.
 
+**What the archive is, and is not.** The three archive tables are plain
+copies made with `CREATE TABLE ... AS`. They preserve **every row and every
+column value**. They do **not** carry over anything else from the originals:
+
+- no primary key, foreign keys, CHECK or NOT NULL constraints;
+- no indexes;
+- no triggers, so the append-only protection does not apply to the copies;
+- no row-level security policies and no grants (the script revokes all access,
+  so only the database administrator can read them);
+- no identity sequence: `field_visit_events.id` keeps its values but is an
+  ordinary column in the copy.
+
+They are a record for inspection and export, not tables the feature can run
+on. To bring the data back after reinstalling part A, an administrator must
+insert the rows into the new tables in dependency order
+(`field_sales_members`, `field_visits`, `field_visit_events`), which re-applies
+the real constraints. That reload is a manual step and is not scripted or
+tested here. Each run of part C creates a new timestamped set; nothing is
+overwritten.
+
 **After running, verify:** no `field_*` tables or functions; section 8b still
-`true, true` on all 19 rows; section 9 lists only the 19 security policies.
+all `true` on all 19 rows; section 9 lists only the 19 security policies.
 
 ## Part D: security-policy rollback (separate approval)
 
@@ -234,6 +264,36 @@ table or overwrite someone else's function.
 - Each script is one transaction. A failure at any point rolls all of it back.
 
 Section 9 of the verification script reports any object that has drifted.
+
+## Membership guards and concurrency
+
+Invariant: a user with role `sales` never has an `app_company_members` row,
+and only a user with role `sales` has `field_sales_members` rows.
+
+Three triggers enforce it, on `app_members`, `app_company_members` and
+`field_sales_members`. Each one checks a different table from the one being
+written, so two transactions changing the same user at the same moment could
+each pass their check before either commits. To prevent that:
+
+- Every trigger path first takes the **same single lock for that user**, a
+  transaction-level advisory lock on the user id, before any check.
+- It is held until the transaction ends. A second transaction for the same
+  user waits, then checks again and sees what the first one committed.
+- Membership changes are refused in `REPEATABLE READ` and `SERIALIZABLE`
+  transactions, because those would not see the other transaction's commit.
+  The SQL editor uses `READ COMMITTED`, so normal provisioning is unaffected.
+- One lock per user, taken at one point, means no lock-order cycle for a
+  single user. Two transactions that each touch the same two users in opposite
+  order can deadlock; Postgres detects it and aborts one, which keeps the
+  invariant. Retry the aborted one.
+- Changes for different users do not wait for each other.
+
+An advisory lock was chosen over a row lock on `auth.users` because it needs no
+privilege on the Supabase-owned `auth` schema (which could not be checked
+without querying production) and cannot delay sign-in or other tables' foreign
+keys. The lock only coordinates these three triggers; a session that disables
+the triggers bypasses it, and the field-visit functions still fail closed for a
+`sales` user who has normal membership.
 
 ## Audit history and the administrator exception
 
@@ -390,11 +450,12 @@ production's `postgres`, is not a superuser but can bypass row-level security.
 |---|---|
 | Hardening | Before it, a no-role account reads all 19 tables. After it, owner, admin and staff keep read, update, insert and delete on each; no-role, sales and anonymous callers are denied on each, using the real production columns |
 | Hardening safety | An unexpected or modified `office_roles_only` policy stops the script; a re-run changes nothing; the registry is private |
-| Feature safety | Refuses to run without part B; stops with nothing changed for a same-named function, table or schema, for constraints that differ from production, and for a missing live column |
+| Feature safety | Refuses to run without part B, or with any of the 19 policies missing, modified, re-created with a different expression, or unrecorded; installs when all 19 are unchanged; stops with nothing changed for a same-named function, table or schema, for constraints that differ from production, and for a missing live column |
 | Re-run | Visits, events, memberships, leads, follow-ups and all recorded definitions are byte-identical after two re-runs; a hand-edited function, table, policy, trigger or index stops the script |
 | Failure recovery | A failure part-way through rolls back completely; the script succeeds once the cause is removed |
 | Unrelated CRM data | Sales cannot reach leads, activities, follow-ups, customers, services, quotations, templates, telecalling, documents, WhatsApp, devices, report dispatches or profiles |
-| Membership guards | Owner/admin/staff provisioning and role changes work as before; a sales user cannot get normal membership by insert, upsert, bulk insert or update; role changes in both directions; moving between companies; deactivation and reactivation |
+| Membership guards (2 connections) | Role `sales` vs. new normal membership, and new field membership vs. role away from `sales`, in both orders: the second transaction is shown to wait and then fails, or succeeds if the first rolls back. Whole multi-statement transitions racing each other. Forty uncoordinated races with exactly one winner each. Compatible changes both succeed; a cross-user deadlock is detected |
+| Membership guards | Refused outside READ COMMITTED. Owner/admin/staff provisioning and role changes work as before; a sales user cannot get normal membership by insert, upsert, bulk insert or update; role changes in both directions; moving between companies; deactivation and reactivation |
 | Function security | Owner, empty `search_path`, SECURITY DEFINER only where listed, exact execute grants, no anon or PUBLIC access; behaviour with no identity, unknown identity and a forged e-mail claim |
 | Workflow | Server-controlled identity, validation, idempotent save, cross-company isolation, review rules and self-review audit |
 | Audit integrity | Updates, deletes and truncates are refused for every application role, directly and through SECURITY DEFINER functions, including the service key; the administrator exception works |
@@ -426,6 +487,19 @@ production's `postgres`, is not a superuser but can bypass row-level security.
   `authenticated`) are not exercised. A reviewer whose conversion waits behind
   another for more than 8 seconds would receive a timeout error and nothing
   would be created.
+- **PostgreSQL 17 formatting.** Verification query 8b compares normalised
+  expressions so that it does not depend on one exact printed form, but it was
+  only run on PostgreSQL 16. If a boolean is false on production, read the raw
+  expression shown beside it before concluding anything.
+- **Fingerprints and server upgrades.** Fingerprints are computed from how the
+  server prints a definition. A major PostgreSQL upgrade could print the same
+  definition differently, which would make the migrations and section 9 report
+  an object as modified when it is not. That would stop a re-run safely, but
+  would need an administrator to re-record the fingerprints.
+- **Membership lock scope.** The per-user lock was tested with two
+  connections. It is taken inside the three guard triggers only; a statement
+  run with those triggers disabled is not serialised. A transaction waiting
+  for the lock is subject to the session's lock and statement timeouts.
 - **Administrator exception.** Nothing prevents a database administrator from
   altering audit history or disabling the guard triggers.
 - **Known open issues.** The two security patches in "Release gates" are

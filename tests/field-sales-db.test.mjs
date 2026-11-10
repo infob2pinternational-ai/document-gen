@@ -143,16 +143,81 @@ t('hardening never overwrites an unexpected or modified policy, and a re-run cha
 // B. Feature migration safety
 // ===========================================================================
 
-t('feature migration refuses to run without the security hardening', async () => {
+t('feature migration refuses to run unless all 19 security policies are present, recorded and unmodified', async () => {
   const db = await setup({ security: false });
   try {
     await asAdmin(db);
-    await expectScriptFailure(db, FEATURE_MIGRATION, /apply 20261110000001_security_office_roles_only\.sql first/);
+    const intact = "(SELECT public.current_app_role()) IN ('owner','admin','staff')";
+    const untouched = async () => {
+      assert.equal((await one(db, "SELECT to_regclass('public.field_visits') AS t")).t, null, 'no feature table');
+      assert.equal((await one(db, "SELECT to_regnamespace('field_sales_internal') AS s")).s, null, 'no helper schema');
+      assert.equal(await count(db, 'pg_constraint', "conname = 'app_members_role_check' AND pg_get_constraintdef(oid) LIKE '%sales%'"), 0, 'role constraint unchanged');
+      assert.equal(await count(db, 'pg_constraint', "conname = 'leads_lead_source_check' AND pg_get_constraintdef(oid) LIKE '%field_visit%'"), 0, 'lead-source constraint unchanged');
+    };
+    const refused = async (message) => { await expectScriptFailure(db, FEATURE_MIGRATION, message); await untouched(); };
+
+    // 0. No hardening at all.
+    await refused(/apply 20261110000001_security_office_roles_only\.sql first/);
     await db.exec(SECURITY_MIGRATION);
-    await db.exec('DROP POLICY office_roles_only ON public.bookings');
-    await expectScriptFailure(db, FEATURE_MIGRATION, /security hardening is missing on: bookings/);
-    assert.equal((await one(db, "SELECT to_regclass('public.field_visits') AS t")).t, null);
-    assert.equal(await count(db, 'pg_constraint', "conname = 'app_members_role_check' AND pg_get_constraintdef(oid) LIKE '%sales%'"), 0);
+
+    // 1. A MISSING policy.
+    await db.exec('BEGIN; DROP POLICY office_roles_only ON public.bookings;');
+    await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /security hardening is not intact on: bookings \(missing\)/);
+    await db.exec('ROLLBACK');
+
+    // 2. A MODIFIED restrictive policy: still restrictive, still named correctly, but weakened in place.
+    await db.exec('BEGIN; ALTER POLICY office_roles_only ON public.expenses USING (true);');
+    await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /not intact on: expenses \(modified since the security migration created it\)/);
+    await db.exec('ROLLBACK');
+    //    ... widened to another role, or its WITH CHECK weakened, or its command narrowed.
+    for (const change of [
+      "ALTER POLICY office_roles_only ON public.suppliers TO authenticated, anon",
+      "ALTER POLICY office_roles_only ON public.suppliers WITH CHECK (true)",
+      `DROP POLICY office_roles_only ON public.suppliers; CREATE POLICY office_roles_only ON public.suppliers AS RESTRICTIVE FOR SELECT TO authenticated USING (${intact})`
+    ]) {
+      await db.exec('BEGIN'); await db.exec(change);
+      await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /not intact on: suppliers \(modified since the security migration created it\)/, change);
+      await db.exec('ROLLBACK');
+    }
+
+    // 3. CORRECT NAME AND MODE, INCORRECT EXPRESSION: re-created by hand as RESTRICTIVE FOR ALL TO authenticated,
+    //    but letting the sales role (or everyone) through. The old existence + mode check would have accepted these.
+    for (const expression of ["(SELECT public.current_app_role()) IN ('owner','admin','staff','sales')", "(SELECT public.current_app_role()) IS NOT NULL", 'true']) {
+      await db.exec('BEGIN');
+      await db.exec(`DROP POLICY office_roles_only ON public.journal_entries;
+        CREATE POLICY office_roles_only ON public.journal_entries AS RESTRICTIVE FOR ALL TO authenticated USING (${expression}) WITH CHECK (${expression});`);
+      assert.equal(await count(db, 'pg_policies', "tablename = 'journal_entries' AND policyname = 'office_roles_only' AND permissive = 'RESTRICTIVE'"), 1);
+      await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /not intact on: journal_entries \(modified since the security migration created it\)/, expression);
+      await db.exec('ROLLBACK');
+    }
+
+    // 4. Correct in every respect but NOT RECORDED as created by the security migration
+    //    (for example created by hand on a database where the security migration never ran for that table).
+    await db.exec("BEGIN; DELETE FROM b2p_migration_internal.object_registry WHERE ident = 'public.resources/office_roles_only';");
+    await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /not intact on: resources \(not recorded as created by the security migration\)/);
+    await db.exec('ROLLBACK');
+    await db.exec("BEGIN; UPDATE b2p_migration_internal.object_registry SET migration = 'something_else' WHERE ident = 'public.resources/office_roles_only';");
+    await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /not intact on: resources \(not recorded as created by the security migration\)/);
+    await db.exec('ROLLBACK');
+
+    // 5. Several problems are all reported at once.
+    await db.exec('BEGIN; DROP POLICY office_roles_only ON public.bookings; ALTER POLICY office_roles_only ON public.expenses USING (true);');
+    await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /not intact on: expenses \(modified[^)]*\), bookings \(missing\)/);
+    await db.exec('ROLLBACK');
+    await untouched();
+
+    // 6. A COMPLETELY UNCHANGED policy set: the feature installs, and installs again.
+    assert.equal(await policyCount(db), 19);
+    await db.exec(FEATURE_MIGRATION);
+    await db.exec(FEATURE_MIGRATION);
+    assert.equal(await count(db, 'pg_class', "relnamespace = 'public'::regnamespace AND relname IN ('field_visits', 'field_visit_events', 'field_sales_members')"), 3);
+    assert.equal(await policyCount(db), 19, 'the feature migration did not touch the security policies');
+    assert.equal(await count(db, 'b2p_migration_internal.object_registry', "migration = 'security_office_roles_only'"), 19);
+
+    // 7. The same check protects a later re-run of the feature migration.
+    await db.exec('BEGIN; ALTER POLICY office_roles_only ON public.bank_accounts USING (true);');
+    await assert.rejects(db.exec(FEATURE_MIGRATION.replace(/^BEGIN;$/m, '')), /not intact on: bank_accounts \(modified/);
+    await db.exec('ROLLBACK');
   } finally { await db.close(); }
 });
 
@@ -392,6 +457,18 @@ t('a sales user can never hold normal company membership, by any route, and role
     await as(db, U.salesA2);
     assert.equal(await count(db, 'leads', `company_id = '${A}'`), 1);
     await assert.rejects(save(db, visit(32)), /access denied/, 'staff do not submit field visits');
+
+    // Membership changes are refused in isolation levels that could not see a concurrent change.
+    await asAdmin(db);
+    for (const level of ['REPEATABLE READ', 'SERIALIZABLE']) {
+      for (const sql of [`INSERT INTO app_company_members(user_id, company_id) VALUES ('${U.staffB}', '${A}')`,
+        `UPDATE app_members SET role = 'admin' WHERE user_id = '${U.staffB}'`,
+        `INSERT INTO field_sales_members(user_id, company_id) VALUES ('${U.salesB}', '${A}')`]) {
+        await db.exec(`BEGIN ISOLATION LEVEL ${level}`);
+        await assert.rejects(db.query(sql), /must run in a READ COMMITTED transaction/);
+        await db.exec('ROLLBACK');
+      }
+    }
 
     // A sales user cannot do any of this themselves.
     await as(db, U.salesA);

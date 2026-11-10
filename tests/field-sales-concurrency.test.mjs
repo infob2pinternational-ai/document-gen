@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  USE_REAL_POSTGRES, U, EMAIL, A, LEAD_A, id, as, asAdmin, one, count, setup, visit, save, convert, tomorrow, approvedVisit
+  USE_REAL_POSTGRES, U, EMAIL, A, B, LEAD_A, id, as, asAdmin, one, count, setup, visit, save, convert, tomorrow, approvedVisit
 } from './helpers/field-sales-db.mjs';
 
 const t = (name, fn) => test(`[postgres, 2 connections] ${name}`,
@@ -206,5 +206,222 @@ t('the same visit saved from two devices at once is stored once, and a conversio
     assert.equal(await count(db, 'field_visit_events', `visit_id = '${visitId}' AND action LIKE 'converted%'`), 1);
     const mode = (await one(db, 'SELECT conversion_mode AS m FROM field_visits WHERE id = $1', [visitId])).m;
     assert.equal(await count(db, 'leads', "lead_source = 'field_visit'"), mode === 'new_lead' ? 1 : 0);
+  } finally { await db.close(); }
+});
+
+// ===========================================================================
+// Membership guards under concurrency
+//
+// Invariant: a user with role "sales" never has an app_company_members row,
+// and only a user with role "sales" has field_sales_members rows.
+// Each trigger checks a different table from the one it is attached to, so
+// without a common per-user lock two transactions could both pass their check
+// and both commit. These tests drive the conflicting statements from two
+// independent connections and prove that at most one of them can commit.
+// ===========================================================================
+
+let nextUser = 5000;
+/** A fresh confirmed user with the given role and memberships (created by the administrator). */
+async function newUser(db, role, { company = null, fieldCompany = null } = {}) {
+  const uid = id(nextUser++);
+  await asAdmin(db);
+  await db.query('INSERT INTO auth.users(id, email, email_confirmed_at) VALUES ($1, $2, now())', [uid, `user${nextUser}@example.test`]);
+  await db.query('INSERT INTO app_members(user_id, role) VALUES ($1, $2)', [uid, role]);
+  if (company) await db.query('INSERT INTO app_company_members(user_id, company_id) VALUES ($1, $2)', [uid, company]);
+  if (fieldCompany) await db.query('INSERT INTO field_sales_members(user_id, company_id) VALUES ($1, $2)', [uid, fieldCompany]);
+  return uid;
+}
+const violations = async db => {
+  await asAdmin(db);
+  return {
+    salesWithNormalMembership: await count(db, 'app_members m', "m.role = 'sales' AND EXISTS (SELECT 1 FROM app_company_members c WHERE c.user_id = m.user_id)"),
+    fieldMembershipWithoutSalesRole: await count(db, 'field_sales_members f JOIN app_members m ON m.user_id = f.user_id', "m.role <> 'sales'")
+  };
+};
+const CLEAN = { salesWithNormalMembership: 0, fieldMembershipWithoutSalesRole: 0 };
+const state = async (db, uid) => one(db, `SELECT m.role,
+  (SELECT count(*) FROM app_company_members c WHERE c.user_id = m.user_id)::int AS normal,
+  (SELECT count(*) FROM field_sales_members f WHERE f.user_id = m.user_id)::int AS field
+  FROM app_members m WHERE m.user_id = $1`, [uid]);
+
+const SQL = {
+  toSales: "UPDATE app_members SET role = 'sales' WHERE user_id = $1",
+  toStaff: "UPDATE app_members SET role = 'staff' WHERE user_id = $1",
+  addNormal: `INSERT INTO app_company_members(user_id, company_id) VALUES ($1, '${A}')`,
+  addField: `INSERT INTO field_sales_members(user_id, company_id) VALUES ($1, '${A}')`
+};
+const MESSAGE = {
+  toSales: /Remove this user's app_company_members rows before assigning the sales role/,
+  toStaff: /Remove this user's field_sales_members rows before changing their role from sales/,
+  addNormal: /A sales user cannot be given normal company membership/,
+  addField: /field_sales_members is only for users whose app_members role is sales/
+};
+
+/**
+ * Session 1 runs `firstOp` in an open transaction. Session 2 then runs the conflicting
+ * `secondOp`; it must WAIT (proving the two overlap) and, once session 1 commits, FAIL.
+ * If session 1 rolls back instead, session 2 must succeed.
+ */
+async function conflict(db, sessions, makeUser, firstOp, secondOp) {
+  const [first, second] = sessions;
+  for (const outcome of ['COMMIT', 'ROLLBACK']) {
+    const uid = await makeUser();
+    await first.exec('BEGIN');
+    assert.equal((await first.query(SQL[firstOp], [uid])).affectedRows, 1, `${firstOp} succeeds on its own`);
+    const pending = second.query(SQL[secondOp], [uid]);
+    const handled = pending.then(result => ({ ok: true, result }), error => ({ ok: false, error }));
+    await waitUntilBlocked(db);
+    assert.equal(await settled(handled), false, `${secondOp} waits while ${firstOp} is uncommitted`);
+    await first.exec(outcome);
+    const result = await handled;
+    if (outcome === 'COMMIT') {
+      assert.equal(result.ok, false, `${secondOp} must fail after ${firstOp} committed`);
+      assert.match(result.error.message, MESSAGE[secondOp]);
+    } else {
+      assert.equal(result.ok, true, `${secondOp} succeeds after ${firstOp} rolled back: ${result.error?.message}`);
+    }
+    assert.deepEqual(await violations(db), CLEAN, `${firstOp} then ${secondOp}, first ${outcome}`);
+  }
+}
+
+async function adminSessions(db) {
+  const first = await db.connect(), second = await db.connect();
+  await asAdmin(first); await asAdmin(second);
+  return [first, second];
+}
+
+t('membership: assigning role sales concurrently with inserting app_company_members - both can never commit', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    const staffWithoutMembership = () => newUser(db, 'staff');
+    // Either order: the second transaction waits for the first, re-checks, and is refused.
+    await conflict(db, sessions, staffWithoutMembership, 'toSales', 'addNormal');
+    await conflict(db, sessions, staffWithoutMembership, 'addNormal', 'toSales');
+  } finally { await db.close(); }
+});
+
+t('membership: inserting field_sales_members concurrently with changing role away from sales - both can never commit', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    const salesWithoutMembership = () => newUser(db, 'sales');
+    await conflict(db, sessions, salesWithoutMembership, 'addField', 'toStaff');
+    await conflict(db, sessions, salesWithoutMembership, 'toStaff', 'addField');
+  } finally { await db.close(); }
+});
+
+t('membership: whole transitions racing each other (sales to staff with normal membership vs. a new field membership, and the reverse)', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const [first, second] = await adminSessions(db);
+
+    // Transaction 1 converts a sales user to staff AND gives normal membership. Transaction 2 adds a field membership.
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      const uid = await newUser(db, 'sales');
+      await first.exec('BEGIN');
+      await first.query(SQL.toStaff, [uid]);
+      await first.query(SQL.addNormal, [uid]);
+      const handled = second.query(SQL.addField, [uid]).then(() => ({ ok: true }), error => ({ ok: false, error }));
+      await waitUntilBlocked(db);
+      await first.exec(outcome);
+      const result = await handled;
+      assert.equal(result.ok, outcome === 'ROLLBACK');
+      if (!result.ok) assert.match(result.error.message, MESSAGE.addField);
+      assert.deepEqual(await state(db, uid), outcome === 'COMMIT' ? { role: 'staff', normal: 1, field: 0 } : { role: 'sales', normal: 0, field: 1 });
+      assert.deepEqual(await violations(db), CLEAN);
+    }
+
+    // Transaction 1 converts a staff user to sales (removing normal membership) AND adds a field membership.
+    // Transaction 2 tries to add another normal membership for the same user.
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      const uid = await newUser(db, 'staff', { company: B });
+      await first.exec('BEGIN');
+      await first.query('DELETE FROM app_company_members WHERE user_id = $1', [uid]);
+      await first.query(SQL.toSales, [uid]);
+      await first.query(SQL.addField, [uid]);
+      const handled = second.query(SQL.addNormal, [uid]).then(() => ({ ok: true }), error => ({ ok: false, error }));
+      await waitUntilBlocked(db);
+      await first.exec(outcome);
+      const result = await handled;
+      assert.equal(result.ok, outcome === 'ROLLBACK');
+      if (!result.ok) assert.match(result.error.message, MESSAGE.addNormal);
+      assert.deepEqual(await state(db, uid), outcome === 'COMMIT' ? { role: 'sales', normal: 0, field: 1 } : { role: 'staff', normal: 2, field: 0 });
+      assert.deepEqual(await violations(db), CLEAN);
+    }
+
+    // The two role changes themselves (staff -> sales and sales -> staff are mutually exclusive by state, so race
+    // an upsert that sets role sales against a normal membership arriving through an upsert).
+    const uid = await newUser(db, 'staff');
+    await first.exec('BEGIN');
+    await first.query("INSERT INTO app_members(user_id, role) VALUES ($1, 'sales') ON CONFLICT (user_id) DO UPDATE SET role = 'sales'", [uid]);
+    const handled = second.query(`INSERT INTO app_company_members(user_id, company_id) VALUES ($1, '${A}') ON CONFLICT (user_id, company_id) DO NOTHING`, [uid])
+      .then(() => ({ ok: true }), error => ({ ok: false, error }));
+    await waitUntilBlocked(db);
+    await first.exec('COMMIT');
+    const result = await handled;
+    assert.equal(result.ok, false);
+    assert.match(result.error.message, MESSAGE.addNormal);
+    assert.deepEqual(await violations(db), CLEAN);
+  } finally { await db.close(); }
+});
+
+t('membership: forty uncoordinated races - in every one exactly one of the two conflicting statements commits', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const [first, second] = await adminSessions(db);
+    const race = async (uid, opA, opB) => {
+      const results = await Promise.allSettled([first.query(SQL[opA], [uid]), second.query(SQL[opB], [uid])]);
+      const fulfilled = results.filter(r => r.status === 'fulfilled').length;
+      assert.equal(fulfilled, 1, `${opA} vs ${opB}: exactly one commits (got ${fulfilled})`);
+      const failure = results.find(r => r.status === 'rejected');
+      assert.match(failure.reason.message, results[0].status === 'rejected' ? MESSAGE[opA] : MESSAGE[opB]);
+    };
+    for (let n = 0; n < 20; n++) await race(await newUser(db, 'staff'), 'toSales', 'addNormal');
+    for (let n = 0; n < 20; n++) await race(await newUser(db, 'sales'), 'addField', 'toStaff');
+    assert.deepEqual(await violations(db), CLEAN);
+  } finally { await db.close(); }
+});
+
+t('membership: compatible changes for one user still both succeed, and a cross-user deadlock is detected rather than hanging', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const [first, second] = await adminSessions(db);
+
+    // Two field memberships for the same sales user at once: serialised, both commit.
+    const sales = await newUser(db, 'sales');
+    await first.exec('BEGIN');
+    await first.query(SQL.addField, [sales]);
+    const other = second.query(`INSERT INTO field_sales_members(user_id, company_id) VALUES ($1, '${B}')`, [sales]);
+    await waitUntilBlocked(db);
+    await first.exec('COMMIT');
+    assert.equal((await other).affectedRows, 1);
+    assert.deepEqual(await state(db, sales), { role: 'sales', normal: 0, field: 2 });
+
+    // Two normal memberships for the same staff user at once: both commit.
+    const staff = await newUser(db, 'staff');
+    const both = await Promise.all([first.query(SQL.addNormal, [staff]), second.query(`INSERT INTO app_company_members(user_id, company_id) VALUES ($1, '${B}')`, [staff])]);
+    assert.deepEqual(both.map(r => r.affectedRows), [1, 1]);
+
+    // Changes for DIFFERENT users do not wait for each other.
+    const x = await newUser(db, 'staff'), y = await newUser(db, 'staff');
+    await first.exec('BEGIN');
+    await first.query(SQL.addNormal, [x]);
+    assert.equal((await second.query(SQL.addNormal, [y])).affectedRows, 1, 'another user is not blocked');
+    await first.exec('COMMIT');
+
+    // Two transactions touching the same two users in opposite order: Postgres detects the deadlock and
+    // aborts one; the other commits. Neither hangs, and the invariant holds.
+    const p = await newUser(db, 'staff'), q = await newUser(db, 'staff');
+    await first.exec('BEGIN'); await second.exec('BEGIN');
+    await first.query(SQL.addNormal, [p]);
+    await second.query(SQL.addNormal, [q]);
+    const results = await Promise.allSettled([first.query(SQL.addNormal, [q]), second.query(SQL.addNormal, [p])]);
+    assert.deepEqual(results.map(r => r.status).sort(), ['fulfilled', 'rejected']);
+    assert.match(results.find(r => r.status === 'rejected').reason.message, /deadlock detected/);
+    await first.exec(results[0].status === 'fulfilled' ? 'COMMIT' : 'ROLLBACK');
+    await second.exec(results[1].status === 'fulfilled' ? 'COMMIT' : 'ROLLBACK');
+    assert.equal((await state(db, p)).normal + (await state(db, q)).normal, 2, 'the surviving transaction committed both of its rows');
+    assert.deepEqual(await violations(db), CLEAN);
   } finally { await db.close(); }
 });

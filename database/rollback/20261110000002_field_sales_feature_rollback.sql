@@ -15,6 +15,10 @@
 -- What this does
 --   * Copies field_visits, field_visit_events and field_sales_members into
 --     the private schema field_sales_archive (kept; never dropped here).
+--     The copies are made with CREATE TABLE ... AS: they hold every row and
+--     column value, but NOT the original constraints, indexes, triggers,
+--     policies, grants or identity sequence. They are for inspection and
+--     export. Reloading them into a reinstalled feature is a manual step.
 --   * Removes every object the feature migration created.
 --   * Restores app_members_role_check to owner/admin/staff.
 -- Leads
@@ -58,6 +62,7 @@ END $$;
 
 -- ---------------------------------------------------------------------
 -- 1. Archive feature data (no grants: reachable only by the administrator)
+--    Row data only: constraints, indexes, triggers, policies and grants are not copied.
 -- ---------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS field_sales_archive;
 REVOKE ALL ON SCHEMA field_sales_archive FROM PUBLIC, anon, authenticated;
