@@ -470,6 +470,29 @@ t('a sales user can never hold normal company membership, by any route, and role
       }
     }
 
+    // ... but an account update that changes neither user id nor role takes no lock and is allowed anywhere.
+    await db.exec('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    assert.equal((await db.query('UPDATE app_members SET active = active WHERE user_id = $1', [U.staffB])).affectedRows, 1);
+    await db.exec('COMMIT');
+
+    // Changing ONLY app_members.user_id is guarded as well (it used to bypass the trigger).
+    //   - an account whose old user id still has memberships cannot be re-pointed;
+    await assert.rejects(db.query('UPDATE app_members SET user_id = $1 WHERE user_id = $2', [U.spare, U.salesB]), /Move or remove the memberships of the old user id/);
+    await assert.rejects(db.query('UPDATE app_members SET user_id = $1 WHERE user_id = $2', [U.spare, U.staffB]), /Move or remove the memberships of the old user id/);
+    //   - nor in an isolation level that could miss a concurrent change;
+    await db.exec('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    await assert.rejects(db.query('UPDATE app_members SET user_id = $1 WHERE user_id = $2', [U.spare, U.admin]), /must run in a READ COMMITTED transaction/);
+    await db.exec('ROLLBACK');
+    //   - an account with no memberships can be, and the role travels with it.
+    await db.query('DELETE FROM field_sales_members WHERE user_id = $1', [U.salesB]);
+    assert.equal((await db.query('UPDATE app_members SET user_id = $1 WHERE user_id = $2', [U.spare, U.salesB])).affectedRows, 1);
+    await assert.rejects(db.query('INSERT INTO app_company_members(user_id, company_id) VALUES ($1, $2)', [U.spare, A]), blocked);
+    await db.query('INSERT INTO field_sales_members(user_id, company_id) VALUES ($1, $2)', [U.spare, B]);
+    //   - a role change and an identity change in one statement are both checked.
+    await assert.rejects(db.query("UPDATE app_members SET user_id = $1, role = 'staff' WHERE user_id = $2", [U.salesB, U.spare]), /Move or remove the memberships of the old user id/);
+    assert.equal(await count(db, 'app_members m', "m.role = 'sales' AND EXISTS (SELECT 1 FROM app_company_members c WHERE c.user_id = m.user_id)"), 0);
+    assert.equal(await count(db, 'field_sales_members f JOIN app_members m ON m.user_id = f.user_id', "m.role <> 'sales'"), 0);
+
     // A sales user cannot do any of this themselves.
     await as(db, U.salesA);
     for (const sql of ["UPDATE app_members SET role = 'owner' WHERE user_id = auth.uid()",

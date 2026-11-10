@@ -353,13 +353,30 @@ $$;
 -- Each trigger checks a DIFFERENT table from the one being written, so two
 -- transactions working on the same user at the same moment could each pass
 -- their check before either commits. To prevent that, every path through this
--- function first takes ONE lock per user, always the same one:
+-- function first takes one lock per AFFECTED USER, always the same one:
 --
 --     pg_advisory_xact_lock( hash('field_sales_membership:' || user_id) )
 --
---   * It is the first thing the function does, before any check, on all three
---     tables, so all membership changes for one user run one after another.
---   * It is held until the transaction ends, so the second transaction waits
+-- Which users are affected
+--   * INSERT, and UPDATE that keeps user_id: the row's user (NEW.user_id).
+--   * UPDATE that changes user_id, on any of the three tables: BOTH the user
+--     the row is leaving (OLD.user_id) and the user it is going to
+--     (NEW.user_id). The old user loses an account row or a membership; the
+--     new user gains one. Both must be serialised against other changes.
+--   * UPDATE of app_members that changes neither user_id nor role (for
+--     example active = false): nobody. It returns immediately, takes no lock
+--     and is not subject to the isolation-level rule below.
+--   No lock is ever taken for a user the statement does not touch.
+--
+-- Lock order
+--   When two users are affected the two locks are always taken in ascending
+--   user-id order, whichever is OLD and whichever is NEW. Two transactions
+--   moving rows between the same two users in opposite directions therefore
+--   queue behind each other instead of deadlocking.
+--
+-- Why this is enough
+--   * The locks are the first thing the function does, before any check.
+--   * They are held until the transaction ends, so a second transaction waits
 --     for the first to commit or roll back and then checks again. Under READ
 --     COMMITTED every statement in this function sees the newest committed
 --     data, so the second transaction sees what the first one did.
@@ -368,32 +385,69 @@ $$;
 --   * An advisory lock is used rather than a row lock on auth.users because it
 --     needs no privilege on the auth schema (owned by Supabase, not by us) and
 --     cannot interfere with sign-in or with other tables' foreign keys.
---   * One lock per user and one acquisition point means there is no lock-order
---     cycle within a user. A statement that touches several users in an order
---     opposite to another transaction can still deadlock; Postgres detects
---     that and aborts one of them, which keeps the invariant.
+--   * A transaction that changes several users in separate statements, in an
+--     order opposite to another transaction, can still deadlock. Postgres
+--     detects that and aborts one of them, which keeps the invariant.
 CREATE OR REPLACE FUNCTION field_sales_internal.guard_membership() RETURNS trigger
 LANGUAGE plpgsql SET search_path = '' AS $$
+DECLARE
+  v_identity_change boolean := false;
+  v_user uuid;
 BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    v_identity_change := NEW.user_id IS DISTINCT FROM OLD.user_id;
+  END IF;
+
+  -- An account update that changes neither who the account belongs to nor its role affects no invariant.
+  -- (Nested IF: only app_members has a role column, so it must not be referenced for the other tables.)
+  IF TG_TABLE_NAME = 'app_members' AND TG_OP = 'UPDATE' AND NOT v_identity_change THEN
+    IF NEW.role IS NOT DISTINCT FROM OLD.role THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+
   IF current_setting('transaction_isolation') <> 'read committed' THEN
     RAISE EXCEPTION 'Membership changes must run in a READ COMMITTED transaction (found: %).', current_setting('transaction_isolation');
   END IF;
-  -- Serialise every membership change for this user. Must stay the first action.
-  PERFORM pg_advisory_xact_lock(hashtextextended('field_sales_membership:' || NEW.user_id::text, 0));
+
+  -- Serialise every membership change for each affected user, in ascending user-id order.
+  -- Must stay ahead of every check below.
+  FOR v_user IN
+    SELECT DISTINCT u FROM unnest(ARRAY[NEW.user_id, CASE WHEN v_identity_change THEN OLD.user_id END]) AS u
+    WHERE u IS NOT NULL
+    ORDER BY u
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended('field_sales_membership:' || v_user::text, 0));
+  END LOOP;
 
   IF TG_TABLE_NAME = 'app_company_members' THEN
+    -- New user: must not be sales. Old user (when the row moves): only loses a
+    -- normal membership, which can never break the invariant, so there is
+    -- nothing to refuse; the lock above still makes a concurrent role change
+    -- for that user wait for this move.
     IF EXISTS (SELECT 1 FROM public.app_members m WHERE m.user_id = NEW.user_id AND m.role = 'sales') THEN
       RAISE EXCEPTION 'A sales user cannot be given normal company membership. Use field_sales_members.';
     END IF;
+
   ELSIF TG_TABLE_NAME = 'app_members' THEN
+    -- New user (the account as it will be): role and memberships must agree.
     IF NEW.role = 'sales' AND EXISTS (SELECT 1 FROM public.app_company_members c WHERE c.user_id = NEW.user_id) THEN
       RAISE EXCEPTION 'Remove this user''s app_company_members rows before assigning the sales role.';
     END IF;
-    IF TG_OP = 'UPDATE' AND OLD.role = 'sales' AND NEW.role <> 'sales'
-       AND EXISTS (SELECT 1 FROM public.field_sales_members f WHERE f.user_id = NEW.user_id) THEN
+    IF NEW.role <> 'sales' AND EXISTS (SELECT 1 FROM public.field_sales_members f WHERE f.user_id = NEW.user_id) THEN
       RAISE EXCEPTION 'Remove this user''s field_sales_members rows before changing their role from sales.';
     END IF;
+    -- Old user (when the account is re-pointed at another user id): is left
+    -- without an account, so must be left without memberships of either kind.
+    IF v_identity_change AND (
+         EXISTS (SELECT 1 FROM public.app_company_members c WHERE c.user_id = OLD.user_id)
+         OR EXISTS (SELECT 1 FROM public.field_sales_members f WHERE f.user_id = OLD.user_id)) THEN
+      RAISE EXCEPTION 'Move or remove the memberships of the old user id before changing an account''s user id.';
+    END IF;
+
   ELSIF TG_TABLE_NAME = 'field_sales_members' THEN
+    -- New user: must be sales. Old user (when the row moves): only loses a
+    -- field membership, which can never break the invariant; locked as above.
     IF NOT EXISTS (SELECT 1 FROM public.app_members m WHERE m.user_id = NEW.user_id AND m.role = 'sales') THEN
       RAISE EXCEPTION 'field_sales_members is only for users whose app_members role is sales.';
     END IF;
@@ -407,7 +461,10 @@ DROP TRIGGER IF EXISTS field_sales_guard_membership ON public.app_company_member
 CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE ON public.app_company_members
   FOR EACH ROW EXECUTE FUNCTION field_sales_internal.guard_membership();
 DROP TRIGGER IF EXISTS field_sales_guard_membership ON public.app_members;
-CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE OF role ON public.app_members
+-- Every UPDATE, not "UPDATE OF role": a statement that changes only user_id must be guarded too, and a
+-- column list would also miss a change made by another BEFORE trigger. The function itself returns at
+-- once when neither user_id nor role changes.
+CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE ON public.app_members
   FOR EACH ROW EXECUTE FUNCTION field_sales_internal.guard_membership();
 DROP TRIGGER IF EXISTS field_sales_guard_membership ON public.field_sales_members;
 CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE ON public.field_sales_members

@@ -273,20 +273,61 @@ and only a user with role `sales` has `field_sales_members` rows.
 Three triggers enforce it, on `app_members`, `app_company_members` and
 `field_sales_members`. Each one checks a different table from the one being
 written, so two transactions changing the same user at the same moment could
-each pass their check before either commits. To prevent that:
+each pass their check before either commits. To prevent that, the guard takes
+one transaction-level advisory lock per **affected user** before any check.
 
-- Every trigger path first takes the **same single lock for that user**, a
-  transaction-level advisory lock on the user id, before any check.
-- It is held until the transaction ends. A second transaction for the same
+**Which statements are guarded**
+
+- Every INSERT and every UPDATE on the three tables. On `app_members` the
+  trigger fires for any UPDATE, not only `UPDATE OF role`, so a statement that
+  changes only `user_id` is guarded too.
+- An `app_members` update that changes neither `user_id` nor `role` (for
+  example `active = false`) returns at once: no lock, no checks.
+
+**Which users are locked**
+
+- INSERT, or UPDATE that keeps `user_id`: that row's user.
+- UPDATE that changes `user_id`, on any of the three tables: both the user the
+  row leaves (old) and the user it goes to (new).
+- When two users are locked, the locks are always taken in ascending user-id
+  order, whichever is old and whichever is new. Two transactions moving rows
+  between the same two users in opposite directions queue instead of deadlocking.
+- No lock is taken for a user the statement does not touch, so changes for
+  different users do not wait for each other.
+
+**What is checked**
+
+| Table | New user | Old user (only when `user_id` changes) |
+|---|---|---|
+| `app_members` | `sales` must have no normal membership; any other role must have no field membership | Is left without an account, so must have no membership of either kind |
+| `app_company_members` | Must not be `sales` | Only loses a membership, which cannot break the invariant; locked so a concurrent role change waits |
+| `field_sales_members` | Must be `sales` | Same |
+
+**Other rules**
+
+- Locks are held until the transaction ends. A second transaction for the same
   user waits, then checks again and sees what the first one committed.
 - Membership changes are refused in `REPEATABLE READ` and `SERIALIZABLE`
   transactions, because those would not see the other transaction's commit.
   The SQL editor uses `READ COMMITTED`, so normal provisioning is unaffected.
-- One lock per user, taken at one point, means no lock-order cycle for a
-  single user. Two transactions that each touch the same two users in opposite
-  order can deadlock; Postgres detects it and aborts one, which keeps the
-  invariant. Retry the aborted one.
-- Changes for different users do not wait for each other.
+- A transaction that changes several users in separate statements, in an
+  order opposite to another transaction, can still deadlock. Postgres detects
+  it and aborts one, which keeps the invariant. Retry the aborted one.
+
+**What the two fixes in the last review actually closed**
+
+- *`user_id`-only updates on `app_members`* were a real gap. Re-pointing a
+  `sales` account at a new user id while another transaction inserted normal
+  membership for that user id could commit both, if the account move committed
+  between the other statement's guard check and its foreign-key check. A
+  negative-control test reproduces exactly that with the old trigger.
+- *Locking the old user* makes outcomes deterministic. Without it, a role
+  change for the old user decides on uncommitted data: it is refused even
+  though the move then commits. I could not construct a case where omitting
+  this lock alone lets an invalid state commit, because the foreign keys from
+  both membership tables to `app_members` refuse it; the negative control
+  therefore demonstrates the lost waiting and the wrong refusal, not an
+  invalid commit.
 
 An advisory lock was chosen over a row lock on `auth.users` because it needs no
 privilege on the Supabase-owned `auth` schema (which could not be checked
@@ -454,6 +495,9 @@ production's `postgres`, is not a superuser but can bypass row-level security.
 | Re-run | Visits, events, memberships, leads, follow-ups and all recorded definitions are byte-identical after two re-runs; a hand-edited function, table, policy, trigger or index stops the script |
 | Failure recovery | A failure part-way through rolls back completely; the script succeeds once the cause is removed |
 | Unrelated CRM data | Sales cannot reach leads, activities, follow-ups, customers, services, quotations, templates, telecalling, documents, WhatsApp, devices, report dispatches or profiles |
+| Identity changes (2 connections) | `app_members.user_id` changed without touching role; a sales account re-pointed at a user who is concurrently given normal membership; the old user's role changing while their normal or field membership moves to another user, in both orders, commit and rollback; opposite-direction moves with the lock order forced by a third connection, plus thirty uncoordinated ones, with no deadlock |
+| All pairs (2 connections) | 13 membership operations on the same users, every ordered pair, 8 starting states, commit and rollback: 2,704 combinations, none commits an invalid state |
+| Negative controls (2 connections) | With the old `UPDATE OF role` trigger a sales user ends up with normal membership. Without the old-user lock the role change neither waits nor decides correctly. With unsorted locks the opposite-direction moves deadlock |
 | Membership guards (2 connections) | Role `sales` vs. new normal membership, and new field membership vs. role away from `sales`, in both orders: the second transaction is shown to wait and then fails, or succeeds if the first rolls back. Whole multi-statement transitions racing each other. Forty uncoordinated races with exactly one winner each. Compatible changes both succeed; a cross-user deadlock is detected |
 | Membership guards | Refused outside READ COMMITTED. Owner/admin/staff provisioning and role changes work as before; a sales user cannot get normal membership by insert, upsert, bulk insert or update; role changes in both directions; moving between companies; deactivation and reactivation |
 | Function security | Owner, empty `search_path`, SECURITY DEFINER only where listed, exact execute grants, no anon or PUBLIC access; behaviour with no identity, unknown identity and a forged e-mail claim |
@@ -496,6 +540,10 @@ production's `postgres`, is not a superuser but can bypass row-level security.
   definition differently, which would make the migrations and section 9 report
   an object as modified when it is not. That would stop a re-run safely, but
   would need an administrator to re-record the fingerprints.
+- **Coverage of the all-pairs test.** It runs single statements from two
+  connections. Three-way interleavings and longer multi-statement
+  transactions are covered only by the specific scenarios listed, not
+  exhaustively.
 - **Membership lock scope.** The per-user lock was tested with two
   connections. It is taken inside the three guard triggers only; a statement
   run with those triggers disabled is not serialised. A transaction waiting

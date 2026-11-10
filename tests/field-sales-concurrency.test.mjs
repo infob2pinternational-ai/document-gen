@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  USE_REAL_POSTGRES, U, EMAIL, A, B, LEAD_A, id, as, asAdmin, one, count, setup, visit, save, convert, tomorrow, approvedVisit
+  USE_REAL_POSTGRES, FEATURE_MIGRATION, U, EMAIL, A, B, LEAD_A, id, as, asAdmin, one, count, setup, visit, save, convert, tomorrow, approvedVisit
 } from './helpers/field-sales-db.mjs';
 
 const t = (name, fn) => test(`[postgres, 2 connections] ${name}`,
@@ -423,5 +423,464 @@ t('membership: compatible changes for one user still both succeed, and a cross-u
     await second.exec(results[1].status === 'fulfilled' ? 'COMMIT' : 'ROLLBACK');
     assert.equal((await state(db, p)).normal + (await state(db, q)).normal, 2, 'the surviving transaction committed both of its rows');
     assert.deepEqual(await violations(db), CLEAN);
+  } finally { await db.close(); }
+});
+
+// ===========================================================================
+// Identity-changing updates (user_id changes) on all three tables
+//
+// A statement that changes user_id affects TWO users: the one the row leaves
+// (OLD) and the one it goes to (NEW). The guard must fire for such a statement
+// on app_members even when role is not mentioned, and must lock both users, in
+// ascending user-id order.
+// ===========================================================================
+
+/** A confirmed auth user with no account row at all. */
+async function newAuthUser(db) {
+  const uid = id(nextUser++);
+  await asAdmin(db);
+  await db.query('INSERT INTO auth.users(id, email, email_confirmed_at) VALUES ($1, $2, now())', [uid, `user${nextUser}@example.test`]);
+  return uid;
+}
+/** True if some session of this database starts waiting on a lock within the time limit. */
+async function blockedWithin(observer, promise, limitMs = 1500) {
+  await asAdmin(observer);
+  let done = false;
+  promise.then(() => { done = true; }, () => { done = true; });
+  for (let waited = 0; waited < limitMs && !done; waited += 20) {
+    if (await count(observer, 'pg_stat_activity', "datname = current_database() AND state = 'active' AND wait_event_type = 'Lock'") >= 1) return true;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  return false;
+}
+/**
+ * Session 1 runs `firstStatements` in an open transaction; session 2 then runs `second`;
+ * session 1 then ends with `outcome`. Reports whether session 2 had to wait and how it ended.
+ */
+async function overlap(db, [first, second], firstStatements, second_, outcome) {
+  await first.exec('BEGIN');
+  for (const [sql, params] of firstStatements) await first.query(sql, params);
+  const handled = second.query(second_[0], second_[1]).then(r => ({ ok: true, rows: r.affectedRows }), e => ({ ok: false, message: e.message }));
+  const waited = await blockedWithin(db, handled);
+  await first.exec(outcome);
+  return { waited, ...(await handled) };
+}
+
+const MOVE = {
+  account: 'UPDATE app_members SET user_id = $2 WHERE user_id = $1',
+  normal: 'UPDATE app_company_members SET user_id = $2 WHERE user_id = $1',
+  field: 'UPDATE field_sales_members SET user_id = $2 WHERE user_id = $1'
+};
+const lockKey = "hashtextextended('field_sales_membership:' || $1::text, 0)";
+
+// --- the guard as shipped, and deliberately broken copies for the negative controls -------------
+const guardStart = FEATURE_MIGRATION.indexOf('CREATE OR REPLACE FUNCTION field_sales_internal.guard_membership()');
+const GUARD_SQL = FEATURE_MIGRATION.slice(guardStart, FEATURE_MIGRATION.indexOf('END $$;', guardStart) + 'END $$;'.length);
+function broken(sql, replacements) {
+  for (const [from, to] of replacements) {
+    assert.ok(sql.includes(from), `negative control is stale: "${from}" is no longer in the guard`);
+    sql = sql.replace(from, to);
+  }
+  return sql;
+}
+const BREAK = {
+  // Problem 2: lock only the user the row is going to.
+  noOldUserLock: broken(GUARD_SQL, [['CASE WHEN v_identity_change THEN OLD.user_id END', 'NULL::uuid']]),
+  // Lock NEW first, then OLD, instead of ascending user-id order.
+  unsortedLocks: broken(GUARD_SQL, [['SELECT DISTINCT u FROM unnest(', 'SELECT u FROM unnest('], ['ORDER BY u\n', 'ORDER BY (u = NEW.user_id) DESC\n']]),
+  // Problem 1: the trigger as it was before this fix.
+  roleOnlyTrigger: `DROP TRIGGER field_sales_guard_membership ON public.app_members;
+    CREATE TRIGGER field_sales_guard_membership BEFORE INSERT OR UPDATE OF role ON public.app_members
+      FOR EACH ROW EXECUTE FUNCTION field_sales_internal.guard_membership();`
+};
+assert.ok(/BEFORE INSERT OR UPDATE ON public\.app_members/.test(FEATURE_MIGRATION), 'the shipped trigger covers every UPDATE of app_members');
+async function breakGuard(db, sql) { await asAdmin(db); await db.exec(sql); }
+
+// --- scenarios, shared by the real tests and their negative controls ----------------------------
+
+/** Session 1 re-points a sales account from X to Y (no role change). Session 2 gives Y normal membership. */
+async function scenarioAccountMoveVsNormalMembership(db, sessions, outcome) {
+  const x = await newUser(db, 'sales'), y = await newAuthUser(db);
+  const result = await overlap(db, sessions, [[MOVE.account, [x, y]]], [SQL.addNormal, [y]], outcome);
+  return { result, x, y, violations: await violations(db) };
+}
+/**
+ * The race a user_id-only update opens. Session 1 re-points a sales account from X to Y. Session 2 inserts
+ * normal memberships for Y and for a bystander V in ONE statement. Its guard check for Y runs first; its
+ * foreign-key check for Y runs only at the end of the statement. A third session holds V's lock, so if
+ * session 2 gets past Y it is held inside the statement, between those two checks, while session 1 commits.
+ *   - Guarded: session 2 never gets past Y. It waits for session 1 on Y's lock and is then refused.
+ *   - Unguarded: Y's check passes (the account move is not yet visible), session 1 commits, the foreign-key
+ *     check then finds Y's account, and a sales user ends up with normal company membership.
+ */
+async function scenarioAccountMoveWindow(db, [first, second]) {
+  const x = await newUser(db, 'sales'), y = await newAuthUser(db), v = await newUser(db, 'staff');
+  const gate = await db.connect();
+  await asAdmin(gate);
+  await gate.query(`SELECT pg_advisory_lock(${lockKey})`, [v]);
+  await first.exec('BEGIN');
+  await first.query(MOVE.account, [x, y]);
+  const handled = second.query(`INSERT INTO app_company_members(user_id, company_id) VALUES ($1, '${A}'), ($2, '${A}')`, [y, v])
+    .then(r => ({ ok: true, rows: r.affectedRows }), e => ({ ok: false, message: e.message }));
+  await waitUntilBlocked(db, 1);
+  await first.exec('COMMIT');
+  await gate.query(`SELECT pg_advisory_unlock(${lockKey})`, [v]);
+  return { result: await handled, x, y, v, violations: await violations(db) };
+}
+/** Session 1 moves X's normal membership to Y. Session 2 makes X (the OLD user) sales. */
+async function scenarioNormalMoveVsOldUserRole(db, sessions, outcome) {
+  const x = await newUser(db, 'staff', { company: B }), y = await newUser(db, 'staff');
+  const result = await overlap(db, sessions, [[MOVE.normal, [x, y]]], [SQL.toSales, [x]], outcome);
+  return { result, x, y, violations: await violations(db) };
+}
+/** Session 1 moves X's field membership to Y. Session 2 makes X (the OLD user) staff. */
+async function scenarioFieldMoveVsOldUserRole(db, sessions, outcome) {
+  const x = await newUser(db, 'sales', { fieldCompany: B }), y = await newUser(db, 'sales');
+  const result = await overlap(db, sessions, [[MOVE.field, [x, y]]], [SQL.toStaff, [x]], outcome);
+  return { result, x, y, violations: await violations(db) };
+}
+/**
+ * P and Q each own one membership row. Session 1 moves P's row to Q while session 2 moves Q's row to P.
+ * A third session holds the lock of the HIGHER user id until both are queued, so the order in which the
+ * two transactions take their locks is fully determined by the guard, not by timing.
+ */
+async function scenarioOppositeMoves(db, [first, second], kind) {
+  const role = kind === 'normal' ? 'staff' : 'sales';
+  const p = await newUser(db, role, kind === 'normal' ? { company: A } : { fieldCompany: A });
+  const q = await newUser(db, role, kind === 'normal' ? { company: B } : { fieldCompany: B });
+  assert.ok(p < q, 'P has the lower user id');
+  const gate = await db.connect();
+  await asAdmin(gate);
+  await gate.query(`SELECT pg_advisory_lock(${lockKey})`, [q]);
+  const one_ = first.query(MOVE[kind], [p, q]).then(() => 'committed', e => e.message);
+  await waitUntilBlocked(db, 1);
+  const two = second.query(MOVE[kind], [q, p]).then(() => 'committed', e => e.message);
+  await waitUntilBlocked(db, 2);
+  await gate.query(`SELECT pg_advisory_unlock(${lockKey})`, [q]);
+  const outcomes = await Promise.all([one_, two]);
+  return { outcomes, p, q, violations: await violations(db) };
+}
+
+t('identity: updating app_members.user_id without changing role is guarded, and the new user id cannot gain normal membership meanwhile', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    // Commit: the sales role now belongs to Y, so the waiting insert for Y is refused.
+    let run = await scenarioAccountMoveVsNormalMembership(db, sessions, 'COMMIT');
+    assert.equal(run.result.waited, true, 'the membership insert waits for the account move');
+    assert.equal(run.result.ok, false);
+    assert.match(run.result.message, MESSAGE.addNormal);
+    assert.deepEqual(await state(db, run.y), { role: 'sales', normal: 0, field: 0 });
+    assert.deepEqual(run.violations, CLEAN);
+    // Rollback: Y never got an account, so the insert fails on its foreign key instead.
+    run = await scenarioAccountMoveVsNormalMembership(db, sessions, 'ROLLBACK');
+    assert.equal(run.result.waited, true);
+    assert.equal(run.result.ok, false);
+    assert.match(run.result.message, /foreign key/);
+    assert.deepEqual(run.violations, CLEAN);
+
+    // The exact window: the membership insert is held between its guard check and its foreign-key check
+    // while the account move commits. Guarded, it never gets that far.
+    const window = await scenarioAccountMoveWindow(db, sessions);
+    assert.equal(window.result.ok, false);
+    assert.match(window.result.message, MESSAGE.addNormal);
+    assert.deepEqual([await state(db, window.y), await state(db, window.v)], [{ role: 'sales', normal: 0, field: 0 }, { role: 'staff', normal: 0, field: 0 }]);
+    assert.deepEqual(window.violations, CLEAN);
+
+    // The OLD user id is locked too: a field membership for X waits, then is refused because X has no account any more.
+    const x = await newUser(db, 'sales'), y = await newAuthUser(db);
+    let result = await overlap(db, sessions, [[MOVE.account, [x, y]]], [SQL.addField, [x]], 'COMMIT');
+    assert.deepEqual([result.waited, result.ok], [true, false]);
+    assert.match(result.message, MESSAGE.addField);
+    // ... and is accepted if the move is rolled back.
+    const x2 = await newUser(db, 'sales'), y2 = await newAuthUser(db);
+    result = await overlap(db, sessions, [[MOVE.account, [x2, y2]]], [SQL.addField, [x2]], 'ROLLBACK');
+    assert.deepEqual([result.waited, result.ok], [true, true]);
+
+    // A staff account move, against a field membership arriving for the new user id.
+    const s1 = await newUser(db, 'staff'), s2 = await newAuthUser(db);
+    result = await overlap(db, sessions, [[MOVE.account, [s1, s2]]], [SQL.addField, [s2]], 'COMMIT');
+    assert.deepEqual([result.waited, result.ok], [true, false]);
+    assert.match(result.message, MESSAGE.addField);
+    assert.deepEqual(await violations(db), CLEAN);
+  } finally { await db.close(); }
+});
+
+t('identity: reassigning a sales account to a user who is concurrently given normal company membership - both can never commit', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      // Session 1 creates a staff account with normal membership for Y. Session 2 tries to re-point a sales account at Y.
+      const x = await newUser(db, 'sales'), y = await newAuthUser(db);
+      const result = await overlap(db, sessions,
+        [["INSERT INTO app_members(user_id, role) VALUES ($1, 'staff')", [y]], [SQL.addNormal, [y]]], [MOVE.account, [x, y]], outcome);
+      assert.equal(result.waited, true, 'the account move waits for the other transaction on Y');
+      if (outcome === 'COMMIT') {
+        assert.equal(result.ok, false);
+        assert.match(result.message, MESSAGE.toSales, 'refused by the guard, before the duplicate-key check');
+        assert.deepEqual([await state(db, x), await state(db, y)], [{ role: 'sales', normal: 0, field: 0 }, { role: 'staff', normal: 1, field: 0 }]);
+      } else {
+        assert.equal(result.ok, true);
+        assert.deepEqual(await state(db, y), { role: 'sales', normal: 0, field: 0 });
+      }
+      assert.deepEqual(await violations(db), CLEAN);
+    }
+    // The other order is the first test above. A sales account can also not be re-pointed away while it still has field memberships.
+    const withField = await newUser(db, 'sales', { fieldCompany: A }), target = await newAuthUser(db);
+    await asAdmin(db);
+    await assert.rejects(db.query(MOVE.account, [withField, target]), /Move or remove the memberships of the old user id/);
+  } finally { await db.close(); }
+});
+
+t("identity: changing the old user's role while another transaction moves their normal membership to a different user", async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    // Move commits: X is left with no normal membership, so X may become sales - but only after waiting to see that.
+    let run = await scenarioNormalMoveVsOldUserRole(db, sessions, 'COMMIT');
+    assert.equal(run.result.waited, true, 'the role change for the OLD user waits for the move');
+    assert.equal(run.result.ok, true);
+    assert.deepEqual([await state(db, run.x), await state(db, run.y)], [{ role: 'sales', normal: 0, field: 0 }, { role: 'staff', normal: 1, field: 0 }]);
+    assert.deepEqual(run.violations, CLEAN);
+    // Move rolls back: X still has the membership, so the role change is refused.
+    run = await scenarioNormalMoveVsOldUserRole(db, sessions, 'ROLLBACK');
+    assert.deepEqual([run.result.waited, run.result.ok], [true, false]);
+    assert.match(run.result.message, MESSAGE.toSales);
+    assert.deepEqual(await state(db, run.x), { role: 'staff', normal: 1, field: 0 });
+    assert.deepEqual(run.violations, CLEAN);
+
+    // The NEW user's role changing at the same time: Y becomes sales first, so the move to Y is refused.
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      const x = await newUser(db, 'staff', { company: B }), y = await newUser(db, 'staff');
+      const result = await overlap(db, sessions, [[SQL.toSales, [y]]], [MOVE.normal, [x, y]], outcome);
+      assert.equal(result.waited, true);
+      assert.equal(result.ok, outcome === 'ROLLBACK');
+      if (!result.ok) assert.match(result.message, MESSAGE.addNormal);
+      assert.deepEqual(await violations(db), CLEAN);
+    }
+  } finally { await db.close(); }
+});
+
+t('identity: updating user_id in app_company_members concurrently with a role change for the old user', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    // The role change goes first and does not remove the row (staff -> admin). The move waits on the OLD user's lock.
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      const x = await newUser(db, 'staff', { company: B }), y = await newUser(db, 'staff');
+      const result = await overlap(db, sessions, [["UPDATE app_members SET role = 'admin' WHERE user_id = $1", [x]]], [MOVE.normal, [x, y]], outcome);
+      assert.deepEqual([result.waited, result.ok, result.rows], [true, true, 1], `first ${outcome}`);
+      assert.deepEqual([await state(db, x), await state(db, y)], [{ role: outcome === 'COMMIT' ? 'admin' : 'staff', normal: 0, field: 0 }, { role: 'staff', normal: 1, field: 0 }]);
+    }
+    // The old user is being converted to sales (membership removed, role changed) while the move is attempted.
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      const x = await newUser(db, 'staff', { company: B }), y = await newUser(db, 'staff');
+      const result = await overlap(db, sessions,
+        [['DELETE FROM app_company_members WHERE user_id = $1', [x]], [SQL.toSales, [x]]], [MOVE.normal, [x, y]], outcome);
+      assert.equal(result.waited, true);
+      assert.deepEqual([result.ok, result.rows], [true, outcome === 'COMMIT' ? 0 : 1], 'after the conversion commits there is nothing left to move');
+      assert.deepEqual(await state(db, x), outcome === 'COMMIT' ? { role: 'sales', normal: 0, field: 0 } : { role: 'staff', normal: 0, field: 0 });
+      assert.deepEqual(await violations(db), CLEAN);
+    }
+  } finally { await db.close(); }
+});
+
+t('identity: updating user_id in field_sales_members concurrently with a role change for the old user', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    // Move first: X may stop being sales only once the move has committed.
+    let run = await scenarioFieldMoveVsOldUserRole(db, sessions, 'COMMIT');
+    assert.deepEqual([run.result.waited, run.result.ok], [true, true]);
+    assert.deepEqual([await state(db, run.x), await state(db, run.y)], [{ role: 'staff', normal: 0, field: 0 }, { role: 'sales', normal: 0, field: 1 }]);
+    assert.deepEqual(run.violations, CLEAN);
+    run = await scenarioFieldMoveVsOldUserRole(db, sessions, 'ROLLBACK');
+    assert.deepEqual([run.result.waited, run.result.ok], [true, false]);
+    assert.match(run.result.message, MESSAGE.toStaff);
+    assert.deepEqual(await state(db, run.x), { role: 'sales', normal: 0, field: 1 });
+    assert.deepEqual(run.violations, CLEAN);
+
+    // Role change of the old user first (field membership removed, role changed), move second.
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      const x = await newUser(db, 'sales', { fieldCompany: B }), y = await newUser(db, 'sales');
+      const result = await overlap(db, sessions,
+        [['DELETE FROM field_sales_members WHERE user_id = $1', [x]], [SQL.toStaff, [x]]], [MOVE.field, [x, y]], outcome);
+      assert.equal(result.waited, true);
+      assert.deepEqual([result.ok, result.rows], [true, outcome === 'COMMIT' ? 0 : 1]);
+      assert.deepEqual(await violations(db), CLEAN);
+    }
+    // Role change of the NEW user first: Y stops being sales, so a field membership may not move to Y.
+    for (const outcome of ['COMMIT', 'ROLLBACK']) {
+      const x = await newUser(db, 'sales', { fieldCompany: B }), y = await newUser(db, 'sales');
+      const result = await overlap(db, sessions, [[SQL.toStaff, [y]]], [MOVE.field, [x, y]], outcome);
+      assert.equal(result.waited, true);
+      assert.equal(result.ok, outcome === 'ROLLBACK');
+      if (!result.ok) assert.match(result.message, MESSAGE.addField);
+      assert.deepEqual(await violations(db), CLEAN);
+    }
+  } finally { await db.close(); }
+});
+
+t('identity: opposite-direction user-id changes take their locks in the same order, so neither deadlocks', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    for (const kind of ['normal', 'field']) {
+      const run = await scenarioOppositeMoves(db, sessions, kind);
+      assert.deepEqual(run.outcomes, ['committed', 'committed'], `${kind}: both moves commit, no deadlock`);
+      const expected = kind === 'normal' ? { role: 'staff', normal: 1, field: 0 } : { role: 'sales', normal: 0, field: 1 };
+      assert.deepEqual([await state(db, run.p), await state(db, run.q)], [expected, expected], 'the two users swapped one membership each');
+      assert.deepEqual(run.violations, CLEAN);
+    }
+    // Thirty uncoordinated opposite moves: never a deadlock.
+    const [first, second] = sessions;
+    for (let n = 0; n < 15; n++) {
+      for (const kind of ['normal', 'field']) {
+        const role = kind === 'normal' ? 'staff' : 'sales';
+        const p = await newUser(db, role, kind === 'normal' ? { company: A } : { fieldCompany: A });
+        const q = await newUser(db, role, kind === 'normal' ? { company: B } : { fieldCompany: B });
+        const results = await Promise.allSettled([first.query(MOVE[kind], [p, q]), second.query(MOVE[kind], [q, p])]);
+        assert.deepEqual(results.map(r => r.status === 'fulfilled' ? 'ok' : r.reason.message), ['ok', 'ok']);
+      }
+    }
+    assert.deepEqual(await violations(db), CLEAN);
+  } finally { await db.close(); }
+});
+
+t('identity: every pair of membership operations on the same users, in both orders, with commit and rollback - no combination commits an invalid state', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const summary = await runMatrix(db, await adminSessions(db));
+    assert.equal(summary.invalid.length, 0, `invalid states: ${JSON.stringify(summary.invalid.slice(0, 3))}`);
+    assert.ok(summary.combinations >= 1500, `ran ${summary.combinations} combinations`);
+    assert.ok(summary.bothCommitted > 100 && summary.secondRefused > 100, 'the matrix exercised both compatible and conflicting pairs');
+    assert.deepEqual(await violations(db), CLEAN);
+  } finally { await db.close(); }
+});
+
+/**
+ * For each starting state of X and Y, run every ordered pair of operations: the first in an open
+ * transaction on one connection, the second on another connection, then commit or roll back the first.
+ * After each combination check the whole database for the two kinds of invalid state.
+ */
+async function runMatrix(db, [first, second], { stopAtFirstInvalid = false } = {}) {
+  const operations = {
+    'X to sales': (x) => [SQL.toSales, [x]],
+    'X to staff': (x) => [SQL.toStaff, [x]],
+    'add normal to X': (x) => [SQL.addNormal, [x]],
+    'add field to X': (x) => [SQL.addField, [x]],
+    'remove normal from X': (x) => ['DELETE FROM app_company_members WHERE user_id = $1', [x]],
+    'remove field from X': (x) => ['DELETE FROM field_sales_members WHERE user_id = $1', [x]],
+    'move normal X to Y': (x, y) => [MOVE.normal, [x, y]],
+    'move field X to Y': (x, y) => [MOVE.field, [x, y]],
+    'move normal Y to X': (x, y) => [MOVE.normal, [y, x]],
+    'move field Y to X': (x, y) => [MOVE.field, [y, x]],
+    'move account X to Z': (x, y, z) => [MOVE.account, [x, z]],
+    'add normal to Z': (x, y, z) => [SQL.addNormal, [z]],
+    'add field to Z': (x, y, z) => [SQL.addField, [z]]
+  };
+  const startStates = [
+    ['staff', { company: B }], ['staff', {}], ['sales', { fieldCompany: B }], ['sales', {}]
+  ];
+  const names = Object.keys(operations);
+  const summary = { combinations: 0, invalid: [], bothCommitted: 0, secondRefused: 0 };
+  for (const [xRole, xMembership] of startStates) {
+    for (const [yRole, yMembership] of [['staff', { company: B }], ['sales', { fieldCompany: B }]]) {
+      for (const firstName of names) {
+        for (const secondName of names) {
+          for (const outcome of ['COMMIT', 'ROLLBACK']) {
+            const x = await newUser(db, xRole, xMembership), y = await newUser(db, yRole, yMembership), z = await newAuthUser(db);
+            await first.exec('BEGIN');
+            let firstOk = true;
+            try { await first.query(...operations[firstName](x, y, z)); } catch { firstOk = false; }
+            const handled = second.query(...operations[secondName](x, y, z)).then(() => true, () => false);
+            await blockedWithin(db, handled, 400);
+            await first.exec(firstOk ? outcome : 'ROLLBACK');
+            const secondOk = await handled;
+            summary.combinations++;
+            if (firstOk && outcome === 'COMMIT' && secondOk) summary.bothCommitted++;
+            if (firstOk && outcome === 'COMMIT' && !secondOk) summary.secondRefused++;
+            const found = await violations(db);
+            if (found.salesWithNormalMembership + found.fieldMembershipWithoutSalesRole > 0) {
+              summary.invalid.push({ x: `${xRole} ${JSON.stringify(xMembership)}`, y: yRole, first: firstName, second: secondName, outcome, found });
+              if (stopAtFirstInvalid) return summary;
+              // Clean up so one finding does not hide the next.
+              await db.exec("ALTER TABLE app_company_members DISABLE TRIGGER USER; ALTER TABLE field_sales_members DISABLE TRIGGER USER;");
+              await db.exec("DELETE FROM app_company_members c USING app_members m WHERE m.user_id = c.user_id AND m.role = 'sales'; DELETE FROM field_sales_members f USING app_members m WHERE m.user_id = f.user_id AND m.role <> 'sales';");
+              await db.exec("ALTER TABLE app_company_members ENABLE TRIGGER USER; ALTER TABLE field_sales_members ENABLE TRIGGER USER;");
+            }
+          }
+        }
+      }
+    }
+  }
+  return summary;
+}
+
+// ===========================================================================
+// Negative controls
+//
+// Each control installs a deliberately broken copy of the guard and re-runs a
+// scenario from the tests above. It passes only if the breakage is observable,
+// which shows that those tests would fail without the corresponding fix.
+// ===========================================================================
+
+t('negative control: with the old "UPDATE OF role" trigger, a user_id-only update is unguarded and a sales user gains normal membership', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    await breakGuard(db, BREAK.roleOnlyTrigger);
+    // The window scenario from "updating app_members.user_id without changing role": the insert for Y is now ACCEPTED.
+    const run = await scenarioAccountMoveWindow(db, sessions);
+    assert.equal(run.result.ok, true, 'the normal membership for the new user id was accepted');
+    assert.deepEqual(await state(db, run.y), { role: 'sales', normal: 1, field: 0 }, 'a sales user now has normal company membership');
+    assert.deepEqual(run.violations, { salesWithNormalMembership: 1, fieldMembershipWithoutSalesRole: 0 });
+    // Outside that window the foreign key from the membership tables to app_members still refuses the insert,
+    // which is why the simpler overlap needs the guard only for a clean, deterministic answer.
+    await asAdmin(db);
+    await db.exec("ALTER TABLE app_company_members DISABLE TRIGGER USER; DELETE FROM app_company_members c USING app_members m WHERE m.user_id = c.user_id AND m.role = 'sales'; ALTER TABLE app_company_members ENABLE TRIGGER USER;");
+    const simple = await scenarioAccountMoveVsNormalMembership(db, sessions, 'COMMIT');
+    assert.equal(simple.result.ok, false);
+    assert.match(simple.result.message, /foreign key/, 'refused by the foreign key, not by the guard');
+    assert.doesNotMatch(simple.result.message, MESSAGE.addNormal);
+  } finally { await db.close(); }
+});
+
+t('negative control: without the OLD-user lock, a role change for the old user no longer waits for the move and decides on uncommitted data', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    await breakGuard(db, BREAK.noOldUserLock);
+    // "changing an old user's role while another transaction moves their membership": the correct result is
+    // { waited: true, ok: true }. Without the lock the role change does not wait and is wrongly refused,
+    // even though the move then commits and leaves X with no membership.
+    const normal = await scenarioNormalMoveVsOldUserRole(db, sessions, 'COMMIT');
+    assert.deepEqual([normal.result.waited, normal.result.ok], [false, false]);
+    assert.match(normal.result.message, MESSAGE.toSales);
+    assert.deepEqual(await state(db, normal.x), { role: 'staff', normal: 0, field: 0 }, 'X ends with no membership and yet was refused the role');
+    // Same for field_sales_members.
+    const field = await scenarioFieldMoveVsOldUserRole(db, sessions, 'COMMIT');
+    assert.deepEqual([field.result.waited, field.result.ok], [false, false]);
+    assert.match(field.result.message, MESSAGE.toStaff);
+    // And "updating user_id in app_company_members concurrently with a role change for the old user":
+    // the move no longer waits for the old user's uncommitted role change.
+    const x = await newUser(db, 'staff', { company: B }), y = await newUser(db, 'staff');
+    const result = await overlap(db, sessions, [["UPDATE app_members SET role = 'admin' WHERE user_id = $1", [x]]], [MOVE.normal, [x, y]], 'COMMIT');
+    assert.equal(result.waited, false, 'the move did not wait for the old user');
+  } finally { await db.close(); }
+});
+
+t('negative control: with locks taken in NEW-then-OLD order instead of sorted order, opposite-direction moves deadlock', async () => {
+  const db = await setup({ sales: false });
+  try {
+    const sessions = await adminSessions(db);
+    await breakGuard(db, BREAK.unsortedLocks);
+    for (const kind of ['normal', 'field']) {
+      const run = await scenarioOppositeMoves(db, sessions, kind);
+      assert.equal(run.outcomes.filter(o => /deadlock detected/.test(o)).length, 1, `${kind}: one of the two moves is aborted by a deadlock: ${run.outcomes}`);
+      assert.equal(run.outcomes.filter(o => o === 'committed').length, 1);
+      assert.deepEqual(run.violations, CLEAN, 'a deadlock aborts a transaction; it does not corrupt memberships');
+    }
   } finally { await db.close(); }
 });
