@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { U, EMAIL, A, B, LEAD_A, id, asAdmin, one, count, setup, tomorrow } from './helpers/field-sales-db.mjs';
+import { U, EMAIL, A, B, LEAD_A, asAdmin, one, count, setup, tomorrow } from './helpers/field-sales-db.mjs';
 import { fakeSupabase, memoryStorage } from './helpers/field-sales-fake-supabase.mjs';
 
 const dataUri = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
@@ -145,7 +145,7 @@ test('a lost reply is retried with the same id, so the server never receives a s
 test('several sync triggers at once send each visit once; an edit made during sending is not lost', async () => {
   const storage = memoryStorage(), api = scriptedApi();
   const store = new FieldVisitStore(U.salesA, storage, api);
-  const visit = store.queueForSubmit(filled());
+  store.queueForSubmit(filled());
   const results = await Promise.all([store.sync(), store.sync(), store.sync()]);   // reconnect + timer + button
   assert.equal(api.calls.length, 1);
   assert.ok(results.every(r => r === results[0]));

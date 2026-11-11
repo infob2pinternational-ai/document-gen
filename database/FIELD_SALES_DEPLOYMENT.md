@@ -139,7 +139,19 @@ of part A.
 
 1. `app_members_role_check` gains `sales`.
 2. `leads_lead_source_check` gains `field_visit`.
-3. `app_members` and `app_company_members` each gain one guard trigger.
+3. Three membership guard triggers, all named `field_sales_guard_membership`
+   and all running `field_sales_internal.guard_membership()`:
+
+   | Table | Fires | Existing table? |
+   |---|---|---|
+   | `app_members` | BEFORE INSERT OR UPDATE, each row | Yes: one trigger added |
+   | `app_company_members` | BEFORE INSERT OR UPDATE, each row | Yes: one trigger added |
+   | `field_sales_members` | BEFORE INSERT OR UPDATE, each row | No: new table, created with its trigger |
+
+   On `app_members` the trigger fires for every UPDATE (not only
+   `UPDATE OF role`), so a change to `user_id` alone is guarded; the function
+   returns at once when neither `user_id` nor `role` changes. See "Membership
+   guards and concurrency".
 
 No existing row, policy, function or trigger is edited or removed.
 
@@ -180,6 +192,9 @@ Removes the feature only.
 - It refuses to run while any `app_members` row has role `sales`. Remove those
   accounts first ("Removing a salesperson").
 - It refuses to drop an object that is not exactly what part A created.
+- It removes all three membership guard triggers: the two on `app_members` and
+  `app_company_members` explicitly, and the one on `field_sales_members`
+  together with that table.
 - It copies `field_visits`, `field_visit_events` and `field_sales_members`
   into the private schema `field_sales_archive` before dropping them. That
   schema is left in place; drop it by hand when the data is no longer needed.
@@ -479,7 +494,7 @@ npm test
 tests/helpers/with-local-postgres.sh node --test tests/field-sales-db.test.mjs tests/field-sales-concurrency.test.mjs
 ```
 
-The first runs everything on an in-memory Postgres (PGlite); the six
+The first runs everything on an in-memory Postgres (PGlite); the
 two-connection tests are skipped there. The second starts a throwaway local
 PostgreSQL in a temporary directory, runs the same database tests plus the
 concurrency tests on it, and deletes it.
@@ -552,5 +567,5 @@ production's `postgres`, is not a superuser but can bypass row-level security.
   altering audit history or disabling the guard triggers.
 - **Known open issues.** The two security patches in "Release gates" are
   outside this branch.
-- **Application code.** The mobile and web screens, offline outbox and sync
-  worker are not written yet and have no tests.
+- **Application code.** The screens, offline outbox and their tests are
+  described in `docs/FIELD_SALES_APP.md`.

@@ -32,6 +32,12 @@ export async function createBackend() {
     rpcCalls: name => backend.requests.filter(entry => entry === `rpc:${name}`).length,
     async close() { await db.close(); },
     async sql(text, params = []) { await asAdmin(db); return (await db.query(text, params)).rows; },
+    /** Call a database function as a signed-in user, exactly as the app would. Throws on a refusal. */
+    async rpcAs(uid, name, args = {}) {
+      const result = await fakeSupabase(db, () => uid).rpc(name, args);
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
 
     async handle(route) {
       const request = route.request();

@@ -72,7 +72,8 @@ ORDER BY 1;
 
 -- ---------------------------------------------------------------------
 -- 4. Every trigger on public tables, with its enabled state ('O' = enabled).
---    Baseline: 8 triggers. After part A: 15 (3 x field_sales_guard_membership,
+--    Baseline: 8 triggers. After part A: 15 (field_sales_guard_membership on each of
+--    app_members, app_company_members and field_sales_members,
 --    field_visit_events_append_only, field_visit_events_no_truncate,
 --    field_visits_no_delete, field_visits_no_truncate). All enabled.
 -- ---------------------------------------------------------------------
