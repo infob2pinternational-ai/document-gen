@@ -42,6 +42,7 @@ import {
   getOwnerAutoReportTime
 } from '../../utils/telecallingShare';
 import { downloadTelecallingCsv } from '../../utils/csvExport';
+import { authenticatedHeaders } from '../../services/apiAuth';
 import { OwnerWhatsAppModal } from './OwnerWhatsAppModal';
 import { TelecallingEditModal } from './TelecallingEditModal';
 
@@ -153,10 +154,13 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
 
       setReportData(enriched);
 
-      // Background sync snapshot to serverless API so unattended cron has the exact state
-      fetch('/api/daily-report?action=sync-follow-ups', {
+      // Background sync snapshot to serverless API so unattended cron has the exact state.
+      // The endpoint now requires a signed-in session (security fix); fetch the auth header
+      // the same way the other calls to this API do, and skip silently if not signed in -
+      // this is a best-effort background sync, never something to surface as an error here.
+      authenticatedHeaders().then(headers => fetch('/api/daily-report?action=sync-follow-ups', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           date: selectedDate,
           followUpsDueToday: dueTodayCount,
@@ -164,7 +168,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
           followUpsDueTodayList,
           overdueFollowUpsList
         })
-      }).catch(() => {});
+      })).catch(() => {});
     } catch (err) {
       console.error('Failed to load daily telecalling report:', err);
     } finally {
