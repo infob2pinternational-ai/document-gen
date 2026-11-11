@@ -2,7 +2,7 @@ import { REQUIREMENT_OPTIONS } from '../../services/fieldVisitService';
 import type { RequirementKey } from '../../services/fieldVisitService';
 
 export const requirementText = (requirements: RequirementKey[] = [], other?: string | null) =>
-  requirements.map(key => {
+  [...requirements].sort((a, b) => REQUIREMENT_OPTIONS.findIndex(o => o.value === a) - REQUIREMENT_OPTIONS.findIndex(o => o.value === b)).map(key => {
     const label = REQUIREMENT_OPTIONS.find(option => option.value === key)?.label || key;
     return key === 'other' && other ? `Other: ${other}` : label;
   }).join(', ');

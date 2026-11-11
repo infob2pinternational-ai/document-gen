@@ -1,5 +1,24 @@
 import { fieldSalesAccessCache } from '../../services/fieldVisitService';
 import type { CachedIdentity } from '../../services/fieldVisitService';
+import { supabase } from '../../services/supabaseClient';
+
+/**
+ * Make sure this device is signed out, even when the server cannot be reached.
+ * Supabase keeps the login on the device if its sign-out request fails, which
+ * on a shared phone would leave the previous person signed in. Unsent visits
+ * are not touched: they stay under their owner's key.
+ */
+export async function ensureSignedOutOnThisDevice(): Promise<void> {
+  if (!supabase) return;
+  let stillSignedIn = false;
+  try { stillSignedIn = Boolean((await supabase.auth.getSession()).data?.session); } catch { stillSignedIn = true; }
+  if (!stillSignedIn) return;
+  for (const key of Object.keys(window.localStorage)) {
+    if (/^sb-.*-auth-token/.test(key)) window.localStorage.removeItem(key);
+  }
+  window.localStorage.removeItem('supabase_user');
+  window.location.reload();           // drops the login still held in memory
+}
 
 /**
  * Decides whether to show the salesperson screens. This is about what the

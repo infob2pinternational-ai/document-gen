@@ -37,7 +37,10 @@ export async function createBackend() {
       const request = route.request();
       const url = new URL(request.url());
       const reply = (status, body) => route.fulfill({ status, headers: { ...CORS, 'content-type': 'application/json' }, body: body === undefined ? '' : JSON.stringify(body) });
-      if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
+      // A wildcard does not cover the Authorization header, so echo exactly what the browser asked for.
+      if (request.method() === 'OPTIONS') {
+        return route.fulfill({ status: 204, headers: { ...CORS, 'access-control-allow-headers': request.headers()['access-control-request-headers'] || '*' } });
+      }
       if (!backend.reachable) return route.abort('internetdisconnected');
 
       // ---- auth ----------------------------------------------------------

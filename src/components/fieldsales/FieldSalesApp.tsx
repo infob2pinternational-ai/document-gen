@@ -8,6 +8,7 @@ import type {
   FieldErrors, FieldSalesApi, FieldSalesCompany, FieldVisit, FieldVisitEvent, FieldVisitInput, FieldVisitStatus, LocalVisit, RequirementKey
 } from '../../services/fieldVisitService';
 import { EVENT_LABEL, requirementText } from './fieldSalesText';
+import { ensureSignedOutOnThisDevice } from './fieldSalesGate';
 import './fieldSales.css';
 
 /**
@@ -120,7 +121,7 @@ export const FieldSalesApp: React.FC<FieldSalesAppProps> = ({ userId, userEmail,
   const handleLogout = async () => {
     if (unsent > 0 && !window.confirm(`${unsent} visit${unsent === 1 ? ' is' : 's are'} saved only on this phone and not sent yet. They will stay here and be sent when you sign in again. Sign out?`)) return;
     fieldSalesAccessCache.clearIdentity(window.localStorage);
-    await onLogout();
+    try { await onLogout(); } finally { await ensureSignedOutOnThisDevice(); }
   };
 
   const openNew = () => setView({ name: 'form', input: emptyVisit(companies.length === 1 ? companies[0].id : ''), correctionOf: null, reviewNote: '' });
@@ -276,7 +277,11 @@ const VisitForm: React.FC<VisitFormProps> = ({ initial, companies, correctionOf,
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
   const busyRef = useRef(false);                     // blocks a second tap before React re-renders
-  const dirty = JSON.stringify(input) !== JSON.stringify(initial);
+  // The company list can arrive after the form is opened (slow connection). With exactly one company there is nothing to choose.
+  useEffect(() => {
+    if (companies.length === 1 && !input.company_id) setInput(prev => (prev.company_id ? prev : { ...prev, company_id: companies[0].id }));
+  }, [companies, input.company_id]);
+  const dirty = JSON.stringify({ ...input, company_id: '' }) !== JSON.stringify({ ...initial, company_id: '' });
   const set = <K extends keyof FieldVisitInput>(key: K, value: FieldVisitInput[K]) => {
     setInput(prev => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: undefined }));

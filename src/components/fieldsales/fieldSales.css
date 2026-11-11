@@ -117,7 +117,9 @@
 .fs-field { margin-bottom: 1rem; }
 .fs-field label, .fs-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
 .fs-field .fs-optional { font-weight: 400; color: var(--text-secondary); }
-.fs-input {
+/* Two classes on purpose: the app's global input rules set a smaller font and would otherwise win. */
+.fs-shell .fs-input,
+.fs-review .fs-input {
   width: 100%;
   min-height: 48px;
   padding: 0.7rem 0.8rem;
@@ -129,8 +131,8 @@
   box-sizing: border-box;
   font-family: inherit;
 }
-textarea.fs-input { min-height: 96px; resize: vertical; }
-.fs-input.invalid { border-color: var(--accent-danger); }
+.fs-shell textarea.fs-input, .fs-review textarea.fs-input { min-height: 96px; resize: vertical; }
+.fs-shell .fs-input.invalid, .fs-review .fs-input.invalid { border-color: var(--accent-danger); }
 .fs-error { color: var(--accent-danger); font-size: 0.82rem; margin-top: 0.3rem; }
 .fs-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .fs-chip {
@@ -169,7 +171,7 @@ textarea.fs-input { min-height: 96px; resize: vertical; }
 .fs-review-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .fs-review-head h2 { margin: 0; font-size: 1.3rem; }
 .fs-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
-.fs-filters .fs-input { min-height: 42px; padding: 0.5rem 0.7rem; font-size: 0.9rem; }
+.fs-review .fs-filters .fs-input { min-height: 42px; padding: 0.5rem 0.7rem; font-size: 0.9rem; }
 .fs-filters label { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 0.2rem; }
 .fs-review-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; align-items: start; }
 .fs-panel { padding: 1rem; }

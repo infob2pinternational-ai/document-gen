@@ -15,12 +15,14 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  timeout: 90000,
+  timeout: 45000,
   expect: { timeout: 10000 },
   reporter: [['list']],
   use: {
     baseURL: 'http://localhost:5183/billing/',
     trace: 'off',
+    // The app's service worker would send requests from outside the page, where the test cannot answer them.
+    serviceWorkers: 'block',
     screenshot: 'only-on-failure',
     timezoneId: 'Asia/Kolkata',
     locale: 'en-IN'

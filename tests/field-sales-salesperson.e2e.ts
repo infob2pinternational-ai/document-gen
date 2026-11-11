@@ -13,10 +13,19 @@ test.afterEach(async () => { await backend.close(); });
 
 async function signIn(page: Page, email: string) {
   await page.goto('./');
-  await page.getByPlaceholder(/email/i).fill(email);
-  await page.getByPlaceholder(/password/i).fill(PASSWORD);
-  await page.getByRole('button', { name: /sign in|log in/i }).first().click();
+  await page.locator('input[type="email"]').fill(email);
+  await page.locator('input[type="password"]').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 }
+/** Signed in and the first load from the server has finished. */
+async function ready(page: Page) {
+  await expect(page.getByTestId('field-sales-app')).toBeVisible();
+  await expect.poll(() => backend.rpcCalls('my_field_sales_companies')).toBeGreaterThan(0);
+  await page.waitForLoadState('networkidle');
+}
+/** No connection at all: the browser reports offline and nothing reaches the server. */
+async function goOffline(page: Page) { backend.reachable = false; await page.context().setOffline(true); }
+async function goOnline(page: Page) { backend.reachable = true; await page.context().setOffline(false); }
 async function fillVisit(page: Page, values: { name: string; phone: string; contact?: string; location?: string; budget?: string; remarks?: string }) {
   await page.getByLabel('Business name').fill(values.name);
   await page.getByLabel('Phone number').fill(values.phone);
@@ -97,11 +106,11 @@ test('tapping Submit twice sends one visit, and a draft can be saved, reopened, 
   await expect(page.getByRole('button', { name: /Mistake/ })).toHaveCount(0);
 });
 
-test('offline: visits are kept on the phone, shown as waiting, and sent once when the connection returns', async ({ page, context }) => {
+test('offline: visits are kept on the phone, shown as waiting, and sent once when the connection returns', async ({ page }) => {
   await signIn(page, EMAIL.salesA);
-  await expect(page.getByTestId('field-sales-app')).toBeVisible();
+  await ready(page);
 
-  await context.setOffline(true);
+  await goOffline(page);
   await expect(page.getByText('You are offline.')).toBeVisible();
   for (const [name, phone] of [['Offline Shop One', '9000044444'], ['Offline Shop Two', '9000055555']]) {
     await page.getByRole('button', { name: '+ New visit' }).click();
@@ -115,7 +124,7 @@ test('offline: visits are kept on the phone, shown as waiting, and sent once whe
   await page.getByRole('button', { name: 'Send now' }).click();
   await expect(page.getByTestId('sync-status')).toContainText('2 waiting to send');
 
-  await context.setOffline(false);                       // the app sends by itself
+  await goOnline(page);                                  // the app sends by itself
   await expect(page.getByTestId('notice')).toHaveText('2 visits sent.');
   await expect(page.getByTestId('sync-status')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Offline Shop One/ })).toContainText('Pending review');
@@ -125,7 +134,7 @@ test('offline: visits are kept on the phone, shown as waiting, and sent once whe
 
 test('server unreachable and the app restarted: the screens still open, the visit waits, and it is sent after the server returns', async ({ page }) => {
   await signIn(page, EMAIL.salesA);
-  await expect(page.getByTestId('field-sales-app')).toBeVisible();
+  await ready(page);
 
   backend.reachable = false;
   await page.getByRole('button', { name: '+ New visit' }).click();
@@ -183,15 +192,15 @@ test('a visit the office sends back can be corrected and resubmitted; a refused 
   expect(await backend.sql("SELECT count(*)::int AS n FROM field_visits WHERE business_name = 'After Access Removed'")).toEqual([{ n: 0 }]);
 });
 
-test('signing out keeps unsent visits for that user only; another salesperson on the same phone does not see them', async ({ page, context }) => {
+test('signing out keeps unsent visits for that user only; another salesperson on the same phone does not see them', async ({ page }) => {
   await signIn(page, EMAIL.salesA);
-  await context.setOffline(true);
+  await ready(page);
+  await goOffline(page);
   await page.getByRole('button', { name: '+ New visit' }).click();
   await fillVisit(page, { name: 'Private To Sales A', phone: '9000012121' });
   await page.getByRole('button', { name: 'Submit visit' }).click();
   await expect(page.getByRole('button', { name: /Private To Sales A/ })).toContainText('Waiting to send');
-  await context.setOffline(false);
-  backend.reachable = false;                             // keep it unsent
+  await page.context().setOffline(false);                // connection back, but the server still cannot be reached: it stays unsent
   await page.getByRole('button', { name: 'Sign out' }).click();   // confirm dialog is accepted
   backend.reachable = true;
 
@@ -209,7 +218,7 @@ test('signing out keeps unsent visits for that user only; another salesperson on
 
 test('the form and dashboard fit a phone screen without sideways scrolling, with touch-sized controls', async ({ page }) => {
   await signIn(page, EMAIL.salesA);
-  await expect(page.getByTestId('field-sales-app')).toBeVisible();
+  await ready(page);
   const fits = async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   expect(await fits()).toBe(true);
   await page.getByRole('button', { name: '+ New visit' }).click();
