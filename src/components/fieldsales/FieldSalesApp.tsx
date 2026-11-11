@@ -197,7 +197,7 @@ export const FieldSalesApp: React.FC<FieldSalesAppProps> = ({ userId, userEmail,
             <span>
               {counts.waiting > 0 && `${counts.waiting} waiting to send`}{counts.waiting > 0 && counts.drafts > 0 && ' · '}{counts.drafts > 0 && `${counts.drafts} draft${counts.drafts === 1 ? '' : 's'}`}
             </span>
-            <button type="button" className="btn-secondary fs-btn fs-btn-small" disabled={syncing} onClick={() => refresh(true)}>{syncing ? 'Sending…' : 'Send now'}</button>
+            {counts.waiting > 0 && <button type="button" className="btn-secondary fs-btn fs-btn-small" disabled={syncing} onClick={() => refresh(true)}>{syncing ? 'Sending…' : 'Send now'}</button>}
           </div>
         )}
         {notice && <div className={`fs-banner ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} data-testid="notice">{notice.text}</div>}
@@ -224,7 +224,7 @@ export const FieldSalesApp: React.FC<FieldSalesAppProps> = ({ userId, userEmail,
                     <div className="fs-row-title">{item.business_name || 'Untitled visit'}</div>
                     <div className="fs-row-sub">{[item.phone, item.location].filter(Boolean).join(' · ') || 'No details yet'}</div>
                     {item.local_state === 'pending' && <div className="fs-row-sub">{item.waiting_reason || 'Will be sent automatically.'}</div>}
-                    {item.local_state === 'error' && <div className="fs-row-note">Not sent: {item.sync_error} Tap to fix and send again.</div>}
+                    {item.local_state === 'error' && <div className="fs-row-note">Not sent: {item.sync_error}. Tap to fix and send again.</div>}
                   </div>
                   <span className={`fs-pill ${item.local_state}`}>{LOCAL_LABEL[item.local_state]}</span>
                 </button>
@@ -240,7 +240,7 @@ export const FieldSalesApp: React.FC<FieldSalesAppProps> = ({ userId, userEmail,
               <div className="fs-row-main">
                 <div className="fs-row-title">{visit.business_name}</div>
                 <div className="fs-row-sub">{[visit.phone, formatDate(visit.created_at)].filter(Boolean).join(' · ')}</div>
-                {visit.status === 'needs_correction' && <div className="fs-row-note">Office note: {visit.review_note} Tap to correct.</div>}
+                {visit.status === 'needs_correction' && <div className="fs-row-note">Office note: {visit.review_note}. Tap to correct.</div>}
                 {visit.status === 'rejected' && visit.review_note && <div className="fs-row-note">Reason: {visit.review_note}</div>}
               </div>
               <span className={`fs-pill ${visit.status}`}>{STATUS_LABEL[visit.status]}</span>

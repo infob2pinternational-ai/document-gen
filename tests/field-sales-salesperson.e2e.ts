@@ -202,6 +202,7 @@ test('signing out keeps unsent visits for that user only; another salesperson on
   await expect(page.getByRole('button', { name: /Private To Sales A/ })).toContainText('Waiting to send');
   await page.context().setOffline(false);                // connection back, but the server still cannot be reached: it stays unsent
   await page.getByRole('button', { name: 'Sign out' }).click();   // confirm dialog is accepted
+  await expect(page.locator('input[type="email"]')).toBeVisible();   // signed out on this phone although the server was unreachable
   backend.reachable = true;
 
   await signIn(page, EMAIL.salesA2);
@@ -210,6 +211,7 @@ test('signing out keeps unsent visits for that user only; another salesperson on
   await expect(page.getByRole('button', { name: /Private To Sales A/ })).toHaveCount(0);
   expect(await backend.sql('SELECT count(*)::int AS n FROM field_visits')).toEqual([{ n: 0 }]);
   await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.locator('input[type="email"]')).toBeVisible();
 
   await signIn(page, EMAIL.salesA);                      // back again: it is sent now, under the right name
   await expect(page.getByRole('button', { name: /Private To Sales A/ })).toContainText('Pending review');
