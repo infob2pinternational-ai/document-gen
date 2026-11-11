@@ -160,6 +160,7 @@ export type LeadSource =
   | 'existing_customer'
   | 'phone'
   | 'referral'
+  | 'field_visit'
   | 'other';
 
 export interface Lead {

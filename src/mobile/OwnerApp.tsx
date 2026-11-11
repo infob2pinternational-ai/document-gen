@@ -15,13 +15,17 @@ import { ProfileSwitcher } from './components/ProfileSwitcher';
 import { setupPushNotifications } from './push';
 import { getRoleModules, canAccessModule, roleLabel, normalizeRole } from './roles';
 import { LogOut } from 'lucide-react';
+import { FieldSalesApp } from '../components/fieldsales/FieldSalesApp';
+import { FieldVisitReview } from '../components/fieldsales/FieldVisitReview';
+import { offlineFieldSalesIdentity, shouldShowFieldSales } from '../components/fieldsales/fieldSalesGate';
 
 const MODULE_TO_TAB: Record<string, OwnerTab> = {
   dashboard: 'home',
   pending_approval: 'pending',
   documents: 'documents',
   customers: 'customers',
-  services: 'services'
+  services: 'services',
+  field_visit_review: 'visits'
 };
 
 /**
@@ -149,9 +153,11 @@ export const OwnerApp: React.FC = () => {
     refreshCompanyData(profile.id).catch(() => alert('Could not refresh this company. Please retry.'));
   };
 
+  // Field salespeople have no office data to load (the database returns none to them).
+  const isFieldSales = shouldShowFieldSales(user?.id, verifiedAccess.verified, verifiedAccess.role);
   useEffect(() => {
-    if (user) loadOwnerData();
-  }, [user]);
+    if (user && !isFieldSales) loadOwnerData();
+  }, [user, isFieldSales]);
 
   // Phase 5: native push registration + tap-to-deep-link, once we know
   // which company profile to register the device token against.
@@ -214,8 +220,23 @@ export const OwnerApp: React.FC = () => {
     return <div className="owner-shell" style={{ alignItems: 'center', justifyContent: 'center' }}>Loading...</div>;
   }
 
+  // Field salespeople get their own screens: the whole app for the sales role. Opened without a
+  // connection, a salesperson who was signed in on this phone can still write drafts. This only decides
+  // what is displayed; the database authorises every call from the signed-in session.
+  const signOut = async () => {
+    if (supabase) await supabase.auth.signOut();
+    localStorage.removeItem('supabase_user');
+    setUser(null);
+  };
   if (!user) {
+    const offlineSalesperson = offlineFieldSalesIdentity();
+    if (offlineSalesperson) {
+      return <FieldSalesApp userId={offlineSalesperson.userId} userEmail={offlineSalesperson.email} role="sales" onLogout={signOut} />;
+    }
     return <Login onLoggedIn={() => { /* handled by onAuthStateChange */ }} />;
+  }
+  if (isFieldSales) {
+    return <FieldSalesApp userId={user.id} userEmail={user.email || ''} role="sales" onLogout={signOut} />;
   }
 
   const handleViewDocument = (doc: Document) => {
@@ -372,6 +393,15 @@ export const OwnerApp: React.FC = () => {
             customers={customers}
             onRefresh={refreshActiveCompanyData}
           />
+        )}
+        {effectiveTab === 'visits' && canAccessModule(role, 'field_visit_review') && (
+          <div className="owner-screen">
+            <FieldVisitReview
+              companies={profiles.map(p => ({ id: p.id, name: p.name }))}
+              activeCompanyId={activeProfile?.id || ''}
+              currentUserEmail={user?.email || ''}
+            />
+          </div>
         )}
         {effectiveTab === 'services' && canAccessModule(role, 'services') && (
           <ServicesScreen

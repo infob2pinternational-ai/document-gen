@@ -16,14 +16,18 @@ export type ModuleKey =
   | 'pending_approval'  // Pending tab visibility; approval actions are separately owner-only
   | 'edit_documents'    // Edit action on a document
   | 'customers'         // Customers tab
-  | 'services';         // Services tab
+  | 'services'          // Services tab
+  | 'field_visits'      // Salesperson: own field visits (the whole app for the sales role)
+  | 'field_visit_review'; // Owner/admin: review field visits and convert them to leads
 
 const ROLE_MODULES: Record<EmployeeRole, ModuleKey[]> = {
-  owner: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services'],
-  admin: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services'],
+  owner: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services', 'field_visit_review'],
+  admin: ['dashboard', 'documents', 'pending_approval', 'edit_documents', 'customers', 'services', 'field_visit_review'],
   manager: ['dashboard', 'documents', 'edit_documents', 'customers', 'services'],
   accounts: ['dashboard', 'documents', 'customers'],
-  sales: ['documents', 'edit_documents', 'customers', 'services'],
+  // Field salespeople see only their own visits. The database gives this role no access to documents,
+  // customers, services or any other CRM data, so offering those tabs would only show empty screens.
+  sales: ['field_visits'],
   designer: ['documents'],
   technician: ['documents'],
   staff: ['documents', 'customers', 'services']

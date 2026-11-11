@@ -17,6 +17,9 @@ import { Settings } from './components/Settings';
 import { DocumentEditor } from './components/DocumentEditor';
 import { DocumentPreview } from './components/DocumentPreview';
 import { AuthPanel } from './components/AuthPanel';
+import { FieldSalesApp } from './components/fieldsales/FieldSalesApp';
+import { FieldVisitReview } from './components/fieldsales/FieldVisitReview';
+import { offlineFieldSalesIdentity, shouldShowFieldSales } from './components/fieldsales/fieldSalesGate';
 import { ComparisonEditor } from './components/comparison/ComparisonEditor';
 import { ComparisonPreview } from './components/comparison/ComparisonPreview';
 import { Leads } from './components/Leads';
@@ -1185,6 +1188,18 @@ function App() {
     );
   }
 
+  // Field salespeople get their own simple screens instead of the office CRM. Which screens are shown is a
+  // display decision only; the database authorises every call from the signed-in session.
+  if (isSupabaseConfigured() && !publicViewDocId) {
+    const offlineSalesperson = !user ? offlineFieldSalesIdentity() : null;
+    if (offlineSalesperson) {
+      return <FieldSalesApp userId={offlineSalesperson.userId} userEmail={offlineSalesperson.email} role="sales" onLogout={handleLogout} />;
+    }
+    if (user && shouldShowFieldSales(user.id, verifiedAccess.verified, verifiedAccess.role)) {
+      return <FieldSalesApp userId={user.id} userEmail={user.email || ''} role="sales" onLogout={handleLogout} />;
+    }
+  }
+
   // If Supabase credentials exist and user is not authenticated: Show AuthPanel (forced)
   if (isSupabaseConfigured() && !user) {
     return (
@@ -2160,6 +2175,16 @@ function App() {
                 companyId={activeProfile?.id}
                 initialConversationId={selectedWhatsAppConvId}
                 onOpenLead={(id) => setGlobalLeadDetailId(id)}
+              />
+            )}
+
+            {currentTab === 'field-visits' && (isOwner || isItAdmin) && (
+              <FieldVisitReview
+                companies={profiles.map(p => ({ id: p.id, name: p.name }))}
+                activeCompanyId={activeProfile?.id || ''}
+                currentUserEmail={currentUserEmail}
+                knownLeads={activeProfile ? leadService.getLeads(activeProfile.id) : []}
+                onLeadsChanged={async () => { if (activeProfile) await hydrateCrmFromCloud(activeProfile.id); }}
               />
             )}
 
