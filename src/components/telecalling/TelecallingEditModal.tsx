@@ -152,6 +152,18 @@ export const TelecallingEditModal: React.FC<TelecallingEditModalProps> = ({
             </div>
           )}
 
+          {entry.field_visit_id && (
+            <div style={{ padding: '0.75rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: '0.8rem', color: '#1e3a8a', marginBottom: '1rem' }}>
+              <strong>From a field visit</strong> collected by {entry.salesperson_email || 'a salesperson'}
+              {entry.visit_date ? ` on ${entry.visit_date}` : ''}.
+              {entry.website && <div>Website: {entry.website}</div>}
+              {entry.estimated_budget != null && entry.estimated_budget !== '' && <div>Estimated budget: ₹{Number(entry.estimated_budget).toLocaleString('en-IN')}</div>}
+              {entry.requirements && entry.requirements.length > 0 && <div>Interested in: {entry.requirements.join(', ')}{entry.requirement_other ? `, ${entry.requirement_other}` : ''}</div>}
+              {entry.visit_remarks && <div>Visit remarks: {entry.visit_remarks}</div>}
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.25rem' }}>Field visit ID: {entry.field_visit_id}</div>
+            </div>
+          )}
+
           <fieldset disabled={readOnly || saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.85rem', marginBottom: '1rem' }}>
             {/* Company Name */}

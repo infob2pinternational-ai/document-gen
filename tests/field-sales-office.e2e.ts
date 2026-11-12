@@ -115,61 +115,48 @@ test('rejecting and requesting a correction both need a reason and are recorded 
   await expect(panel(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);            // a rejected visit is closed
 });
 
-test('an approved visit becomes a CRM lead assigned to chosen staff, with a follow-up, and appears in Leads', async ({ page }) => {
+test('an approved visit is handed to Daily Calling, not to a CRM lead, with the visit data carried over', async ({ page }) => {
   await submitVisit(U.salesA, { business_name: 'Delta Designs', phone: '9000066666', contact_person: 'Deepa', requirements: ['billing_software'], follow_up_date: tomorrow(), remarks: 'Needs GST billing' });
   await openReview(page, EMAIL.owner);
   await row(page, /Delta Designs/).click();
   await panel(page).getByRole('button', { name: 'Approve' }).click();
-  await panel(page).getByRole('button', { name: 'Convert to lead' }).click();
 
-  const convert = page.getByTestId('convert-panel');
-  await expect(convert.getByLabel('Assign the lead to')).toHaveValue(EMAIL.owner);              // defaults to the reviewer
-  await expect(convert.getByLabel('Assign the lead to').locator('option')).toHaveText([/owner@example\.test \(you\)/, /admin@example\.test/, /staff\.a@example\.test/]);
-  await expect(convert.getByLabel(/Follow-up date/)).toHaveValue(tomorrow());                    // what the salesperson asked for
-  await convert.getByLabel('Assign the lead to').selectOption(EMAIL.staffA);
-  await convert.getByRole('button', { name: 'Create lead' }).dblclick();                          // a double click creates one lead
+  // No lead is created, and there is no conversion UI left on this screen - the field visit's
+  // own job ends at approval. convert_telecalling_entry_to_lead (not tested at the browser layer
+  // here; see tests/field-sales-daily-calling-handoff.test.mjs) is what the office uses next, from
+  // the existing Daily Calling screen.
+  await expect(panel(page).getByRole('button', { name: 'Convert to lead' })).toHaveCount(0);
+  await expect(page.getByTestId('review-notice')).toContainText('approved');
+  await expect(panel(page)).toContainText('Handed to Daily Calling');
 
-  await expect(page.getByTestId('review-notice')).toContainText(/Lead B2P-LD-\d+ created\./);
-  await expect(panel(page)).toContainText(`assigned to ${EMAIL.staffA}`);
-  await expect(page.getByTestId('visit-history')).toContainText('Converted to a new lead');
-  await expect(page.getByTestId('visit-history')).toContainText('follow-up created');
-
-  const leads = await backend.sql("SELECT id, lead_number, customer_name, company_name, assigned_telecaller_email, service_required, source_details FROM leads WHERE lead_source = 'field_visit'");
-  expect(leads).toHaveLength(1);
-  expect(leads[0]).toMatchObject({ customer_name: 'Deepa', company_name: 'Delta Designs', assigned_telecaller_email: EMAIL.staffA, service_required: 'Billing Software' });
-  expect(leads[0].source_details).toContain(`Field visit by ${EMAIL.salesA}`);                    // salesperson attribution
-  expect(await backend.sql('SELECT assigned_staff_email, status, follow_up_date::text AS d FROM follow_ups WHERE lead_id = $1', [leads[0].id]))
-    .toEqual([{ assigned_staff_email: EMAIL.staffA, status: 'pending', d: tomorrow() }]);
-  expect(await backend.sql("SELECT count(*)::int AS n FROM field_visit_events WHERE action LIKE 'converted%'")).toEqual([{ n: 1 }]);
-
-  // The existing CRM shows the new lead and its timeline.
-  await page.getByRole('button', { name: /^Leads/ }).click();
-  await expect(page.getByText('Delta Designs').first()).toBeVisible();
-  await expect(page.getByText(leads[0].lead_number).first()).toBeVisible();
+  expect(await backend.sql("SELECT count(*)::int AS n FROM leads WHERE lead_source = 'field_visit'")).toEqual([{ n: 0 }]);
+  const entries = await backend.sql(
+    `SELECT company_name, contact_person, phone, call_status, visit_remarks, salesperson_email
+     FROM telecalling_entries WHERE field_visit_id = (SELECT id FROM field_visits WHERE business_name = 'Delta Designs')`
+  );
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toMatchObject({
+    company_name: 'Delta Designs', contact_person: 'Deepa', phone: '9000066666',
+    call_status: 'Not Called Yet', visit_remarks: 'Needs GST billing', salesperson_email: EMAIL.salesA
+  });
 });
 
-test('a visit whose phone already belongs to a lead is flagged, creates nothing by itself, and can be linked to that lead', async ({ page }) => {
+test('a visit whose phone already belongs to a lead is still flagged here, and approving it only hands off to Daily Calling (no lead created or linked by this screen)', async ({ page }) => {
   await submitVisit(U.salesA, { business_name: 'Existing Shop A (revisit)', phone: '098765 43210' });   // same number as an existing lead
   await openReview(page, EMAIL.owner);
   await expect(row(page, /Existing Shop A \(revisit\)/)).toContainText('Possible duplicate');
   await row(page, /Existing Shop A \(revisit\)/).click();
   await expect(panel(page)).toContainText('Existing lead');
   await panel(page).getByRole('button', { name: 'Approve' }).click();
-  await panel(page).getByRole('button', { name: 'Convert to lead' }).click();
-  await page.getByTestId('convert-panel').getByRole('button', { name: 'Create lead' }).click();
 
-  const matches = page.getByTestId('duplicate-matches');
-  await expect(matches).toContainText('already belongs to a lead. Nothing has been created.');
-  await expect(matches).toContainText('Existing Shop A');
-  expect(await backend.sql('SELECT count(*)::int AS n FROM leads')).toEqual([{ n: 2 }]);
+  // Duplicate-of-a-lead is informational here; this screen no longer offers any way to create or
+  // link a lead itself. Whether to qualify the resulting Daily Calling entry (and whether its own
+  // phone-duplicate check catches it, as proven in field-sales-daily-calling-handoff.test.mjs) is
+  // now entirely the office's decision, made later, in Daily Calling.
+  await expect(panel(page).getByRole('button', { name: 'Convert to lead' })).toHaveCount(0);
+  expect(await backend.sql('SELECT count(*)::int AS n FROM leads')).toEqual([{ n: 2 }]);          // unchanged: just the two pre-existing seeded leads
   expect(await backend.sql("SELECT status FROM field_visits")).toEqual([{ status: 'approved' }]);
-
-  await matches.getByRole('button', { name: 'Link to this lead' }).click();
-  await expect(page.getByTestId('review-notice')).toContainText('Linked to existing lead');
-  await expect(page.getByTestId('visit-history')).toContainText('Linked to an existing lead');
-  expect(await backend.sql('SELECT count(*)::int AS n FROM leads')).toEqual([{ n: 2 }]);
-  expect(await backend.sql('SELECT status, conversion_mode FROM field_visits')).toEqual([{ status: 'converted', conversion_mode: 'linked_existing' }]);
-  expect(await backend.sql("SELECT count(*)::int AS n FROM lead_activities WHERE type = 'Field Visit Linked'")).toEqual([{ n: 1 }]);
+  expect(await backend.sql("SELECT count(*)::int AS n FROM telecalling_entries WHERE field_visit_id IS NOT NULL")).toEqual([{ n: 1 }]);
 });
 
 test('staff are not offered the review screen, and the database refuses them if they try', async ({ page }) => {

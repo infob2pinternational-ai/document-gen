@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { createSupabaseFieldSalesApi, normalizePhone, toFieldSalesError, STATUS_LABEL } from '../../services/fieldVisitService';
-import type { ConvertResult, FieldSalesApi, FieldVisit, FieldVisitAssignee, FieldVisitEvent, FieldVisitStatus, LeadMatch } from '../../services/fieldVisitService';
+import type { FieldSalesApi, FieldVisit, FieldVisitEvent, FieldVisitStatus } from '../../services/fieldVisitService';
 import { EVENT_LABEL, requirementText } from './fieldSalesText';
 import './fieldSales.css';
 
@@ -9,8 +9,15 @@ import './fieldSales.css';
  * Office review of field visits (owner and admin).
  *
  * Reads visits the server allows this user to see and changes them only
- * through review_field_visit and convert_field_visit_to_lead. The buttons
- * shown here are a convenience: the database decides what is permitted.
+ * through review_field_visit. The buttons shown here are a convenience: the
+ * database decides what is permitted.
+ *
+ * Approving a visit no longer creates a CRM lead. It hands the visit to the
+ * existing Daily Calling workflow (see the field_visit_daily_calling_handoff
+ * migration) - a telecaller calls the prospect and records an outcome there,
+ * and only an explicit office action in Daily Calling (convert_telecalling_
+ * entry_to_lead) qualifies it into a lead. This screen only shows that the
+ * handoff happened; Daily Calling is where the rest of the workflow lives.
  */
 export interface ReviewCompany { id: string; name: string }
 /** Just enough of an existing CRM lead to flag a likely duplicate before converting. */
@@ -19,17 +26,10 @@ export interface KnownLead { id: string; company_id?: string; phone?: string | n
 interface FieldVisitReviewProps {
   companies: ReviewCompany[];
   activeCompanyId: string;
-  currentUserEmail: string;
   knownLeads?: KnownLead[];
-  /** Called after a visit became (or was linked to) a lead, so the CRM can refresh its lead and follow-up lists. */
-  onLeadsChanged?: () => void | Promise<void>;
   api?: FieldSalesApi;
 }
 
-const todayIso = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-};
 const formatDate = (value?: string | null) => {
   if (!value) return '';
   const date = new Date(value.length === 10 ? `${value}T00:00:00` : value);
@@ -44,7 +44,7 @@ const salespersonName = (email: string) => (email || '').split('@')[0] || email;
 
 type StatusFilter = 'all' | FieldVisitStatus;
 
-export const FieldVisitReview: React.FC<FieldVisitReviewProps> = ({ companies, activeCompanyId, currentUserEmail, knownLeads = [], onLeadsChanged, api: injectedApi }) => {
+export const FieldVisitReview: React.FC<FieldVisitReviewProps> = ({ companies, activeCompanyId, knownLeads = [], api: injectedApi }) => {
   const api = useMemo(() => injectedApi || createSupabaseFieldSalesApi(supabase), [injectedApi]);
 
   const [visits, setVisits] = useState<FieldVisit[]>([]);
@@ -213,11 +213,9 @@ export const FieldVisitReview: React.FC<FieldVisitReviewProps> = ({ companies, a
             visit={selected}
             api={api}
             companyName={companyName(selected.company_id)}
-            currentUserEmail={currentUserEmail}
             duplicates={duplicateInfo(selected)}
             onClose={() => setSelectedId(null)}
             onChanged={(visit, message) => { replaceVisit(visit); setNotice(message); }}
-            onLeadsChanged={onLeadsChanged}
             onOpenVisit={setSelectedId}
           />
         )}
@@ -232,26 +230,19 @@ interface VisitPanelProps {
   visit: FieldVisit;
   api: FieldSalesApi;
   companyName: string;
-  currentUserEmail: string;
   duplicates: { otherVisits: FieldVisit[]; leads: KnownLead[] };
   onClose: () => void;
   onChanged: (visit: FieldVisit, message: string) => void;
-  onLeadsChanged?: () => void | Promise<void>;
   onOpenVisit: (id: string) => void;
 }
 
-const VisitPanel: React.FC<VisitPanelProps> = ({ visit, api, companyName, currentUserEmail, duplicates, onClose, onChanged, onLeadsChanged, onOpenVisit }) => {
+const VisitPanel: React.FC<VisitPanelProps> = ({ visit, api, companyName, duplicates, onClose, onChanged, onOpenVisit }) => {
   const [events, setEvents] = useState<FieldVisitEvent[] | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [failure, setFailure] = useState('');
   const [noteFor, setNoteFor] = useState<'reject' | 'request_correction' | null>(null);
   const [note, setNote] = useState('');
-  const [converting, setConverting] = useState(false);
-  const [assignees, setAssignees] = useState<FieldVisitAssignee[]>([]);
-  const [assignee, setAssignee] = useState(currentUserEmail.toLowerCase());
-  const [followUp, setFollowUp] = useState(visit.follow_up_date && visit.follow_up_date >= todayIso() ? visit.follow_up_date : '');
-  const [matches, setMatches] = useState<LeadMatch[] | null>(null);
 
   const loadEvents = useCallback(() => {
     api.listEvents(visit.id).then(setEvents).catch(() => setEvents([]));
@@ -273,28 +264,6 @@ const VisitPanel: React.FC<VisitPanelProps> = ({ visit, api, companyName, curren
     setNoteFor(null); setNote('');
     onChanged(response.visit, action === 'approve' ? `“${visit.business_name}” approved.` : action === 'reject' ? `“${visit.business_name}” rejected.` : `“${visit.business_name}” sent back for correction.`);
     loadEvents();
-  });
-
-  const startConvert = () => guarded(async () => {
-    const list = await api.assignees(visit.company_id);
-    setAssignees(list);
-    if (!list.some(a => a.email === assignee) && list.length > 0) setAssignee(list[0].email);
-    setMatches(null);
-    setConverting(true);
-  });
-
-  const finishConvert = (result: ConvertResult) => {
-    setConverting(false); setMatches(null);
-    const number = result.lead_number || 'the lead';
-    onChanged(result.visit, result.result === 'already_converted' ? `Already converted (${number}).`
-      : result.mode === 'linked_existing' ? `Linked to existing lead ${number}.` : `Lead ${number} created.`);
-    loadEvents();
-    void onLeadsChanged?.();
-  };
-  const convert = (options: { existingLeadId?: string; forceNew?: boolean }) => guarded(async () => {
-    const result = await api.convert(visit.id, { assigneeEmail: assignee, followUpDate: followUp || null, ...options });
-    if (result.result === 'duplicates_found') { setMatches(result.matches || []); return; }
-    finishConvert(result);
   });
 
   const leadEvent = events?.find(event => event.action.startsWith('converted'));
@@ -335,6 +304,12 @@ const VisitPanel: React.FC<VisitPanelProps> = ({ visit, api, companyName, curren
         <dt>Follow-up asked</dt><dd>{formatDate(visit.follow_up_date) || '—'}</dd>
       </dl>
 
+      {visit.status === 'approved' && (
+        <div className="fs-banner ok" role="status" style={{ marginTop: '0.75rem' }}>
+          Approved. Handed to Daily Calling for a telecaller to follow up - find it there by phone number or business name.
+        </div>
+      )}
+
       {visit.status !== 'converted' && (duplicates.leads.length > 0 || duplicates.otherVisits.length > 0) && (
         <>
           <h4>Possible duplicates</h4>
@@ -354,11 +329,10 @@ const VisitPanel: React.FC<VisitPanelProps> = ({ visit, api, companyName, curren
 
       {failure && <div className="fs-banner error" role="alert" style={{ marginTop: '0.9rem' }}>{failure}</div>}
 
-      {/* Review actions */}
-      {!converting && !noteFor && (visit.status === 'submitted' || visit.status === 'approved') && (
+      {/* Review actions - only a submitted visit still has actions here; an approved one has moved on to Daily Calling. */}
+      {!noteFor && visit.status === 'submitted' && (
         <div className="fs-button-row">
-          {visit.status === 'submitted' && <button type="button" className="btn-primary fs-btn" disabled={busy} onClick={() => review('approve')}>Approve</button>}
-          {visit.status === 'approved' && <button type="button" className="btn-primary fs-btn" disabled={busy} onClick={startConvert}>Convert to lead</button>}
+          <button type="button" className="btn-primary fs-btn" disabled={busy} onClick={() => review('approve')}>Approve</button>
           <button type="button" className="btn-secondary fs-btn" disabled={busy} onClick={() => { setNoteFor('request_correction'); setFailure(''); }}>Request correction</button>
           <button type="button" className="btn-secondary fs-btn" disabled={busy} onClick={() => { setNoteFor('reject'); setFailure(''); }}>Reject</button>
         </div>
@@ -377,44 +351,6 @@ const VisitPanel: React.FC<VisitPanelProps> = ({ visit, api, companyName, curren
         </div>
       )}
 
-      {converting && (
-        <div style={{ marginTop: '0.9rem' }} data-testid="convert-panel">
-          <h4>Convert to lead</h4>
-          <div className="fs-field">
-            <label htmlFor="fsr-assignee">Assign the lead to</label>
-            <select id="fsr-assignee" className="fs-input" value={assignee} onChange={e => setAssignee(e.target.value)}>
-              {assignees.map(option => <option key={option.email} value={option.email}>{option.email}{option.email === currentUserEmail.toLowerCase() ? ' (you)' : ''} · {option.role}</option>)}
-            </select>
-          </div>
-          <div className="fs-field">
-            <label htmlFor="fsr-followup">Follow-up date <span className="fs-optional">(optional; assigned to the same person)</span></label>
-            <input id="fsr-followup" className="fs-input" type="date" min={todayIso()} value={followUp} onChange={e => setFollowUp(e.target.value)} />
-            {visit.follow_up_date && visit.follow_up_date < todayIso() && <div className="fs-row-sub">The salesperson asked for {formatDate(visit.follow_up_date)}, which has passed.</div>}
-          </div>
-
-          {matches === null && (
-            <div className="fs-button-row">
-              <button type="button" className="btn-primary fs-btn" disabled={busy || !assignee} onClick={() => convert({})}>{busy ? 'Working…' : 'Create lead'}</button>
-              <button type="button" className="btn-secondary fs-btn" disabled={busy} onClick={() => setConverting(false)}>Cancel</button>
-            </div>
-          )}
-          {matches !== null && (
-            <div data-testid="duplicate-matches">
-              <div className="fs-banner warn" role="alert">This phone number already belongs to {matches.length === 1 ? 'a lead' : `${matches.length} leads`}. Nothing has been created.</div>
-              {matches.map(match => (
-                <div className="fs-match" key={match.id}>
-                  <span><strong>{match.lead_number}</strong> {match.company_name || match.customer_name} · {match.phone} · {String(match.status || '').replace(/_/g, ' ')}{match.assigned_telecaller_email ? ` · ${match.assigned_telecaller_email}` : ''}</span>
-                  <button type="button" className="btn-primary fs-btn fs-btn-small" disabled={busy} onClick={() => convert({ existingLeadId: match.id })}>Link to this lead</button>
-                </div>
-              ))}
-              <div className="fs-button-row">
-                <button type="button" className="btn-secondary fs-btn" disabled={busy} onClick={() => { if (window.confirm('Create a second lead for the same phone number?')) void convert({ forceNew: true }); }}>Create a new lead anyway</button>
-                <button type="button" className="btn-secondary fs-btn" disabled={busy} onClick={() => { setConverting(false); setMatches(null); }}>Cancel</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       <h4>History</h4>
       {events === null && <div className="fs-empty">Loading…</div>}

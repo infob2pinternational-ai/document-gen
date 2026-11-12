@@ -177,38 +177,44 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
   };
 
 
-  const handleConvertToLead = async (entry: TelecallingEntry) => {
-    if (!companyId || convertingEntryId) return;
+  // Qualifying a Daily Calling entry into a lead is an explicit office decision (see
+  // convert_telecalling_entry_to_lead): never automatic, never triggered just by a call outcome.
+  const [qualifyEntry, setQualifyEntry] = useState<TelecallingEntry | null>(null);
+  const [qualifyAssignees, setQualifyAssignees] = useState<{ email: string; role: string }[]>([]);
+  const [qualifyAssignee, setQualifyAssignee] = useState('');
+  const [qualifyFollowUp, setQualifyFollowUp] = useState('');
+  const [qualifyMatches, setQualifyMatches] = useState<Array<{ id: string; lead_number?: string; customer_name?: string; company_name?: string; phone?: string; status?: string; assigned_telecaller_email?: string }> | null>(null);
+
+  const openQualifyModal = async (entry: TelecallingEntry) => {
     setConversionError(''); setConversionMessage('');
-    if (!entry.phone?.trim()) { setConversionError('A phone number is required before conversion.'); return; }
+    setQualifyEntry(entry); setQualifyMatches(null); setQualifyFollowUp('');
     setConvertingEntryId(entry.id);
     try {
-      const marker = `[telecalling-entry:${entry.id}]`;
-      const leads = leadService.getLeads(companyId);
-      const converted = leads.find(lead => lead.source_details?.includes(marker));
-      if (converted) {
-        setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: converted.id, lead_number: converted.lead_number } }));
-        setConversionMessage(`Already linked to ${converted.lead_number || 'an existing lead'}.`); return;
-      }
-      const norm = (value?: string | null) => (value || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-      const duplicate = leads.find(lead => norm(lead.phone) === norm(entry.phone) && (lead.company_name || lead.customer_name || '').trim().toLowerCase() === entry.company_name.trim().toLowerCase());
-      if (duplicate) {
-        setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: duplicate.id, lead_number: duplicate.lead_number, existing: true } }));
-        setConversionMessage(`Matching lead already exists: ${duplicate.lead_number || duplicate.customer_name}. No duplicate created.`); return;
-      }
-      const history = await telecallingService.searchPreviousEntries(companyId, entry.phone, 50);
-      const historyLines = history.filter(item => norm(item.phone) === norm(entry.phone) || norm(item.other_phone) === norm(entry.phone))
-        .sort((a, b) => (a.entry_date + a.created_at).localeCompare(b.entry_date + b.created_at))
-        .map(item => `${item.entry_date}: ${item.call_status} — ${item.feedback || 'No feedback'}`);
-      let userEmail = entry.created_by_email || 'Staff';
-      try { userEmail = JSON.parse(localStorage.getItem('supabase_user') || 'null')?.email || userEmail; } catch {}
-      const notes = [`Converted from Telecaller Daily Report on ${getKolkataToday()}.`, `Latest call status: ${entry.call_status}.`, entry.feedback ? `Latest feedback: ${entry.feedback}` : '', historyLines.length ? `Calling history:\n${historyLines.join('\n')}` : ''].filter(Boolean).join('\n\n');
-      const lead = await leadService.saveLead({ company_id: companyId, customer_name: entry.contact_person?.trim() || entry.company_name.trim(), company_name: entry.company_name.trim(), phone: entry.phone.trim(), whatsapp_number: entry.phone.trim(), location: entry.location || undefined, address: entry.location || undefined, lead_source: 'phone', source_details: `Telecaller Daily Report ${marker}`, priority: 'WARM', assigned_telecaller_email: entry.created_by_email || undefined, status: 'new', notes, remarks: entry.feedback || undefined }, userEmail);
-      setConvertedLeadByEntry(prev => ({ ...prev, [entry.id]: { id: lead.id, lead_number: lead.lead_number } }));
-      setConversionMessage(`Lead ${lead.lead_number || lead.customer_name} created. Calling feedback history was preserved in lead notes.`);
+      const list = await telecallingService.listAssignees(companyId);
+      setQualifyAssignees(list);
+      const self = (entry.created_by_email || '').toLowerCase();
+      setQualifyAssignee(list.some(a => a.email === self) ? self : (list[0]?.email || ''));
+    } catch (error: any) {
+      setConversionError(error?.message || 'Could not load the list of staff to assign this lead to.');
+      setQualifyEntry(null);
+    } finally { setConvertingEntryId(null); }
+  };
+
+  const submitQualify = async (options: { existingLeadId?: string; forceNew?: boolean } = {}) => {
+    if (!qualifyEntry) return;
+    setConvertingEntryId(qualifyEntry.id);
+    try {
+      const result = await telecallingService.convertEntryToLead(qualifyEntry.id, {
+        assigneeEmail: qualifyAssignee, followUpDate: qualifyFollowUp || null, ...options
+      });
+      if (result.result === 'duplicates_found') { setQualifyMatches(result.matches || []); return; }
+      setConvertedLeadByEntry(prev => ({ ...prev, [qualifyEntry.id]: { id: result.lead_id || '', lead_number: result.lead_number, existing: result.result === 'already_converted' } }));
+      setConversionMessage(result.result === 'already_converted' ? `Already linked to ${result.lead_number || 'an existing lead'}.` : `Lead ${result.lead_number || ''} created and assigned to ${qualifyAssignee}.`);
+      setQualifyEntry(null); setQualifyMatches(null);
       await loadReport();
-    } catch (error: any) { setConversionError(error?.message || 'Unable to convert this contact. Please retry.'); }
-    finally { setConvertingEntryId(null); }
+    } catch (error: any) {
+      setConversionError(error?.message || 'Unable to qualify this contact into a lead. Please retry.');
+    } finally { setConvertingEntryId(null); }
   };
 
   // Re-load only when companyId or selectedDate changes (or manual refresh)
@@ -1365,7 +1371,7 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
                                 {copiedPhoneId === e.id ? <Check size={14} /> : <Copy size={14} />}
                               </button>
 
-                              {convertedLeadByEntry[e.id] ? <span title={convertedLeadByEntry[e.id].existing ? 'Matching lead already exists' : 'Linked to CRM lead'} style={{ color: '#15803d', fontSize: '0.7rem', fontWeight: 700 }}><CheckCircle2 size={13} /> {convertedLeadByEntry[e.id].existing ? 'Existing lead found' : (convertedLeadByEntry[e.id].lead_number || 'Lead created')}</span> : <button type="button" onClick={() => void handleConvertToLead(e)} disabled={Boolean(convertingEntryId)} className="btn-ghost" title="Create a CRM lead from this telecalling record" style={{ padding: '0.2rem 0.4rem', color: '#166534', fontSize: '0.7rem', fontWeight: 700, background: '#dcfce7', borderRadius: 4 }}>{convertingEntryId === e.id ? 'Converting…' : 'Convert to Lead'}</button>}
+                              {(convertedLeadByEntry[e.id] || e.converted_lead_id) ? <span title={convertedLeadByEntry[e.id]?.existing ? 'Matching lead already exists' : 'Linked to CRM lead'} style={{ color: '#15803d', fontSize: '0.7rem', fontWeight: 700 }}><CheckCircle2 size={13} /> {convertedLeadByEntry[e.id]?.existing ? 'Existing lead found' : (convertedLeadByEntry[e.id]?.lead_number || 'Lead created')}</span> : <button type="button" onClick={() => void openQualifyModal(e)} disabled={Boolean(convertingEntryId)} className="btn-ghost" title="Explicitly qualify this contact into a CRM lead" style={{ padding: '0.2rem 0.4rem', color: '#166534', fontSize: '0.7rem', fontWeight: 700, background: '#dcfce7', borderRadius: 4 }}>{convertingEntryId === e.id ? 'Working…' : 'Qualify as Lead'}</button>}
                               {/* Call Again */}
                               <button
                                 type="button"
@@ -1439,6 +1445,62 @@ export const TelecallingDailyReport: React.FC<TelecallingDailyReportProps> = ({
             loadReport();
           }}
         />
+      )}
+
+      {/* Qualify as Lead: an explicit office decision, never automatic (convert_telecalling_entry_to_lead). */}
+      {qualifyEntry && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '1rem' }}>
+          <div className="modal-content" style={{ background: 'var(--bg-primary, #ffffff)', color: 'var(--text-primary, #0f172a)', borderRadius: '12px', maxWidth: '480px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid var(--border-color, #e2e8f0)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color, #e2e8f0)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Qualify as Lead</h3>
+              <button type="button" onClick={() => { setQualifyEntry(null); setQualifyMatches(null); }} className="btn-ghost" style={{ padding: '0.25rem' }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: '1.25rem 1.5rem' }}>
+              <div style={{ marginBottom: '0.75rem', fontSize: '0.9rem', color: 'var(--text-secondary, #475569)' }}>
+                {qualifyEntry.company_name} · {qualifyEntry.phone} · latest outcome: <strong>{qualifyEntry.call_status}</strong>
+              </div>
+
+              {qualifyMatches === null && (
+                <>
+                  <div style={{ marginBottom: '0.9rem' }}>
+                    <label htmlFor="qualify-assignee" style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>Assign the lead to</label>
+                    <select id="qualify-assignee" value={qualifyAssignee} onChange={e => setQualifyAssignee(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--border-color, #e2e8f0)' }}>
+                      {qualifyAssignees.map(a => <option key={a.email} value={a.email}>{a.email} · {a.role}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label htmlFor="qualify-followup" style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>Next follow-up date <span style={{ fontWeight: 400, color: 'var(--text-secondary, #64748b)' }}>(optional)</span></label>
+                    <input id="qualify-followup" type="date" min={getKolkataToday()} value={qualifyFollowUp} onChange={e => setQualifyFollowUp(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--border-color, #e2e8f0)' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                    <button type="button" className="btn-secondary" onClick={() => { setQualifyEntry(null); setQualifyMatches(null); }}>Cancel</button>
+                    <button type="button" className="btn-primary" disabled={Boolean(convertingEntryId) || !qualifyAssignee} onClick={() => void submitQualify()}>
+                      {convertingEntryId === qualifyEntry.id ? 'Working…' : 'Create Lead'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {qualifyMatches !== null && (
+                <div>
+                  <div role="alert" style={{ padding: '0.65rem', marginBottom: '0.75rem', borderRadius: 6, background: '#fef3c7', color: '#92400e', fontSize: '0.85rem' }}>
+                    This phone number already belongs to {qualifyMatches.length === 1 ? 'a lead' : `${qualifyMatches.length} leads`}. Nothing has been created.
+                  </div>
+                  {qualifyMatches.map(match => (
+                    <div key={match.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color, #e2e8f0)', fontSize: '0.85rem', gap: '0.5rem' }}>
+                      <span><strong>{match.lead_number}</strong> {match.company_name || match.customer_name} · {match.phone}{match.assigned_telecaller_email ? ` · ${match.assigned_telecaller_email}` : ''}</span>
+                      <button type="button" className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} disabled={Boolean(convertingEntryId)} onClick={() => void submitQualify({ existingLeadId: match.id })}>Link to this lead</button>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+                    <button type="button" className="btn-secondary" onClick={() => { if (window.confirm('Create a second lead for the same phone number?')) void submitQualify({ forceNew: true }); }}>Create a new lead anyway</button>
+                    <button type="button" className="btn-secondary" onClick={() => { setQualifyEntry(null); setQualifyMatches(null); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

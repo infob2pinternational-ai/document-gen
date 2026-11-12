@@ -2182,9 +2182,7 @@ function App() {
               <FieldVisitReview
                 companies={profiles.map(p => ({ id: p.id, name: p.name }))}
                 activeCompanyId={activeProfile?.id || ''}
-                currentUserEmail={currentUserEmail}
                 knownLeads={activeProfile ? leadService.getLeads(activeProfile.id) : []}
-                onLeadsChanged={async () => { if (activeProfile) await hydrateCrmFromCloud(activeProfile.id); }}
               />
             )}
 

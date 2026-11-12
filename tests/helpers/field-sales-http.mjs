@@ -2,8 +2,11 @@
 // in-memory Postgres that has the live-shaped schema and both migrations
 // applied. Used by the browser tests: the real UI runs against the real
 // database functions and row-level security, with no network and no Supabase.
+import { readFileSync } from 'node:fs';
 import { setup, asAdmin, U, EMAIL, A, B } from './field-sales-db.mjs';
 import { fakeSupabase } from './field-sales-fake-supabase.mjs';
+
+const HANDOFF_MIGRATION = readFileSync(new URL('../../database/migrations/20261112000001_field_visit_daily_calling_handoff.sql', import.meta.url), 'utf8');
 
 export const SUPABASE_URL = 'http://127.0.0.1:54399';
 export const PASSWORD = 'correct-horse';
@@ -24,6 +27,8 @@ const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers
 
 export async function createBackend() {
   const db = await setup();
+  await asAdmin(db);
+  await db.exec(HANDOFF_MIGRATION);     // field visit approval hands off to Daily Calling, not a lead
   const backend = {
     db,
     reachable: true,

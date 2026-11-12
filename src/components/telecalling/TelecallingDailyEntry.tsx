@@ -1410,6 +1410,9 @@ export const TelecallingDailyEntry: React.FC<TelecallingDailyEntryProps> = ({
                     }}>
                       <td style={{ padding: '8px 10px', fontWeight: 600 }}>
                         {e.company_name}
+                        {e.field_visit_id && (
+                          <span title={`Field visit by ${e.salesperson_email || 'a salesperson'}`} style={{ marginLeft: 6, fontSize: '0.65rem', fontWeight: 700, color: '#1e3a8a', background: '#dbeafe', borderRadius: 4, padding: '1px 5px' }}>FIELD VISIT</span>
+                        )}
                         {e.location && (
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{e.location}</div>
                         )}

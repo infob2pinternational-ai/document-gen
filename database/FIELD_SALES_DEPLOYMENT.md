@@ -183,6 +183,59 @@ statement, section 9 of the verification script still reports `unchanged`
 (privileges are not part of the fingerprint), and re-running part A restores
 the grants.
 
+## Part E: field visit -> Daily Calling handoff
+
+File: `20261112000001_field_visit_daily_calling_handoff.sql`.
+Rollback: `20261112000001_field_visit_daily_calling_handoff_rollback.sql`.
+
+**Requires part A and part B, intact** (checked the same way part A checks
+part B). Independent of part A's own filename order otherwise - apply
+whenever convenient after A and B.
+
+Business requirement: an approved field visit must never become a CRM lead
+by itself (see MIGRATION_B_ROLE_IMPACT.md and the Field Sales app docs for
+the original design, which this supersedes for the approval step only). What
+changes:
+
+1. `public.telecalling_entries` gains nullable columns carrying a field
+   visit's own data (`website`, `estimated_budget`, `requirements`,
+   `requirement_other`, `visit_remarks`, `visit_date`, `salesperson_email`),
+   a `field_visit_id` back-reference (unique while not null - exactly one
+   Daily Calling entry per visit, enforced by the database), and
+   `converted_lead_id` / `converted_at` / `converted_by_email` so a
+   telecalling entry's own conversion state is tracked durably.
+2. `review_field_visit`'s `'approve'` branch now also inserts a
+   `telecalling_entries` row (status `'Not Called Yet'`), idempotently. It
+   still never calls, and will never call, `convert_field_visit_to_lead`: no
+   lead is created on approval.
+3. A new function, `convert_telecalling_entry_to_lead`, lets the office
+   explicitly qualify a calling-history entry into a lead - owner/admin
+   only, row-locked, idempotent, duplicate-checked by phone, with lead
+   assignment and an optional follow-up in the same transaction. This is
+   the only path to a lead for anything that went through Daily Calling,
+   field-visit-sourced or not.
+4. `convert_field_visit_to_lead` itself is untouched (so any field visit
+   already converted before this migration keeps its `'converted'` status
+   and linked lead); nothing calls it from the approval path any more.
+
+**A real risk this migration's header comments flag**: if part A
+(`20261110000002_field_sales_data_collection.sql`) is ever re-applied AFTER
+this migration, its own `CREATE OR REPLACE FUNCTION review_field_visit`
+silently reverts the handoff (approval goes back to doing nothing extra, no
+lead, no Daily Calling entry either). If that ever happens, re-apply this
+migration again immediately afterward.
+
+Application-side: the "Convert to lead" button and panel are gone from
+Field Visit Review (`FieldVisitReview.tsx`); approving a visit now shows a
+banner pointing to Daily Calling instead. The equivalent action - with
+assignee and follow-up date - is now "Qualify as Lead" on the Daily Calling
+report (`TelecallingDailyReport.tsx`), calling the new RPC via
+`telecallingService.convertEntryToLead` / `.listAssignees`.
+
+Tests: `tests/field-sales-daily-calling-handoff.test.mjs` (10 tests, PGlite
+and local PostgreSQL) plus the updated field-sales browser tests in
+`tests/field-sales-office.e2e.ts`.
+
 ## Part C: feature rollback
 
 Removes the feature only.
