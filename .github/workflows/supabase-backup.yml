@@ -1,0 +1,80 @@
+name: Supabase database backup
+
+# Daily full logical backup of the production Supabase Postgres database,
+# encrypted and uploaded to Google Drive. See docs/DATABASE_BACKUP.md.
+#
+# This workflow NEVER touches production data: it only reads (pg_dump /
+# pg_dumpall), and the only writes it makes are to Google Drive (the backup
+# folder this workflow owns). It never runs a migration and never writes to
+# the database.
+
+on:
+  schedule:
+    # 20:30 UTC = 02:00 IST. A few minutes off the hour, as GitHub recommends
+    # for scheduled workflows, to avoid load spikes at the top of the hour.
+    - cron: '30 20 * * *'
+  workflow_dispatch: {}   # manual "Run workflow" button in the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-backup
+  cancel-in-progress: false   # never cancel a backup that is already uploading
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 17 client tools (match the production server version)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release
+          echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
+          sudo sed -i 's|deb http|deb [signed-by=/usr/share/keyrings/postgresql.gpg] http|' /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17 gnupg
+          pg_dump --version
+
+      - name: Install rclone
+        run: |
+          sudo apt-get install -y rclone
+          rclone version
+
+      - name: Run backup
+        id: backup
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+          RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
+          DRIVE_BACKUP_FOLDER: ${{ vars.DRIVE_BACKUP_FOLDER || 'B2P Database Backups' }}
+        run: |
+          chmod +x scripts/backup/run_backup.sh scripts/backup/apply_retention.sh
+          scripts/backup/run_backup.sh
+
+      - name: Send failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.BACKUP_ALERT_SMTP_USERNAME }}
+          password: ${{ secrets.BACKUP_ALERT_SMTP_PASSWORD }}
+          subject: '[B2P CRM] Supabase database backup FAILED'
+          to: ${{ secrets.BACKUP_ALERT_EMAIL_TO }}
+          from: B2P CRM Backup <${{ secrets.BACKUP_ALERT_SMTP_USERNAME }}>
+          body: |
+            The scheduled Supabase database backup failed.
+
+            Repository: ${{ github.repository }}
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            The previous verified backup on Google Drive was NOT deleted or
+            modified - retention cleanup only runs after a new backup is
+            uploaded and verified. Open the workflow run above for the full
+            log (connection strings and secrets are never printed to it).
