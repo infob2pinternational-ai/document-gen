@@ -134,18 +134,28 @@
 .fs-shell textarea.fs-input, .fs-review textarea.fs-input { min-height: 96px; resize: vertical; }
 .fs-shell .fs-input.invalid, .fs-review .fs-input.invalid { border-color: var(--accent-danger); }
 .fs-error { color: var(--accent-danger); font-size: 0.82rem; margin-top: 0.3rem; }
-.fs-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.fs-chip {
+/* Service checklist: one column on a phone, two on anything wider so a long
+   list of services does not turn into one long scroll. */
+.fs-checkbox-grid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+.fs-checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
   min-height: 44px;
-  padding: 0.5rem 0.9rem;
-  border-radius: 999px;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 0.9rem;
+  line-height: 1.3;
   cursor: pointer;
 }
-.fs-chip.on { background: var(--accent-primary); border-color: var(--accent-primary); color: #fff; font-weight: 600; }
+.fs-checkbox-item input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; margin: 0.05rem 0 0; accent-color: var(--accent-primary); cursor: pointer; }
+.fs-checkbox-item span { overflow-wrap: anywhere; }
+@media (min-width: 560px) {
+  .fs-checkbox-grid { grid-template-columns: 1fr 1fr; }
+}
 .fs-actions {
   position: sticky;
   bottom: 0;

@@ -360,10 +360,12 @@ const VisitForm: React.FC<VisitFormProps> = ({ initial, companies, correctionOf,
 
         <div className="fs-field">
           <span className="fs-label" id="fs-requirements-label">What do they need?</span>
-          <div className="fs-chips" role="group" aria-labelledby="fs-requirements-label">
+          <div className="fs-checkbox-grid" role="group" aria-labelledby="fs-requirements-label">
             {REQUIREMENT_OPTIONS.map(option => (
-              <button type="button" key={option.value} className={`fs-chip ${input.requirements.includes(option.value) ? 'on' : ''}`}
-                aria-pressed={input.requirements.includes(option.value)} onClick={() => toggleRequirement(option.value)}>{option.label}</button>
+              <label key={option.value} className="fs-checkbox-item">
+                <input type="checkbox" checked={input.requirements.includes(option.value)} onChange={() => toggleRequirement(option.value)} />
+                <span>{option.label}</span>
+              </label>
             ))}
           </div>
         </div>

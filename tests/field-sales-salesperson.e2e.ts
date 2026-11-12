@@ -54,8 +54,8 @@ test('a salesperson signs in, sees only the visit screens, and submits a visit',
   expect(backend.rpcCalls('save_field_visit')).toBe(0);
 
   await fillVisit(page, { name: 'Corner Store', phone: '98765 11111', contact: 'Anil', location: 'MG Road, Thrissur', budget: '25000', remarks: 'Wants a demo' });
-  await page.getByRole('button', { name: 'Website' }).click();
-  await page.getByRole('button', { name: 'Other' }).click();
+  await page.getByRole('checkbox', { name: 'Digital Marketing' }).click();
+  await page.getByRole('checkbox', { name: 'Other / Custom Requirement' }).click();
   await page.getByLabel('Other requirement').fill('Inventory app');
   await page.getByRole('button', { name: 'Submit visit' }).click();
 
@@ -63,11 +63,11 @@ test('a salesperson signs in, sees only the visit screens, and submits a visit',
   await expect(page.getByRole('button', { name: /Corner Store/ })).toContainText('Pending review');
   const rows = await backend.sql('SELECT salesperson_id, salesperson_email, company_id, status, phone_normalized, requirements, requirement_other, estimated_budget::text AS budget FROM field_visits');
   expect(rows).toEqual([{ salesperson_id: U.salesA, salesperson_email: EMAIL.salesA, company_id: A, status: 'submitted', phone_normalized: '9876511111',
-    requirements: ['other', 'website'], requirement_other: 'Inventory app', budget: '25000.00' }]);
+    requirements: ['digital_marketing', 'other'], requirement_other: 'Inventory app', budget: '25000.00' }]);
 
   // Detail and history.
   await page.getByRole('button', { name: /Corner Store/ }).click();
-  await expect(page.getByTestId('field-visit-detail')).toContainText('Website, Other: Inventory app');
+  await expect(page.getByTestId('field-visit-detail')).toContainText('Digital Marketing, Other: Inventory app');
   await expect(page.getByTestId('field-visit-detail')).toContainText('₹25,000');
   await expect(page.getByTestId('field-visit-detail')).toContainText('Submitted');
 });
@@ -225,9 +225,14 @@ test('the form and dashboard fit a phone screen without sideways scrolling, with
   expect(await fits()).toBe(true);
   await page.getByRole('button', { name: '+ New visit' }).click();
   expect(await fits()).toBe(true);
-  for (const name of ['Save draft', 'Submit visit', 'Website', 'Billing Software']) {
+  for (const name of ['Save draft', 'Submit visit']) {
     const box = await page.getByRole('button', { name, exact: true }).boundingBox();
     expect(box!.height, `${name} is at least 44px tall`).toBeGreaterThanOrEqual(44);
+  }
+  for (const name of ['Digital Marketing', 'Graphic Designing']) {
+    // The tap target is the whole row (the label wrapping the checkbox), not just the small checkbox glyph.
+    const box = await page.getByRole('checkbox', { name, exact: true }).locator('xpath=..').boundingBox();
+    expect(box!.height, `${name} row is at least 44px tall`).toBeGreaterThanOrEqual(44);
   }
   for (const label of ['Business name', 'Phone number']) {
     const box = await page.getByLabel(label).boundingBox();

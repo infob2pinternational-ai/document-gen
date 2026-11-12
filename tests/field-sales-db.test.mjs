@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ENGINE, FEATURE_MIGRATION, SECURITY_MIGRATION, FEATURE_ROLLBACK, SECURITY_ROLLBACK, SECURITY_ROLLBACK_CONFIRMATION,
+  ENGINE, FEATURE_MIGRATION, CATALOG_MIGRATION, SECURITY_MIGRATION, FEATURE_ROLLBACK, SECURITY_ROLLBACK, SECURITY_ROLLBACK_CONFIRMATION,
   U, EMAIL, A, B, LEAD_A, LEAD_B, OPEN_TABLES, id, as, asAdmin, asService, one, count, setup, seedSales,
   buildInsert, insertRealRow, noOpUpdate, visit, save, review, convert, tomorrow, approvedVisit
 } from './helpers/field-sales-db.mjs';
@@ -938,6 +938,38 @@ t('conversion creates one lead, its activities and an optional follow-up; the sa
     // Existing staff work the new lead with the existing tools.
     await as(db, U.staffA);
     assert.equal((await db.query("UPDATE leads SET status = 'telecaller_working' WHERE id = $1", [result.lead_id])).affectedRows, 1);
+  } finally { await db.close(); }
+});
+
+t('service catalogue update: B2P\'s real services are accepted and labelled, alongside legacy values on older visits', async () => {
+  const db = await setup();
+  try {
+    await asAdmin(db);
+    await db.exec(CATALOG_MIGRATION);
+    const date = await tomorrow(db);
+
+    // A new submission can use the real services, several at once.
+    await as(db, U.salesA);
+    await assert.rejects(save(db, visit(1, { requirements: ['not_a_real_service'] })), /Unknown requirement category/);
+    const submitted = (await save(db, visit(1, {
+      requirements: ['digital_marketing', 'graphic_designing', 'other'], requirement_other: 'Shop opening banner'
+    }))).visit.id;
+
+    // An old visit's legacy values are untouched and still accepted on resubmission (the office sends it back; nothing about requirements changes).
+    const legacyVisit = await approvedVisit(db, 2, { requirements: ['website', 'crm'] });
+
+    await as(db, U.owner);
+    await review(db, submitted, 'approve');
+    const converted = await convert(db, submitted, { date });
+    await asAdmin(db);
+    const lead = await one(db, 'SELECT service_required FROM leads WHERE id = $1', [converted.lead_id]);
+    assert.equal(lead.service_required, 'Digital Marketing, Graphic Designing, Other: Shop opening banner');
+
+    await as(db, U.owner);
+    const legacyConverted = await convert(db, legacyVisit);
+    await asAdmin(db);
+    const legacyLead = await one(db, 'SELECT service_required FROM leads WHERE id = $1', [legacyConverted.lead_id]);
+    assert.equal(legacyLead.service_required, 'CRM, Website', 'a visit saved before the catalogue changed still gets real labels, not raw keys');
   } finally { await db.close(); }
 });
 

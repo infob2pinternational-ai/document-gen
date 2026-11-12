@@ -14,7 +14,33 @@ const transpile = path => ts.transpileModule(readFileSync(new URL(path, import.m
 const service = await import(dataUri(transpile('../src/services/fieldVisitService.ts')
   .replaceAll("'../utils/uuid'", JSON.stringify(dataUri(transpile('../src/utils/uuid.ts'))))));
 const { FieldVisitStore, FieldSalesError, createSupabaseFieldSalesApi, emptyVisit, inputFromVisit, validateVisit, toServerPayload,
-  toFieldSalesError, normalizePhone, fieldSalesAccessCache, ACCESS_CACHE_MAX_AGE_MS } = service;
+  toFieldSalesError, normalizePhone, fieldSalesAccessCache, ACCESS_CACHE_MAX_AGE_MS, REQUIREMENT_OPTIONS, requirementLabel } = service;
+const { requirementText } = await import(dataUri(transpile('../src/components/fieldsales/fieldSalesText.ts')
+  .replaceAll("'../../services/fieldVisitService'", JSON.stringify(dataUri(transpile('../src/services/fieldVisitService.ts')
+    .replaceAll("'../utils/uuid'", JSON.stringify(dataUri(transpile('../src/utils/uuid.ts')))))))));
+
+// ---------------------------------------------------------------------------
+// Service catalogue: B2P's real services, with old (pre-catalogue) values
+// still displaying correctly instead of as a raw database key.
+// ---------------------------------------------------------------------------
+
+test('the service catalogue is B2P\'s real services, and legacy values from before it changed still have a real label', () => {
+  assert.equal(REQUIREMENT_OPTIONS.length, 18);
+  assert.deepEqual(REQUIREMENT_OPTIONS.map(o => o.label).slice(0, 4),
+    ['Mobile LED Van Advertising', 'LED Wall Display Rental', 'Lookwalker Advertising', 'Vehicle Branding & Fleet Wraps']);
+  assert.equal(REQUIREMENT_OPTIONS.at(-1).label, 'Other / Custom Requirement');
+  assert.ok(!REQUIREMENT_OPTIONS.some(o => o.label === 'Website' || o.label === 'Billing Software'), 'the retired options are no longer offered');
+
+  // A visit saved before the catalogue changed, never touched since: still a real label, not a raw key.
+  assert.equal(requirementLabel('billing_software'), 'Billing Software');
+  assert.equal(requirementLabel('attendance_software'), 'Attendance Software');
+  assert.equal(requirementLabel('digital_marketing'), 'Digital Marketing');
+  assert.equal(requirementLabel('something_unrecognised'), 'something_unrecognised');
+
+  // Mixed old and new values on the same (old) visit: current options display first, legacy ones after.
+  assert.equal(requirementText(['crm', 'digital_marketing', 'other'], 'Inventory app'), 'Digital Marketing, Other: Inventory app, CRM');
+  assert.equal(requirementText(['mobile_led_van_advertising', 'graphic_designing']), 'Mobile LED Van Advertising, Graphic Designing');
+});
 
 const filled = (overrides = {}) => ({ ...emptyVisit(A), business_name: 'Corner Store', phone: '98765 43210', contact_person: 'Anil',
   location: 'MG Road, Thrissur', requirements: ['website', 'other'], requirement_other: 'Inventory app', estimated_budget: '25000',

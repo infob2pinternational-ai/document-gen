@@ -284,7 +284,27 @@ BEGIN
     END IF;
 
     v_source := CASE WHEN e.field_visit_id IS NOT NULL THEN 'field_visit' ELSE 'phone' END;
-    SELECT string_agg(CASE r WHEN 'website' THEN 'Website' WHEN 'billing_software' THEN 'Billing Software'
+    SELECT string_agg(CASE r
+        WHEN 'mobile_led_van_advertising' THEN 'Mobile LED Van Advertising'
+        WHEN 'led_wall_display_rental' THEN 'LED Wall Display Rental'
+        WHEN 'lookwalker_advertising' THEN 'Lookwalker Advertising'
+        WHEN 'vehicle_branding_fleet_wraps' THEN 'Vehicle Branding & Fleet Wraps'
+        WHEN 'billboard_hoarding_advertising' THEN 'Billboard & Hoarding Advertising'
+        WHEN 'event_roadshow_marketing' THEN 'Event & Roadshow Marketing'
+        WHEN 'graphic_designing' THEN 'Graphic Designing'
+        WHEN 'video_production_4k' THEN '4K Video Production'
+        WHEN 'event_video_coverage' THEN 'Event Video Coverage'
+        WHEN 'acrylic_signage_3d' THEN '3D Acrylic Signage'
+        WHEN 'shop_boards_signage' THEN 'Shop Boards & Signage'
+        WHEN 'commercial_printing' THEN 'Commercial Printing'
+        WHEN 'digital_marketing' THEN 'Digital Marketing'
+        WHEN 'whatsapp_bulk_messaging' THEN 'WhatsApp Bulk Messaging'
+        WHEN 'brand_promotion' THEN 'Brand Promotion'
+        WHEN 'corporate_advertising' THEN 'Corporate Advertising'
+        WHEN 'pr_media_strategy' THEN 'PR & Media Strategy'
+        -- legacy keys from before the service catalogue was replaced - see
+        -- 20261112000002_field_visit_service_catalog_update.sql.
+        WHEN 'website' THEN 'Website' WHEN 'billing_software' THEN 'Billing Software'
         WHEN 'crm' THEN 'CRM' WHEN 'attendance_software' THEN 'Attendance Software'
         ELSE 'Other' || coalesce(': ' || e.requirement_other, '') END, ', ' ORDER BY ord)
       INTO v_services

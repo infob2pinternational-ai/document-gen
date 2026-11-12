@@ -28,9 +28,17 @@ the same screens from the same code.
   "Recent activity" lists visits newest first with their status and any office
   note. A large **New visit** button.
 - **New visit form.** Business name and phone (required), contact person,
-  location, requirements (Website, Billing Software, CRM, Attendance Software,
-  Other), other requirement, estimated budget, remarks, next follow-up date.
-  **Save draft** keeps it on the phone. **Submit visit** sends it.
+  location, requirements - a multi-select checklist of B2P's actual services
+  (Mobile LED Van Advertising, LED Wall Display Rental, Lookwalker
+  Advertising, Vehicle Branding & Fleet Wraps, Billboard & Hoarding
+  Advertising, Event & Roadshow Marketing, Graphic Designing, 4K Video
+  Production, Event Video Coverage, 3D Acrylic Signage, Shop Boards &
+  Signage, Commercial Printing, Digital Marketing, WhatsApp Bulk Messaging,
+  Brand Promotion, Corporate Advertising, PR & Media Strategy, Other /
+  Custom Requirement - see `REQUIREMENT_OPTIONS` in
+  `src/services/fieldVisitService.ts` for the source of truth), other
+  requirement, estimated budget, remarks, next follow-up date. **Save
+  draft** keeps it on the phone. **Submit visit** sends it.
 - **Visit detail.** Everything entered, status, office note, history. A visit
   sent back by the office has **Correct and resubmit**.
 

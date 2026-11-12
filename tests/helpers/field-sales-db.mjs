@@ -17,6 +17,7 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 export const FIXTURE = read('../fixtures/live-schema-2026-11-10.sql');
 export const SECURITY_MIGRATION = read('../../database/migrations/20261110000001_security_office_roles_only.sql');
 export const FEATURE_MIGRATION = read('../../database/migrations/20261110000002_field_sales_data_collection.sql');
+export const CATALOG_MIGRATION = read('../../database/migrations/20261112000002_field_visit_service_catalog_update.sql');
 export const FEATURE_ROLLBACK = read('../../database/rollback/20261110000002_field_sales_feature_rollback.sql');
 export const SECURITY_ROLLBACK = read('../../database/rollback/20261110000001_security_office_roles_only_rollback.sql');
 export const SECURITY_ROLLBACK_CONFIRMATION = "SET b2p.confirm_reopen_office_tables = 'I accept that all signed-in accounts regain access';";
