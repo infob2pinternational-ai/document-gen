@@ -73,7 +73,6 @@ jobs:
 
             Repository: ${{ github.repository }}
             Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            Time (UTC): ${{ github.event.repository.updated_at }}
 
             The previous verified backup on Google Drive was NOT deleted or
             modified - retention cleanup only runs after a new backup is

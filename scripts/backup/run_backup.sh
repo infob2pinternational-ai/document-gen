@@ -23,6 +23,11 @@
 # runs retention cleanup unless the new backup was uploaded and verified.
 set -euo pipefail
 
+# Resolved before the cd below - BASH_SOURCE[0] is whatever path the caller
+# used to invoke this script (e.g. the relative "scripts/backup/run_backup.sh"
+# the workflow uses), which stops resolving once the working directory changes.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 cd "$WORKDIR"
@@ -61,8 +66,7 @@ pg_dump "$SUPABASE_DB_URL" \
   --schema=storage \
   --schema=b2p_migration_internal \
   --schema=field_sales_internal \
-  --file="$DUMP_FILE" \
-  2> >(grep -v "password" >&2)
+  --file="$DUMP_FILE"
 echo "   dump: $(wc -l < "$DUMP_FILE") lines, $(du -h "$DUMP_FILE" | cut -f1)"
 
 echo "== Dumping cluster-level roles (pg_dumpall --globals-only) =="
@@ -70,7 +74,7 @@ echo "== Dumping cluster-level roles (pg_dumpall --globals-only) =="
 # logged as a warning, not a fatal error, since Supabase sometimes restricts
 # this even for the project's own "postgres" role. The main data dump above
 # is the critical artifact and must not be blocked by this.
-if pg_dumpall --globals-only --dbname="$SUPABASE_DB_URL" --file="$GLOBALS_FILE" 2> >(grep -v "password" >&2); then
+if pg_dumpall --globals-only --dbname="$SUPABASE_DB_URL" --file="$GLOBALS_FILE"; then
   echo "   globals: $(wc -l < "$GLOBALS_FILE") lines"
 else
   echo "   WARNING: pg_dumpall --globals-only failed (likely insufficient privilege on this managed project)." >&2
@@ -125,6 +129,6 @@ echo "BACKUP_VERIFIED=true" >> "${GITHUB_OUTPUT:-/dev/null}" 2>/dev/null || true
 echo "BACKUP_FILENAME=${ENCRYPTED}" >> "${GITHUB_OUTPUT:-/dev/null}" 2>/dev/null || true
 
 echo "== Applying retention (30 daily / 12 weekly / 12 monthly) - only reached after verified upload =="
-"$(dirname "${BASH_SOURCE[0]}")/apply_retention.sh"
+"${SCRIPT_DIR}/apply_retention.sh"
 
 echo "== Done =="
