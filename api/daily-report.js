@@ -2,6 +2,28 @@ import https from 'https';
 import fs from 'fs';
 import { requireUser } from '../server/auth.js';
 
+// Checks the caller's role without writing a response, unlike requireOwnerOrAdminSession:
+// callers who are neither owner nor admin stay authorized for this handler, just not for
+// redirecting the report to an arbitrary recipient (see the targetPhone computation below).
+// Uses the global fetch(), matching requireUser()/requireOwnerOrAdminSession in server/auth.js,
+// so it fails closed (treats the caller as not owner/admin) rather than silently retrying on a
+// different HTTP stack if Supabase is briefly unreachable.
+async function callerIsOwnerOrAdmin(auth) {
+  if (!auth) return false;
+  try {
+    const response = await fetch(`${auth.url}/rest/v1/rpc/current_app_role`, {
+      method: 'POST',
+      headers: auth.headers,
+      signal: AbortSignal.timeout(10000)
+    });
+    if (response.ok) {
+      const role = await response.json();
+      return role === 'owner' || role === 'admin';
+    }
+  } catch {}
+  return false;
+}
+
 const SNAPSHOT_FILE = '/tmp/b2p_followups_snapshot.json';
 let memorySnapshot = null;
 
@@ -772,6 +794,42 @@ export default async function handler(req, res) {
 
   const action = req.query.action || (req.method === 'GET' ? 'cron' : 'send-report');
 
+  // Enforce server-side authorization on every path through this handler, before any data is
+  // read or any message is sent:
+  //   1. A real cron run MUST present the exact CRON_SECRET as a bearer token. (No Vercel Cron
+  //      schedule currently targets this endpoint - see vercel.json - so today this path only
+  //      protects against someone guessing at automation; it is kept so the behavior matches
+  //      api/detailed-staff-report.js and a future cron schedule is safe by default.)
+  //   2. Every other action - including 'sync-follow-ups'/'sync-snapshot', which used to run
+  //      with no check at all, and 'test-ping', which used to run with no check whenever an
+  //      Authorization header was simply absent - requires a verified, real (non-anonymous)
+  //      Supabase session. There is no unauthenticated fallback: a request with no Authorization
+  //      header is rejected, it is never treated as "must be the cron job". This intentionally
+  //      uses requireUser() (any signed-in office account), not an owner/admin-only check: the
+  //      Daily/Weekly Report screens and their "Send report"/"Test ping" buttons are reachable by
+  //      every staff role today with no role gate in the UI, so requiring owner/admin here would
+  //      silently break that existing, working behavior for non-owner/admin staff.
+  // SECURITY FIX (B2P Field Sales security review): the previous check only ran requireUser()
+  // when an Authorization header happened to be present, and separately treated any header of
+  // the form "Bearer cron_..." as implicitly authorized cron traffic without ever comparing it
+  // to CRON_SECRET - both let an anonymous caller reach the report (and its WhatsApp dispatch
+  // and recipient-phone override) with no credentials at all.
+  const isCron = action === 'cron' || Boolean(req.headers['x-vercel-cron']);
+  let auth = null;
+  if (isCron) {
+    const cronSecret = process.env.CRON_SECRET;
+    const authHeader = req.headers.authorization || '';
+    if (!cronSecret) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: CRON_SECRET is not configured on the server.' });
+    }
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Missing or invalid CRON_SECRET authorization.' });
+    }
+  } else {
+    auth = await requireUser(req, res);
+    if (!auth) return; // 401 already sent by requireUser
+  }
+
   // Handle follow-ups snapshot sync from CRM client
   if (action === 'sync-follow-ups' || action === 'sync-snapshot') {
     const snap = {
@@ -786,16 +844,19 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, message: 'Follow-ups snapshot synced successfully', snapshot: snap });
   }
 
-  // Verify authentication if triggered from frontend
-  let authUser = null;
-  const isCron = action === 'cron' || Boolean(req.headers['x-vercel-cron']);
-  if (!isCron && req.headers.authorization && !req.headers.authorization.startsWith('Bearer cron_')) {
-    authUser = await requireUser(req, res);
-    if (!authUser) return; // Response sent by requireUser
-  }
-
-  // Determine target recipient phone (defaults to owner number 918589909034)
-  let targetPhone = req.body?.phone || req.query.phone || process.env.OWNER_WHATSAPP_NUMBER || '918589909034';
+  // Determine target recipient phone (defaults to owner number 918589909034).
+  // Validate the authorized recipient: the pure cron path (a bare CRON_SECRET, with no human
+  // session behind it) always reports to the configured owner number and may not be redirected
+  // by a caller-supplied phone. For 'test-ping' - a static self-verification message with no
+  // business data, used to confirm a number before saving it as the owner number - any signed-in
+  // caller may still choose the number being verified; the UI's "Test ping" button already relies
+  // on this. For every other action (the operational report itself, which carries every staff
+  // member's call records, customer names/phones and document amounts), only an owner or admin
+  // may redirect it to a number other than the configured owner number: the UI never offers a
+  // non-owner/admin caller a way to pick a custom recipient for the report, so this only closes a
+  // server-side gap, it does not remove anything a non-owner/admin user could legitimately do.
+  const canOverrideRecipient = !isCron && (action === 'test-ping' || await callerIsOwnerOrAdmin(auth));
+  let targetPhone = (canOverrideRecipient ? (req.body?.phone || req.query.phone) : null) || process.env.OWNER_WHATSAPP_NUMBER || '918589909034';
   let cleanPhone = String(targetPhone).replace(/\D/g, '');
   if (cleanPhone === '918891074715' || cleanPhone === '8891074715') {
     cleanPhone = '918589909034';
@@ -1097,7 +1158,7 @@ export default async function handler(req, res) {
       const nextDate = new Date(new Date(targetDate + 'T00:00:00.000Z').getTime() + 86400000).toISOString();
       const leadsForDate = await supabaseRest(
         'leads?created_at=gte.' + targetDate + 'T00:00:00&created_at=lt.' + nextDate + '&select=id,company_id,customer_name,company_name,phone,lead_number,source_details,assigned_telecaller_email,created_at',
-        'GET'
+        'GET', null, callerAuth
       ) || [];
       convertedLeads = leadsForDate.filter(lead => {
         const match = (lead.source_details || '').match(/\[telecalling-entry:([^\]]+)\]/);

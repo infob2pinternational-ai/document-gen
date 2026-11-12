@@ -64,6 +64,7 @@ export const Reports: React.FC<ReportsProps> = ({
     'existing_customer',
     'referral',
     'bulk_email',
+    'field_visit',
     'other'
   ];
 

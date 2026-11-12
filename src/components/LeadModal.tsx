@@ -28,6 +28,7 @@ const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'existing_customer', label: 'Existing Customer' },
   { value: 'referral', label: 'Referral' },
   { value: 'bulk_email', label: 'Bulk Email' },
+  { value: 'field_visit', label: 'Field Visit' },
   { value: 'other', label: 'Other' }
 ];
 

@@ -1111,9 +1111,16 @@ export async function sendDailyReportViaB2PSystem(params: {
 export async function sendTestPingToOwner(phone: string): Promise<{ success: boolean; message?: string; error?: string }> {
   const cleanPhone = normalizeIndianPhone(phone);
   try {
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const { authenticatedHeaders } = await import('../services/apiAuth');
+      headers = await authenticatedHeaders();
+    } catch (authErr: any) {
+      return { success: false, error: authErr?.message || 'Sign in to continue.' };
+    }
     const res = await fetch('/api/daily-report?action=test-ping', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ phone: cleanPhone })
     });
     const data = await res.json();

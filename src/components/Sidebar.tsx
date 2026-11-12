@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
+  MapPin,
   LayoutDashboard, 
   Target, 
   Users, 
@@ -176,6 +177,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     }
   ];
+
+  // Office review of field-sales visits: owner and admin only (the database enforces the same rule).
+  if (userRole === 'owner' || userRole === 'admin') {
+    baseSections[0].items.push({ id: 'field-visits', label: 'Field Visits', icon: MapPin });
+  }
 
   if (isFinanceRole) {
     baseSections.push({

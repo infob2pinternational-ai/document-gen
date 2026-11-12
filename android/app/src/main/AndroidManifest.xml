@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- allowBackup was "true"; disabled during the Field Sales security review (2026-11): with
+         it on, Android's auto backup (and `adb backup`, on a device with USB debugging enabled)
+         would include this WebView's localStorage, which can hold unsynced field-visit drafts
+         (business name, phone, contact, location, remarks) in plain text. No in-app behavior
+         changes - this only affects OS-level device backup/restore, which this app never relied on. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"

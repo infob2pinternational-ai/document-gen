@@ -602,9 +602,12 @@ class TelecallingService {
         return; // Sync not configured
       }
 
-      // Claim rows via RPC
+      // Claim rows via RPC, scoped to this company. The function itself re-validates that the
+      // signed-in caller has access to companyId (see the migration): this parameter is a
+      // normal argument, never a trust boundary on its own.
       const { data: rows, error: claimError } = await supabase.rpc('claim_telecalling_sync_queue_rows', {
         p_worker_id: BROWSER_WORKER_ID,
+        p_company_id: companyId,
         p_limit: 10
       });
 

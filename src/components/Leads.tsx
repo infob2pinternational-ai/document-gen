@@ -359,6 +359,7 @@ export const Leads: React.FC<LeadsProps> = ({
             <option value="phone">Direct Call</option>
             <option value="existing_customer">Existing Client</option>
             <option value="referral">Referral</option>
+            <option value="field_visit">Field Visit</option>
             <option value="other">Other</option>
           </select>
 

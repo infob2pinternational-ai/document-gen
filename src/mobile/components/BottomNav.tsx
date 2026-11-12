@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, Clock, FileText, Users, Briefcase } from 'lucide-react';
+import { Home, Clock, FileText, Users, Briefcase, MapPin } from 'lucide-react';
 
-export type OwnerTab = 'home' | 'pending' | 'documents' | 'customers' | 'services';
+export type OwnerTab = 'home' | 'pending' | 'documents' | 'customers' | 'services' | 'visits';
 
 interface BottomNavProps {
   currentTab: OwnerTab;
@@ -15,7 +15,8 @@ const items: { id: OwnerTab; label: string; icon: React.ComponentType<{ size?: n
   { id: 'pending', label: 'Pending', icon: Clock },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'customers', label: 'Customers', icon: Users },
-  { id: 'services', label: 'Services', icon: Briefcase }
+  { id: 'services', label: 'Services', icon: Briefcase },
+  { id: 'visits', label: 'Visits', icon: MapPin }
 ];
 
 export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, onChangeTab, allowedTabs }) => {

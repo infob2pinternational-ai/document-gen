@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import https from 'node:https';
 import ts from 'typescript';
 import dailyReportHandler, {
   formatDailyReportMessage,
@@ -10,6 +11,90 @@ import dailyReportHandler, {
   formatAmount,
   formatISTTime
 } from '../api/daily-report.js';
+
+// --- shared helpers for exercising the handler's authorization ------------------------------
+//
+// requireUser() (server/auth.js) validates a bearer token against Supabase Auth's
+// /auth/v1/user endpoint using the global fetch(). These tests never talk to a real Supabase
+// project: withMockedAuth() stubs global fetch to answer that one endpoint for the duration of
+// a test, and restores both fetch and the SUPABASE_URL/SUPABASE_ANON_KEY env vars afterward so
+// tests cannot leak state into each other.
+// `role` answers the handler's current_app_role RPC (used to decide whether this caller may
+// redirect the report to an arbitrary recipient phone); it defaults to 'owner' so tests written
+// before that check existed keep their original behavior unless they explicitly pass a role.
+async function withMockedAuth(isValidUser, run, role = 'owner') {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_ANON_KEY;
+  process.env.SUPABASE_URL = 'https://test.supabase.invalid';
+  process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/auth/v1/user')) {
+      return isValidUser
+        ? { ok: true, status: 200, json: async () => ({ id: 'test-user-id', email: 'staff@example.test', is_anonymous: false }) }
+        : { ok: false, status: 401, json: async () => ({ error: 'invalid_token' }) };
+    }
+    if (String(url).includes('/rpc/current_app_role')) {
+      return { ok: true, status: 200, json: async () => role };
+    }
+    throw new Error(`Unexpected fetch to ${url} during test`);
+  };
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_ANON_KEY; else process.env.SUPABASE_ANON_KEY = originalKey;
+  }
+}
+
+// Monkey-patches https.request - used internally by every supabaseRest() call via the file's
+// own httpsRequest() helper - to serve canned REST responses instead of hitting the network,
+// recording each request's URL and headers. `https` is a CJS module, so this same object
+// reference is shared with api/daily-report.js's own `import https from 'https'`.
+async function withMockedSupabaseRest(responsesByPath, run) {
+  const originalRequest = https.request;
+  const calls = [];
+  https.request = (url, options, callback) => {
+    const urlStr = String(url);
+    calls.push({ url: urlStr, headers: options?.headers || {} });
+    const matchKey = Object.keys(responsesByPath).find((k) => urlStr.includes(k));
+    const bodyText = JSON.stringify(matchKey ? responsesByPath[matchKey] : []);
+    const fakeReq = {
+      on: () => fakeReq,
+      write: () => {},
+      end: () => {
+        const fakeRes = {
+          statusCode: 200,
+          on: (event, handler) => {
+            if (event === 'data') handler(Buffer.from(bodyText));
+            if (event === 'end') handler();
+            return fakeRes;
+          }
+        };
+        callback(fakeRes);
+      }
+    };
+    return fakeReq;
+  };
+  try {
+    return await run(calls);
+  } finally {
+    https.request = originalRequest;
+  }
+}
+
+function fakeResponse() {
+  const state = { statusCode: 0, jsonResult: null };
+  const res = {
+    setHeader: () => {},
+    status: (c) => {
+      state.statusCode = c;
+      return { json: (d) => { state.jsonResult = d; }, end: () => {} };
+    }
+  };
+  return { res, state };
+}
 
 function loadTsModule(relativePath, stubs = {}) {
   const code = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -116,29 +201,261 @@ test('OPTIONS /api/daily-report returns 200 with CORS headers', async () => {
 });
 
 test('POST /api/daily-report rejects sending to business own sender number (+91 81390 09034)', async () => {
-  let statusCode = 0;
-  let jsonResult = null;
+  await withMockedAuth(true, async () => {
+    const { res, state } = fakeResponse();
+    const req = {
+      method: 'POST',
+      query: { action: 'send-report' },
+      headers: { authorization: 'Bearer valid-user-session-token' },
+      body: { phone: '918139009034' }
+    };
 
+    await dailyReportHandler(req, res);
+    assert.equal(state.statusCode, 400);
+    assert.equal(state.jsonResult.success, false);
+    assert.match(state.jsonResult.error, /Cannot send WhatsApp report to the business's own sender number/);
+  });
+});
+
+// --- SECURITY REGRESSION: api/daily-report.js must reject unauthenticated requests ----------
+//
+// Before the fix, this endpoint ran with no authentication at all whenever the caller simply
+// omitted an Authorization header (or sent one shaped like "Bearer cron_..." - a string that
+// was never actually compared to CRON_SECRET). That let anyone, with no credentials, read
+// company-wide follow-up/document data and trigger a WhatsApp dispatch to an attacker-chosen
+// phone number using the server's own Supabase access. These tests prove the fix holds for
+// every action the handler exposes, and that legitimate authenticated and cron traffic still works.
+
+test('SECURITY: an anonymous request (no Authorization header) is rejected for every non-cron action', async () => {
+  for (const action of ['send-report', 'test-ping', 'sync-follow-ups', 'sync-snapshot', 'generate']) {
+    const { res, state } = fakeResponse();
+    const req = { method: 'POST', query: { action }, headers: {}, body: { phone: '919999999999' } };
+    await dailyReportHandler(req, res);
+    assert.equal(state.statusCode, 401, `action=${action} must be rejected with 401`);
+    assert.equal(state.jsonResult?.success, undefined);
+    assert.match(state.jsonResult?.error || '', /sign in/i, `action=${action}`);
+  }
+});
+
+test('SECURITY: a forged "Bearer cron_..." header no longer bypasses authentication', async () => {
+  // This exact header shape used to be special-cased (string-matched, never compared to
+  // CRON_SECRET) and treated as implicitly-authorized cron traffic.
+  const { res, state } = fakeResponse();
   const req = {
     method: 'POST',
     query: { action: 'send-report' },
-    headers: {},
-    body: {
-      phone: '918139009034'
-    }
+    headers: { authorization: 'Bearer cron_anything_an_attacker_can_type' },
+    body: { phone: '919999999999' }
   };
-  const res = {
-    setHeader: () => {},
-    status: (c) => {
-      statusCode = c;
-      return { json: (d) => { jsonResult = d; } };
-    }
-  };
-
   await dailyReportHandler(req, res);
-  assert.equal(statusCode, 400);
-  assert.equal(jsonResult.success, false);
-  assert.match(jsonResult.error, /Cannot send WhatsApp report to the business's own sender number/);
+  // Not a real Supabase session (requireUser's /auth/v1/user call will fail because no
+  // SUPABASE_URL is configured in this test's environment), so it must still be rejected.
+  assert.ok([401, 503].includes(state.statusCode), `expected 401 or 503, got ${state.statusCode}`);
+  assert.equal(state.jsonResult.success, undefined);
+});
+
+test('SECURITY: a signed-in but invalid/expired session token is rejected, not treated as authorized', async () => {
+  await withMockedAuth(false, async () => {
+    const { res, state } = fakeResponse();
+    const req = {
+      method: 'POST',
+      query: { action: 'send-report' },
+      headers: { authorization: 'Bearer expired-or-forged-token' },
+      body: { phone: '919999999999' }
+    };
+    await dailyReportHandler(req, res);
+    assert.equal(state.statusCode, 401);
+  });
+});
+
+test('SECURITY: an authenticated session is accepted and may reach the business-number validation', async () => {
+  await withMockedAuth(true, async () => {
+    const { res, state } = fakeResponse();
+    const req = {
+      method: 'POST',
+      query: { action: 'send-report' },
+      headers: { authorization: 'Bearer valid-user-session-token' },
+      body: { phone: '919999999999' }
+    };
+    await dailyReportHandler(req, res);
+    // Proves authorization was granted (not 401) - the remaining network calls to the real
+    // Supabase/Bizylead APIs then fail in this offline test environment and are handled
+    // elsewhere in the handler; what matters here is that auth did not block the request.
+    assert.notEqual(state.statusCode, 401);
+  });
+});
+
+test('SECURITY: the cron path requires the exact CRON_SECRET, not merely the x-vercel-cron header', async () => {
+  const originalSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'test-cron-secret-value';
+  try {
+    // No CRON_SECRET configured on the server at all.
+    delete process.env.CRON_SECRET;
+    {
+      const { res, state } = fakeResponse();
+      const req = { method: 'GET', query: { action: 'cron' }, headers: { 'x-vercel-cron': '1' } };
+      await dailyReportHandler(req, res);
+      assert.equal(state.statusCode, 401);
+      assert.match(state.jsonResult.error, /CRON_SECRET is not configured/);
+    }
+    process.env.CRON_SECRET = 'test-cron-secret-value';
+    // x-vercel-cron header present, but no Authorization header at all.
+    {
+      const { res, state } = fakeResponse();
+      const req = { method: 'GET', query: { action: 'cron' }, headers: { 'x-vercel-cron': '1' } };
+      await dailyReportHandler(req, res);
+      assert.equal(state.statusCode, 401);
+      assert.match(state.jsonResult.error, /Missing or invalid CRON_SECRET/);
+    }
+    // Wrong secret.
+    {
+      const { res, state } = fakeResponse();
+      const req = { method: 'GET', query: { action: 'cron' }, headers: { 'x-vercel-cron': '1', authorization: 'Bearer wrong-secret' } };
+      await dailyReportHandler(req, res);
+      assert.equal(state.statusCode, 401);
+    }
+    // Correct secret is accepted.
+    {
+      const { res, state } = fakeResponse();
+      const req = {
+        method: 'GET',
+        query: { action: 'cron', date: '2026-09-24' },
+        headers: { 'x-vercel-cron': '1', authorization: 'Bearer test-cron-secret-value' }
+      };
+      await dailyReportHandler(req, res);
+      assert.notEqual(state.statusCode, 401);
+    }
+  } finally {
+    if (originalSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = originalSecret;
+  }
+});
+
+test('SECURITY: a caller-supplied recipient phone cannot redirect the pure cron (CRON_SECRET-only) dispatch', async () => {
+  const originalSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'test-cron-secret-value';
+  try {
+    // An attacker who obtained CRON_SECRET supplies the BUSINESS's OWN sender number as the
+    // override. If the override were honored, the existing own-sender-number guard would trip
+    // (400, "Cannot send ... own sender number"). If the override is correctly ignored on the
+    // pure cron path, the handler falls back to the configured owner number instead, and that
+    // guard never trips on this request - proving the attacker-supplied phone was not used.
+    const { res, state } = fakeResponse();
+    const req = {
+      method: 'POST',
+      query: { action: 'send-report' },
+      headers: { 'x-vercel-cron': '1', authorization: 'Bearer test-cron-secret-value' },
+      body: { phone: '918139009034' }
+    };
+    await dailyReportHandler(req, res);
+    assert.notEqual(state.statusCode, 401);
+    assert.notEqual(state.statusCode, 400);
+    assert.doesNotMatch(state.jsonResult?.error || '', /own sender number/);
+  } finally {
+    if (originalSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = originalSecret;
+  }
+});
+
+// --- SECURITY REGRESSION: recipient override is restricted to owner/admin --------------------
+//
+// Before the fix, any authenticated account - any role - could redirect the operational report
+// (every staff member's call records, customer names/phones, document amounts) to an arbitrary
+// WhatsApp number via a caller-supplied `phone`. The UI never offers this to non-owner/admin
+// users, so this only closes a server-side gap.
+
+test('SECURITY: a non-owner/admin caller cannot redirect send-report to an arbitrary phone', async () => {
+  await withMockedAuth(true, async () => {
+    await withMockedSupabaseRest({}, async () => {
+      const { res, state } = fakeResponse();
+      const req = {
+        method: 'POST',
+        query: { action: 'send-report', dry_run: 'true' },
+        headers: { authorization: 'Bearer valid-user-session-token' },
+        body: { phone: '919999999999' }
+      };
+      await dailyReportHandler(req, res);
+      assert.equal(state.jsonResult?.dryRun, true);
+      // The attacker-supplied phone is ignored; the handler falls back to the configured
+      // owner number instead of honoring the override.
+      assert.notEqual(state.jsonResult?.recipient, '919999999999');
+      assert.equal(state.jsonResult?.recipient, '918589909034');
+    });
+  }, 'staff');
+});
+
+test('SECURITY: an owner caller may still redirect send-report to a different phone', async () => {
+  await withMockedAuth(true, async () => {
+    await withMockedSupabaseRest({}, async () => {
+      const { res, state } = fakeResponse();
+      const req = {
+        method: 'POST',
+        query: { action: 'send-report', dry_run: 'true' },
+        headers: { authorization: 'Bearer valid-user-session-token' },
+        body: { phone: '919999999999' }
+      };
+      await dailyReportHandler(req, res);
+      assert.equal(state.jsonResult?.dryRun, true);
+      assert.equal(state.jsonResult?.recipient, '919999999999');
+    });
+  }, 'owner');
+});
+
+test('SECURITY: a non-owner/admin caller may still verify an arbitrary phone via test-ping', async () => {
+  // test-ping sends only a static, no-business-data verification message, and the UI's own
+  // "Test ping" button relies on every signed-in user being able to verify a number before
+  // saving it - this must keep working for non-owner/admin accounts.
+  await withMockedAuth(true, async () => {
+    const { res, state } = fakeResponse();
+    const req = {
+      method: 'POST',
+      query: { action: 'test-ping' },
+      headers: { authorization: 'Bearer valid-user-session-token' },
+      body: { phone: '919999999999' }
+    };
+    await dailyReportHandler(req, res);
+    // Not rejected for role reasons (statusCode would be 403); it proceeds to the Bizylead
+    // dispatch, which fails in this offline test environment with its own status/error.
+    assert.notEqual(state.statusCode, 403);
+  }, 'staff');
+});
+
+// --- SECURITY REGRESSION: converted-leads query must respect the caller's own RLS access ------
+//
+// Before the fix, the `leads` query behind "Contacts Converted to Leads" was the only
+// supabaseRest() call in this file that never passed the caller's own session token - it always
+// fell through to the admin/service-role fallback (or, with no service-role key configured, the
+// bare anon key), bypassing RLS and returning every company's converted leads regardless of
+// which company the caller belongs to.
+
+test('SECURITY: the converted-leads query uses the caller\'s own session token, not an admin fallback', async () => {
+  const originalServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    await withMockedAuth(true, async () => {
+      await withMockedSupabaseRest({}, async (calls) => {
+        const { res, state } = fakeResponse();
+        const req = {
+          method: 'POST',
+          query: { action: 'send-report', dry_run: 'true' },
+          headers: { authorization: 'Bearer valid-user-session-token' },
+          // A supplied entry is required for the leads query to run at all - it only looks up
+          // converted leads for telecalling-entry ids present in the report.
+          body: { report_data: { entries: [{ id: 'entry-1' }] } }
+        };
+        await dailyReportHandler(req, res);
+        assert.equal(state.jsonResult?.dryRun, true);
+        const leadsCall = calls.find((c) => c.url.includes('/rest/v1/leads?'));
+        assert.ok(leadsCall, 'expected a request to the leads endpoint');
+        assert.equal(
+          leadsCall.headers.Authorization,
+          'Bearer valid-user-session-token',
+          'leads query must use the caller\'s own token so RLS scopes it to their company, not the anon/admin fallback'
+        );
+      });
+    }, 'owner');
+  } finally {
+    if (originalServiceKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceKey;
+  }
 });
 
 test('Owner WhatsApp settings defaults to 918589909034 and persists in localStorage', () => {
@@ -417,20 +734,16 @@ test('buildStaffRecordsMap attributes documents and CRM follow-ups to correct st
 });
 
 test('Night slot cron skips dispatching when no activity exists after 6:30 PM IST (13:00 UTC)', async () => {
-  let statusCode = 0;
-  let jsonResult = null;
+  const originalSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'test-cron-secret-value';
+  const { res, state } = fakeResponse();
 
   const req = {
     method: 'GET',
     query: { action: 'cron', slot: 'night', date: '2026-09-24' },
-    headers: { 'x-vercel-cron': '1' }
-  };
-  const res = {
-    setHeader: () => {},
-    status: (c) => {
-      statusCode = c;
-      return { json: (d) => { jsonResult = d; } };
-    }
+    // Genuine cron traffic must present the CRON_SECRET (security fix); the x-vercel-cron
+    // header alone is no longer sufficient.
+    headers: { 'x-vercel-cron': '1', authorization: 'Bearer test-cron-secret-value' }
   };
 
   // Pre-feed report_data with activity strictly before 13:00 UTC
@@ -454,11 +767,14 @@ test('Night slot cron skips dispatching when no activity exists after 6:30 PM IS
     }
   };
 
-  await dailyReportHandler(req, res);
-
-  assert.equal(statusCode, 200);
-  assert.equal(jsonResult.success, true);
-  assert.equal(jsonResult.skipped, true);
-  assert.match(jsonResult.message, /No activity logged after 6:30 PM IST/);
+  try {
+    await dailyReportHandler(req, res);
+    assert.equal(state.statusCode, 200);
+    assert.equal(state.jsonResult.success, true);
+    assert.equal(state.jsonResult.skipped, true);
+    assert.match(state.jsonResult.message, /No activity logged after 6:30 PM IST/);
+  } finally {
+    if (originalSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = originalSecret;
+  }
 });
 
