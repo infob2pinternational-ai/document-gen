@@ -352,6 +352,9 @@ BEGIN
   IF p_new_logout_at IS NOT NULL AND p_new_logout_at <= p_new_login_at THEN
     RAISE EXCEPTION 'Logout time must be after login time';
   END IF;
+  IF p_new_login_at > now() OR p_new_logout_at > now() THEN
+    RAISE EXCEPTION 'Corrected times cannot be in the future';
+  END IF;
 
   SELECT * INTO v_old FROM public.employee_attendance_sessions WHERE id = p_session_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Attendance session not found'; END IF;

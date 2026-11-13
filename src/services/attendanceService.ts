@@ -68,6 +68,25 @@ export function sessionIdFromAccessToken(accessToken: string | undefined | null)
 }
 
 /**
+ * True only for a signed-in Field Sales ("sales") account. Checked before
+ * ever touching the Geolocation API: GPS must only be requested from the
+ * accounts attendance actually applies to, not from every account and
+ * then discarded server-side - an Owner or IT Admin signing in must never
+ * see a location permission prompt for a feature that doesn't track them.
+ * current_app_role() is already GRANTed to authenticated (see
+ * 20260921000003_document_security_and_leads.sql); this never trusts a
+ * locally cached or client-supplied role.
+ */
+async function isFieldSalesAccount(supabase: any): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('current_app_role');
+    return !error && data === 'sales';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Call once per real sign-in - i.e. only when onAuthStateChange reports
  * event === 'SIGNED_IN'. Never call this for 'TOKEN_REFRESHED' or
  * 'INITIAL_SESSION': the RPC is idempotent on session_id either way, but
@@ -78,6 +97,7 @@ export async function recordAttendanceLogin(supabase: any, session: { access_tok
     if (!supabase) return;
     const sessionId = sessionIdFromAccessToken(session?.access_token);
     if (!sessionId) return;
+    if (!(await isFieldSalesAccount(supabase))) return;
     const location = await captureLocation();
     await supabase.rpc('record_attendance_login', {
       p_session_id: sessionId, p_lat: location.lat, p_lng: location.lng,
@@ -100,6 +120,7 @@ export async function recordAttendanceLogout(supabase: any): Promise<void> {
     const { data } = await supabase.auth.getSession();
     const sessionId = sessionIdFromAccessToken(data?.session?.access_token);
     if (!sessionId) return;
+    if (!(await isFieldSalesAccount(supabase))) return;
     const location = await captureLocation();
     await supabase.rpc('record_attendance_logout', {
       p_session_id: sessionId, p_lat: location.lat, p_lng: location.lng,

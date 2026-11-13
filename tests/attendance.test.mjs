@@ -264,8 +264,10 @@ test('an admin correction preserves original values, creates an immutable audit 
       /reason is required/
     );
 
-    const newLogin = '2026-11-13T09:00:00Z';
-    const newLogout = '2026-11-13T17:30:00Z';
+    const newLoginMs = Date.now() - 9 * 3600_000;           // 9 hours ago
+    const newLogoutMs = newLoginMs + (8 * 3600_000 + 1800_000);  // 8h30m later, still safely in the past
+    const newLogin = new Date(newLoginMs).toISOString();
+    const newLogout = new Date(newLogoutMs).toISOString();
     const result = await correct(db, sessionId, newLogin, newLogout, 'Verified with the employee by phone; forgot to sign out.');
     assert.equal(result.result, 'corrected');
     assert.equal(result.session.session_status, 'admin_corrected');
@@ -282,6 +284,20 @@ test('an admin correction preserves original values, creates an immutable audit 
     const current = await one(db, 'SELECT * FROM employee_attendance_sessions WHERE id = $1', [sessionId]);
     assert.equal(new Date(current.login_at).getTime(), new Date(newLogin).getTime());
     assert.equal(new Date(current.logout_at).getTime(), new Date(newLogout).getTime());
+  } finally { await db.close(); }
+});
+
+test('a correction cannot backdate a session into the future', async () => {
+  const db = await withAttendance();
+  try {
+    await as(db, U.salesA);
+    const loginResult = await login(db, 'session-1');
+    await as(db, U.owner);
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    await assert.rejects(
+      correct(db, loginResult.session.id, future, null, 'typo test'),
+      /cannot be in the future/
+    );
   } finally { await db.close(); }
 });
 
