@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useCrmRefresh } from './hooks/useCrmRefresh';
 import type { CompanyProfile, Document, Customer, Service, AppTheme } from './types';
 import { dbService, isSupabaseConfigured, supabase, SQL_SCHEMA } from './services/db';
+import { recordAttendanceLogin, recordAttendanceLogout } from './services/attendanceService';
+import { Attendance } from './components/Attendance';
 import { startBrowserWorker, stopBrowserWorker, getQueueStatusForCompany, type SyncQueueRow } from './services/sheetsSyncQueue';
 import { Sidebar } from './components/Sidebar';
 import EmailWorkspace from './components/email/EmailWorkspace';
@@ -356,6 +358,13 @@ function App() {
       if (event === 'PASSWORD_RECOVERY') {
         setShowPasswordResetModal(true);
       }
+      // Attendance: only a real sign-in, never a token refresh or the
+      // initial session restored on page load/refresh. A no-op for
+      // anyone who isn't a Field Sales ("sales") account - see
+      // attendanceService.ts and the record_attendance_login RPC.
+      if (event === 'SIGNED_IN') {
+        void recordAttendanceLogin(supabase, session);
+      }
       if (session?.user) {
         localStorage.setItem('supabase_user', JSON.stringify(session.user));
         leadService.invalidateActivityContext();
@@ -385,6 +394,9 @@ function App() {
 
   const handleLogout = async () => {
     if (supabase) {
+      // Attendance: must run while the session is still valid, and must
+      // never block sign-out even if it fails - see attendanceService.ts.
+      await recordAttendanceLogout(supabase);
       await supabase.auth.signOut();
     }
     localStorage.removeItem('supabase_user');
@@ -2187,6 +2199,8 @@ function App() {
                 onLeadsChanged={async () => { if (activeProfile) await hydrateCrmFromCloud(activeProfile.id); }}
               />
             )}
+
+            {currentTab === 'attendance' && (isOwner || isItAdmin) && <Attendance />}
 
             {currentTab === 'reports' && (
               <Reports
