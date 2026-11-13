@@ -181,6 +181,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Office review of field-sales visits: owner and admin only (the database enforces the same rule).
   if (userRole === 'owner' || userRole === 'admin') {
     baseSections[0].items.push({ id: 'field-visits', label: 'Field Visits', icon: MapPin });
+    // Attendance: owner and IT Admin ("admin") only - never Field Sales or
+    // Office Telecalling, enforced the same way at the database level.
+    baseSections[0].items.push({ id: 'attendance', label: 'Attendance', icon: Clock });
   }
 
   if (isFinanceRole) {

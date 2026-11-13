@@ -2,6 +2,7 @@ import { useAppRole } from '../hooks/useAppRole';
 import React, { useState, useEffect } from 'react';
 import type { CompanyProfile, Document, Customer, Service } from '../types';
 import { dbService, supabase, isSupabaseConfigured } from '../services/db';
+import { recordAttendanceLogin, recordAttendanceLogout } from '../services/attendanceService';
 import { Login } from './screens/Login';
 import { Home } from './screens/Home';
 import { DocumentsList } from './screens/DocumentsList';
@@ -89,9 +90,14 @@ export const OwnerApp: React.FC = () => {
       setUser(data.session?.user ?? null);
       setAuthLoading(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       syncCloudFlag(session);
       setUser(session?.user ?? null);
+      // Attendance: only a real sign-in, never a token refresh or the
+      // initial session restored on app open - see attendanceService.ts.
+      if (event === 'SIGNED_IN') {
+        void recordAttendanceLogin(supabase, session);
+      }
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -224,7 +230,12 @@ export const OwnerApp: React.FC = () => {
   // connection, a salesperson who was signed in on this phone can still write drafts. This only decides
   // what is displayed; the database authorises every call from the signed-in session.
   const signOut = async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (supabase) {
+      // Attendance: must run while the session is still valid, and must
+      // never block sign-out even if it fails - see attendanceService.ts.
+      await recordAttendanceLogout(supabase);
+      await supabase.auth.signOut();
+    }
     localStorage.removeItem('supabase_user');
     setUser(null);
   };
@@ -266,6 +277,9 @@ export const OwnerApp: React.FC = () => {
     // Exact same sign-out sequence as the desktop app's App.tsx
     // handleLogout - not a separate logout implementation.
     if (supabase) {
+      // Attendance: must run while the session is still valid, and must
+      // never block sign-out even if it fails - see attendanceService.ts.
+      await recordAttendanceLogout(supabase);
       await supabase.auth.signOut();
     }
     localStorage.removeItem('supabase_user');

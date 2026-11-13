@@ -56,6 +56,11 @@ export const FieldSalesApp: React.FC<FieldSalesAppProps> = ({ userId, userEmail,
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
   const [loadError, setLoadError] = useState('');
+  // Privacy notice: location is only ever captured at login/logout (never while
+  // using the app, never for Field Visits) - shown once per device, then remembered.
+  const PRIVACY_ACK_KEY = 'b2p_attendance_privacy_ack';
+  const [privacyAcked, setPrivacyAcked] = useState(() => { try { return window.localStorage.getItem(PRIVACY_ACK_KEY) === '1'; } catch { return false; } });
+  const ackPrivacy = () => { try { window.localStorage.setItem(PRIVACY_ACK_KEY, '1'); } catch { /* best effort */ } setPrivacyAcked(true); };
   const [filter, setFilter] = useState<Filter>('all');
   const [view, setView] = useState<View>({ name: 'home' });
 
@@ -189,6 +194,12 @@ export const FieldSalesApp: React.FC<FieldSalesAppProps> = ({ userId, userEmail,
       </header>
 
       <main className="fs-body">
+        {!privacyAcked && (
+          <div className="fs-banner" role="status" data-testid="attendance-privacy-notice">
+            <span>Your location is recorded only when you sign in and sign out, for attendance. It is never recorded while you use this app or when you submit a field visit.</span>
+            <button type="button" className="btn-secondary fs-btn fs-btn-small" onClick={ackPrivacy}>Got it</button>
+          </div>
+        )}
         {!online && (
           <div className="fs-banner warn" role="status">You are offline. You can keep adding visits; they are saved on this phone and sent when the connection returns.</div>
         )}
