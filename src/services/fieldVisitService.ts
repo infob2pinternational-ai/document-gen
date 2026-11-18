@@ -14,15 +14,50 @@ import { generateUUID } from '../utils/uuid';
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type FieldVisitStatus = 'submitted' | 'needs_correction' | 'approved' | 'rejected' | 'converted';
-export type RequirementKey = 'website' | 'billing_software' | 'crm' | 'attendance_software' | 'other';
+
+/** B2P's actual service list (https://www.b2pinternational.com/), offered to a salesperson. */
+export type RequirementKey =
+  | 'mobile_led_van_advertising' | 'led_wall_display_rental' | 'lookwalker_advertising'
+  | 'vehicle_branding_fleet_wraps' | 'billboard_hoarding_advertising' | 'event_roadshow_marketing'
+  | 'graphic_designing' | 'video_production_4k' | 'event_video_coverage' | 'acrylic_signage_3d'
+  | 'shop_boards_signage' | 'commercial_printing' | 'digital_marketing' | 'whatsapp_bulk_messaging'
+  | 'brand_promotion' | 'corporate_advertising' | 'pr_media_strategy' | 'other';
 
 export const REQUIREMENT_OPTIONS: { value: RequirementKey; label: string }[] = [
-  { value: 'website', label: 'Website' },
-  { value: 'billing_software', label: 'Billing Software' },
-  { value: 'crm', label: 'CRM' },
-  { value: 'attendance_software', label: 'Attendance Software' },
-  { value: 'other', label: 'Other' }
+  { value: 'mobile_led_van_advertising', label: 'Mobile LED Van Advertising' },
+  { value: 'led_wall_display_rental', label: 'LED Wall Display Rental' },
+  { value: 'lookwalker_advertising', label: 'Lookwalker Advertising' },
+  { value: 'vehicle_branding_fleet_wraps', label: 'Vehicle Branding & Fleet Wraps' },
+  { value: 'billboard_hoarding_advertising', label: 'Billboard & Hoarding Advertising' },
+  { value: 'event_roadshow_marketing', label: 'Event & Roadshow Marketing' },
+  { value: 'graphic_designing', label: 'Graphic Designing' },
+  { value: 'video_production_4k', label: '4K Video Production' },
+  { value: 'event_video_coverage', label: 'Event Video Coverage' },
+  { value: 'acrylic_signage_3d', label: '3D Acrylic Signage' },
+  { value: 'shop_boards_signage', label: 'Shop Boards & Signage' },
+  { value: 'commercial_printing', label: 'Commercial Printing' },
+  { value: 'digital_marketing', label: 'Digital Marketing' },
+  { value: 'whatsapp_bulk_messaging', label: 'WhatsApp Bulk Messaging' },
+  { value: 'brand_promotion', label: 'Brand Promotion' },
+  { value: 'corporate_advertising', label: 'Corporate Advertising' },
+  { value: 'pr_media_strategy', label: 'PR & Media Strategy' },
+  { value: 'other', label: 'Other / Custom Requirement' }
 ];
+
+/**
+ * Keys a visit could have been saved with before this list changed
+ * (Website / Billing Software / CRM / Attendance Software). No longer offered
+ * for a new selection, but a visit already carrying one of these must keep
+ * showing a real label, not a raw database key - see requirementLabel below.
+ */
+export const LEGACY_REQUIREMENT_LABELS: Record<string, string> = {
+  website: 'Website', billing_software: 'Billing Software', crm: 'CRM', attendance_software: 'Attendance Software'
+};
+
+/** The label for any requirement key this app has ever stored: current, legacy, or (defensively) unknown. */
+export function requirementLabel(key: string): string {
+  return REQUIREMENT_OPTIONS.find(option => option.value === key)?.label || LEGACY_REQUIREMENT_LABELS[key] || key;
+}
 
 export const STATUS_LABEL: Record<FieldVisitStatus, string> = {
   submitted: 'Pending review',

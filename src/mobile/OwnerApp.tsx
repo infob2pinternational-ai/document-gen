@@ -413,7 +413,6 @@ export const OwnerApp: React.FC = () => {
             <FieldVisitReview
               companies={profiles.map(p => ({ id: p.id, name: p.name }))}
               activeCompanyId={activeProfile?.id || ''}
-              currentUserEmail={user?.email || ''}
             />
           </div>
         )}

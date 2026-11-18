@@ -1281,6 +1281,9 @@ export const THEME_OPTIONS: ThemeOption[] = [
 // =====================================================================
 
 export type TelecallingStatus =
+  | 'Not Called Yet'
+  | 'Connected'
+  | 'Busy'
   | 'Appointment Confirmed'
   | 'Interested / Details Shared'
   | 'Follow-up Required'
@@ -1292,6 +1295,8 @@ export type TelecallingStatus =
   | 'Other';
 
 export const TELECALLING_STATUSES: TelecallingStatus[] = [
+  'Connected',
+  'Busy',
   'Appointment Confirmed',
   'Interested / Details Shared',
   'Follow-up Required',
@@ -1302,6 +1307,9 @@ export const TELECALLING_STATUSES: TelecallingStatus[] = [
   'Wrong / Invalid Number',
   'Other'
 ];
+
+/** The initial status of a Daily Calling entry handed off from an approved field visit, before anyone has called. Not offered as a selectable outcome. */
+export const NOT_CALLED_YET: TelecallingStatus = 'Not Called Yet';
 
 export const UNRESOLVED_TELECALLING_STATUSES: TelecallingStatus[] = [
   'Follow-up Required',
@@ -1333,6 +1341,18 @@ export interface TelecallingEntry {
   google_sync_status?: 'pending' | 'syncing' | 'synced' | 'failed';
   google_synced_at?: string | null;
   google_sync_error?: string | null;
+  /** Present only for entries handed off from an approved field visit (see field_visit_daily_calling_handoff migration). */
+  field_visit_id?: string | null;
+  website?: string | null;
+  estimated_budget?: number | string | null;
+  requirements?: string[] | null;
+  requirement_other?: string | null;
+  visit_remarks?: string | null;
+  visit_date?: string | null;
+  salesperson_email?: string | null;
+  converted_lead_id?: string | null;
+  converted_at?: string | null;
+  converted_by_email?: string | null;
 }
 
 export interface TelecallingFollowUpSummaryItem {

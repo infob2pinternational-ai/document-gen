@@ -356,6 +356,9 @@ class TelecallingService {
    */
   computeDailyReport(entries: TelecallingEntry[], dateStr: string): TelecallingDailyReportData {
     const statusCounts: Record<TelecallingStatus, number> = {
+      'Not Called Yet': 0,
+      'Connected': 0,
+      'Busy': 0,
       'Appointment Confirmed': 0,
       'Interested / Details Shared': 0,
       'Follow-up Required': 0,
@@ -428,7 +431,10 @@ class TelecallingService {
       dayMap[day.date] = {
         total: 0,
         statusCounts: {
-          'Appointment Confirmed': 0,
+          'Not Called Yet': 0,
+      'Connected': 0,
+      'Busy': 0,
+      'Appointment Confirmed': 0,
           'Interested / Details Shared': 0,
           'Follow-up Required': 0,
           'Call Back': 0,
@@ -442,6 +448,9 @@ class TelecallingService {
     }
 
     const overallStatusCounts: Record<TelecallingStatus, number> = {
+      'Not Called Yet': 0,
+      'Connected': 0,
+      'Busy': 0,
       'Appointment Confirmed': 0,
       'Interested / Details Shared': 0,
       'Follow-up Required': 0,
@@ -481,7 +490,10 @@ class TelecallingService {
         telecallerBreakdown[caller] = {
           total: 0,
           statusCounts: {
-            'Appointment Confirmed': 0,
+            'Not Called Yet': 0,
+      'Connected': 0,
+      'Busy': 0,
+      'Appointment Confirmed': 0,
             'Interested / Details Shared': 0,
             'Follow-up Required': 0,
             'Call Back': 0,
@@ -502,7 +514,10 @@ class TelecallingService {
       dayName: d.dayName,
       totalCalls: dayMap[d.date]?.total || 0,
       statusCounts: dayMap[d.date]?.statusCounts || {
-        'Appointment Confirmed': 0,
+        'Not Called Yet': 0,
+      'Connected': 0,
+      'Busy': 0,
+      'Appointment Confirmed': 0,
         'Interested / Details Shared': 0,
         'Follow-up Required': 0,
         'Call Back': 0,
@@ -891,6 +906,42 @@ class TelecallingService {
         error: err.message || 'Failed to send email via Google Apps Script'
       };
     }
+  }
+
+  /** Office members this company's reviewer may assign a qualified lead to (owner, admin, staff). */
+  async listAssignees(companyId: string): Promise<{ email: string; role: string }[]> {
+    if (!isSupabaseConfigured() || !supabase) throw new Error('Sign in to continue.');
+    const { data, error } = await supabase.rpc('field_visit_assignees', { p_company_id: companyId });
+    if (error) throw error;
+    return data || [];
+  }
+
+  /**
+   * Explicitly qualify a Daily Calling entry into a CRM lead (see the
+   * field_visit_daily_calling_handoff migration's convert_telecalling_entry_to_lead).
+   * Never called automatically - only from an office action the user takes deliberately.
+   */
+  async convertEntryToLead(
+    entryId: string,
+    options: { assigneeEmail?: string | null; followUpDate?: string | null; existingLeadId?: string | null; forceNew?: boolean } = {}
+  ): Promise<{
+    result: 'converted' | 'already_converted' | 'duplicates_found';
+    lead_id?: string;
+    lead_number?: string;
+    follow_up_id?: string;
+    matches?: Array<{ id: string; lead_number?: string; customer_name?: string; company_name?: string; phone?: string; status?: string; assigned_telecaller_email?: string }>;
+  }> {
+    if (!isSupabaseConfigured() || !supabase) throw new Error('Sign in to continue.');
+    const { data, error } = await supabase.rpc('convert_telecalling_entry_to_lead', {
+      p_entry_id: entryId,
+      p_assignee_email: options.assigneeEmail || null,
+      p_follow_up_date: options.followUpDate || null,
+      p_follow_up_time: '11:00',
+      p_existing_lead_id: options.existingLeadId || null,
+      p_force_new: Boolean(options.forceNew)
+    });
+    if (error) throw error;
+    return data;
   }
 }
 
