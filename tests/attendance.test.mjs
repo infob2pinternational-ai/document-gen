@@ -11,11 +11,38 @@ import { readFileSync } from 'node:fs';
 import { setup, asAdmin, as, U, EMAIL, one, count } from './helpers/field-sales-db.mjs';
 
 const ATTENDANCE_MIGRATION = readFileSync(new URL('../database/migrations/20261113000001_employee_attendance_tracking.sql', import.meta.url), 'utf8');
+const ATTENDANCE_FIX_MIGRATION = readFileSync(new URL('../database/migrations/20261114000001_attendance_fix_result_types_null_role_guard_and_grants.sql', import.meta.url), 'utf8');
+
+const ATTENDANCE_TABLES = ['employee_attendance_sessions', 'employee_attendance_corrections', 'attendance_settings'];
+
+// Production shape: Supabase's auth.users.email is varchar(255), not text.
+async function withProductionEmailType(db) {
+  await asAdmin(db);
+  await db.exec('ALTER TABLE auth.users ALTER COLUMN email TYPE varchar(255)');
+}
+
+// What the live project looked like after the interrupted apply: the original
+// migration's objects, with Supabase's default privileges still on them.
+async function simulateLiveDefaultPrivileges(db) {
+  await asAdmin(db);
+  await db.exec(`GRANT ALL ON ${ATTENDANCE_TABLES.map(t => 'public.' + t).join(', ')} TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION
+      public.record_attendance_login(text, numeric, numeric, numeric, text),
+      public.record_attendance_logout(text, numeric, numeric, numeric, text),
+      public.list_attendance_sessions(date, date, uuid),
+      public.attendance_summary(date),
+      public.correct_attendance_session(uuid, timestamptz, timestamptz, text),
+      public.get_attendance_settings(),
+      public.set_attendance_settings(time, time, integer)
+    TO anon, authenticated`);
+}
 
 async function withAttendance() {
   const db = await setup();
-  await asAdmin(db);
+  await withProductionEmailType(db);
   await db.exec(ATTENDANCE_MIGRATION);
+  await simulateLiveDefaultPrivileges(db);
+  await db.exec(ATTENDANCE_FIX_MIGRATION);
   return db;
 }
 
@@ -205,7 +232,7 @@ test('Owner can view attendance: summary and the full session list', async () =>
     await login(db, 'session-1', { status: 'captured', lat: 10, lng: 76, accuracy: 8 });
 
     await as(db, U.owner);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });   // the database buckets by IST date
     const rows = await listSessions(db, today, today);
     assert.equal(rows.length, 1);
     assert.equal(rows[0].employee_email, EMAIL.salesA);
@@ -226,7 +253,7 @@ test('IT Admin (the "admin" role) can view attendance exactly like Owner', async
     await as(db, U.salesA);
     await login(db, 'session-1');
     await as(db, U.admin);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });   // the database buckets by IST date
     assert.equal((await listSessions(db, today, today)).length, 1);
     assert.equal((await summary(db)).present_today, 1);
   } finally { await db.close(); }
@@ -327,5 +354,112 @@ test('timezone: a login just after midnight IST is bucketed to the correct IST d
     assert.equal(s.present_today, 1, 'bucketed by the IST calendar date, not the UTC date');
     const sameDayUtc = await summary(db, '2026-11-13');
     assert.equal(sameDayUtc.present_today, 0);
+  } finally { await db.close(); }
+});
+
+// --- production fix: 20261114000001 --------------------------------------------
+
+const ATTENDANCE_FUNCTIONS = `
+  public.record_attendance_login(text, numeric, numeric, numeric, text),
+  public.record_attendance_logout(text, numeric, numeric, numeric, text),
+  public.list_attendance_sessions(date, date, uuid),
+  public.attendance_summary(date),
+  public.correct_attendance_session(uuid, timestamptz, timestamptz, text),
+  public.get_attendance_settings(),
+  public.set_attendance_settings(time, time, integer)`;
+
+test('root cause reproduced: the original migration alone fails on a varchar(255) auth.users.email, and its guard lets a NULL role through', async () => {
+  const db = await setup();
+  try {
+    await withProductionEmailType(db);
+    await db.exec(ATTENDANCE_MIGRATION);
+    await simulateLiveDefaultPrivileges(db);
+    await as(db, U.salesA);
+    await login(db, 'session-1');
+    await as(db, U.owner);
+    await assert.rejects(listSessions(db, '2000-01-01', '2100-01-01'), /structure of query does not match function result type/);
+    // The NULL-role hole: an anonymous caller passes the guard on the original function.
+    await as(db, null);
+    const leaked = await summary(db);
+    assert.equal(leaked.present_today, 1, 'original guard (NULL NOT IN ...) did not stop an anonymous caller');
+  } finally { await db.close(); }
+});
+
+test('list_attendance_sessions returns rows and email text for Owner and IT Admin against a varchar(255) email column', async () => {
+  const db = await withAttendance();
+  try {
+    await as(db, U.salesA);
+    await login(db, 'session-1', { status: 'permission_denied' });
+    for (const uid of [U.owner, U.admin]) {
+      await as(db, uid);
+      const rows = await listSessions(db, '2000-01-01', '2100-01-01');
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].employee_email, EMAIL.salesA);
+      assert.equal(rows[0].login_location_status, 'permission_denied');
+      assert.equal(rows[0].corrected_by_email, null);
+    }
+  } finally { await db.close(); }
+});
+
+test('the access guard is null-safe: an account with no role and an anonymous caller are denied even if EXECUTE were granted', async () => {
+  const db = await withAttendance();
+  try {
+    await asAdmin(db);
+    await db.exec(`GRANT EXECUTE ON FUNCTION ${ATTENDANCE_FUNCTIONS} TO anon`);
+    for (const uid of [U.nobody, null]) {
+      await as(db, uid);
+      await assert.rejects(listSessions(db, '2000-01-01', '2100-01-01'), /Attendance access denied/);
+      await assert.rejects(summary(db), /Attendance access denied/);
+      await assert.rejects(one(db, 'SELECT get_attendance_settings()'), /Attendance access denied/);
+      await assert.rejects(one(db, 'SELECT set_attendance_settings(NULL, NULL, NULL)'), /Attendance access denied/);
+      await assert.rejects(correct(db, U.spare, '2026-11-13T01:00:00Z', null, 'x'), /Attendance access denied/);
+    }
+  } finally { await db.close(); }
+});
+
+test('the fix removes the default privileges left on the live project: no table access for anon/authenticated, EXECUTE for authenticated only', async () => {
+  const db = await withAttendance();
+  try {
+    await asAdmin(db);
+    for (const table of ATTENDANCE_TABLES) {
+      for (const role of ['anon', 'authenticated']) {
+        const priv = await one(db, `SELECT has_table_privilege('${role}', 'public.${table}', 'SELECT') AS s, has_table_privilege('${role}', 'public.${table}', 'INSERT') AS i, has_table_privilege('${role}', 'public.${table}', 'UPDATE') AS u, has_table_privilege('${role}', 'public.${table}', 'DELETE') AS d`);
+        assert.deepEqual(priv, { s: false, i: false, u: false, d: false }, `${role} must have no privileges on ${table}`);
+      }
+    }
+    const fn = await one(db, `SELECT bool_and(has_function_privilege('authenticated', p.oid, 'EXECUTE')) AS auth_ok, bool_or(has_function_privilege('anon', p.oid, 'EXECUTE')) AS anon_any, count(*)::int AS n
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public'
+       AND p.proname IN ('record_attendance_login','record_attendance_logout','list_attendance_sessions','attendance_summary','correct_attendance_session','get_attendance_settings','set_attendance_settings')`);
+    assert.deepEqual(fn, { auth_ok: true, anon_any: false, n: 7 });
+    await as(db, U.salesA);
+    await assert.rejects(one(db, 'SELECT * FROM employee_attendance_sessions'), /permission denied/i);
+  } finally { await db.close(); }
+});
+
+test('Office hours settings functions exist and work for Owner and are denied to Field Sales', async () => {
+  const db = await withAttendance();
+  try {
+    await as(db, U.owner);
+    const before = await one(db, 'SELECT get_attendance_settings() AS r');
+    assert.equal(before.r.configured, false);
+    const saved = await one(db, "SELECT set_attendance_settings('09:30', '18:00', 15) AS r");
+    assert.equal(saved.r.configured, true);
+    assert.equal(saved.r.late_after_minutes, 15);
+    await as(db, U.salesA);
+    await assert.rejects(one(db, 'SELECT get_attendance_settings()'), /Attendance access denied/);
+  } finally { await db.close(); }
+});
+
+test('the fix migration is idempotent and changes no attendance data', async () => {
+  const db = await withAttendance();
+  try {
+    await as(db, U.salesA);
+    await login(db, 'session-1', { status: 'captured', lat: 10.1, lng: 76.2, accuracy: 9 });
+    await asAdmin(db);
+    const snapshot = async () => (await one(db, 'SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) AS r FROM employee_attendance_sessions s')).r;
+    const before = await snapshot();
+    await db.exec(ATTENDANCE_FIX_MIGRATION);
+    await db.exec(ATTENDANCE_FIX_MIGRATION);
+    assert.deepEqual(await snapshot(), before);
   } finally { await db.close(); }
 });
