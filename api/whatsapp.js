@@ -1,4 +1,5 @@
 import { requireUser, requireCompanyAccess } from '../server/auth.js';
+import { buildTextWithMedia } from '../server/whatsappHelpers.js';
 import https from 'https';
 import crypto from 'crypto';
 
@@ -208,7 +209,10 @@ export default async function handler(req, res) {
 
     // 1. Primary Outbound Provider: Bizylead Official WhatsApp Business API
     if (bizyleadApiKey && bizyleadPhoneId) {
-      const messageContent = text || (media_url ? `${text ? text + '\n' : ''}${media_url}` : '');
+      const messageContent = buildTextWithMedia(text, media_url);
+      if (!messageContent) {
+        return res.status(400).json({ success: false, error: 'Message is empty.' });
+      }
       const bizyPayload = {
         to: cleanPhone,
         phoneNoId: bizyleadPhoneId,

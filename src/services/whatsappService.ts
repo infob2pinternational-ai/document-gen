@@ -51,6 +51,7 @@ class WhatsAppService {
    */
   async getConversations(_companyId?: string | null): Promise<WhatsAppConversation[]> {
     let baseList: WhatsAppConversation[] = [];
+    let cloudAnswered = false;
 
     if (isCloudActive() && supabase) {
       try {
@@ -60,19 +61,21 @@ class WhatsAppService {
           .order('last_message_at', { ascending: false });
 
         const { data, error } = await query;
-        if (!error && data && data.length > 0) {
-          const cleanData = (data as WhatsAppConversation[]).filter(c => this.isCustomerConversation(c));
-          if (cleanData.length > 0) {
-            setLocal(CONVERSATIONS_KEY, cleanData);
-            baseList = cleanData;
-          }
+        if (!error && data) {
+          // The cloud answered, so its answer is the truth even when it is empty (for example an
+          // account that may not see any conversation). The local copy is only a fallback for when
+          // the cloud cannot be reached; sign-out does not clear it, so on a shared browser it can
+          // hold another person's chats.
+          cloudAnswered = true;
+          baseList = (data as WhatsAppConversation[]).filter(c => this.isCustomerConversation(c));
+          setLocal(CONVERSATIONS_KEY, baseList);
         }
       } catch (err) {
         console.warn('[whatsappService] Failed to load conversations from cloud, falling back to local cache:', err);
       }
     }
 
-    if (baseList.length === 0) {
+    if (!cloudAnswered) {
       const local = getLocal<WhatsAppConversation[]>(CONVERSATIONS_KEY, []);
       baseList = local.filter(c => this.isCustomerConversation(c));
     }
@@ -286,6 +289,7 @@ class WhatsAppService {
           message_type: attachment ? 'document' : 'text',
           text,
           status: newMsg.status,
+          error_message: newMsg.error_message || null,
           attachment_url: attachment?.url || null,
           attachment_type: attachment?.type || null,
           attachment_name: attachment?.name || null

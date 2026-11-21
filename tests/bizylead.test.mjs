@@ -72,8 +72,11 @@ test('POST /api/bizylead-webhook parses Bizylead messages payload correctly', as
 
   await bizyleadWebhookHandler(req, res);
   assert.equal(statusCode, 200);
-  assert.equal(jsonResult.success, true);
   assert.equal(jsonResult.processedMessages, 1);
+  // No database is configured in this test, so the message is parsed but cannot be stored:
+  // the response must say so instead of claiming success.
+  assert.equal(jsonResult.success, false);
+  assert.equal(jsonResult.failedMessages, 1);
 });
 
 test('POST /api/bizylead-webhook handles status events', async () => {
@@ -167,8 +170,11 @@ test('POST /api/bizylead-webhook parses real Bizylead event: message with sender
 
   await bizyleadWebhookHandler(req, res);
   assert.equal(statusCode, 200);
-  assert.equal(jsonResult.success, true);
   assert.equal(jsonResult.processedMessages, 1);
+  // No database is configured in this test, so the message is parsed but cannot be stored:
+  // the response must say so instead of claiming success.
+  assert.equal(jsonResult.success, false);
+  assert.equal(jsonResult.failedMessages, 1);
 });
 
 test('POST /api/bizylead-webhook parses real Bizylead event: status format', async () => {

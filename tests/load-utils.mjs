@@ -32,7 +32,8 @@ export async function loadWhatsAppService() {
   // Isolate transport/state behavior from the live Supabase and CRM services.
   const stubs = {
     './apiAuth': "export async function authenticatedHeaders() { return { Authorization: 'Bearer test-token' }; }",
-    './db': 'export const supabase = null; export const isCloudActive = () => false; export const dbService = {};',
+    // No cloud unless a test sets globalThis.__waTestSupabase to a fake client.
+    './db': 'export const supabase = new Proxy({}, { get: (_, key) => globalThis.__waTestSupabase?.[key] }); export const isCloudActive = () => !!globalThis.__waTestSupabase; export const dbService = {};',
     '../utils/whatsappShare': 'export const normalizeIndianPhone = x => x;',
     '../utils/calculations': 'export const normalizeAdvance = x => Number(x) || 0; export const calculateBalanceDue = (x,y) => x-y;',
     './leadService': 'export const leadService = { addLeadActivity: async () => {} };',

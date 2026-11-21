@@ -1,4 +1,9 @@
 import https from 'https';
+import {
+  normaliseProviderStatus, providerErrorText, sharedSecretMatches, statusUpdatePath
+} from '../server/whatsappHelpers.js';
+
+let warnedNoSecret = false;
 
 // Read raw request body stream
 function readBody(req) {
@@ -115,6 +120,18 @@ export default async function handler(req, res) {
 
   // 3. POST: Inbound Webhook Event from Bizylead
   if (req.method === 'POST') {
+    // Optional shared secret. Until BIZYLEAD_WEBHOOK_SECRET is set (and the webhook URL in
+    // Bizylead carries it as ?secret=..., or the x-webhook-secret header), the endpoint stays
+    // open exactly as before so existing delivery is not interrupted.
+    const secret = process.env.BIZYLEAD_WEBHOOK_SECRET;
+    if (!secret && !warnedNoSecret) {
+      warnedNoSecret = true;
+      console.warn('[Bizylead Webhook] BIZYLEAD_WEBHOOK_SECRET is not set: anyone can post inbound messages to this endpoint.');
+    }
+    if (!sharedSecretMatches(secret, req.headers?.['x-webhook-secret'] ?? req.query?.secret)) {
+      return res.status(401).json({ error: 'Invalid webhook secret.' });
+    }
+
     let payload;
     try {
       payload = await readBody(req);
@@ -245,12 +262,12 @@ export default async function handler(req, res) {
 
     // 4. Process Status Updates
     for (const statusObj of statusUpdates) {
-      if (statusObj.id) {
-        await supabaseRest(`whatsapp_messages?wa_message_id=eq.${statusObj.id}`, 'PATCH', {
-          status: statusObj.status,
-          error_message: statusObj.error
-        }).catch(() => {});
-      }
+      const status = normaliseProviderStatus(statusObj.status);
+      if (!statusObj.id || !status) continue;   // a status the table would reject is ignored, not retried
+      await supabaseRest(statusUpdatePath(statusObj.id, status), 'PATCH', {
+        status,
+        error_message: status === 'failed' ? providerErrorText(statusObj.error) : null
+      }).catch(() => {});
     }
 
     // Fetch default company_id from profiles so RLS scopes allow portal users to view records
@@ -265,6 +282,8 @@ export default async function handler(req, res) {
     }
 
     // 5. Process Inbound Messages
+    let failedMessages = 0;
+    let duplicateMessages = 0;
     for (const msg of incomingMessages) {
       if (!msg.from) continue;
 
@@ -274,6 +293,18 @@ export default async function handler(req, res) {
       const customerName = msg.name || 'WhatsApp Contact';
       const textContent = msg.text || '';
       const waMsgId = msg.id || `bizy_${Date.now()}`;
+
+      // Bizylead can deliver the same event more than once. A message already stored under the
+      // provider's own id is skipped, so it is neither shown twice nor counted as unread again.
+      // (An id we generated ourselves carries no such guarantee.) If the lookup itself fails we
+      // carry on and store the message: a duplicate is better than a lost customer message.
+      if (!String(waMsgId).startsWith('bizy_')) {
+        const existing = await supabaseRest(`whatsapp_messages?wa_message_id=eq.${encodeURIComponent(String(waMsgId))}&select=id&limit=1`);
+        if (Array.isArray(existing) && existing.length > 0) {
+          duplicateMessages++;
+          continue;
+        }
+      }
 
       // A. Sync to whatsapp_conversations table
       let convId = null;
@@ -309,8 +340,9 @@ export default async function handler(req, res) {
       }
 
       // B. Sync message to whatsapp_messages table
+      let stored = null;
       if (convId) {
-        await supabaseRest('whatsapp_messages', 'POST', {
+        stored = await supabaseRest('whatsapp_messages', 'POST', {
           conversation_id: convId,
           company_id: defaultCompanyId,
           wa_message_id: waMsgId,
@@ -320,14 +352,22 @@ export default async function handler(req, res) {
           text: textContent,
           status: 'delivered',
           created_at: new Date().toISOString()
-        }).catch(() => {});
+        }).catch(() => null);
+      }
+      if (!stored) {
+        failedMessages++;
+        console.error(`[Bizylead Webhook] Inbound message ${waMsgId} from ${phone91} was NOT stored (conversation=${convId || 'none'}).`);
       }
     }
 
+    // Still HTTP 200 so Bizylead does not disable the webhook, but the body no longer claims
+    // success when a customer message could not be saved.
     return res.status(200).json({
-      success: true,
+      success: failedMessages === 0,
       processedMessages: incomingMessages.length,
-      processedStatuses: statusUpdates.length
+      processedStatuses: statusUpdates.length,
+      duplicateMessages,
+      failedMessages
     });
   }
 
